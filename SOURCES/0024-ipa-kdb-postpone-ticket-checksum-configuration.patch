@@ -1,0 +1,269 @@
+From 33242a967011b9cbce74b6b3c39a7247d66eda19 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Thu, 25 May 2023 09:19:57 +0300
+Subject: [PATCH] ipa-kdb: postpone ticket checksum configuration
+
+Postpone ticket checksum configuration after KDB module was initialized.
+This, in practice, should now happen when a master key is retrieved.
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Julien Rische <jrische@redhat.com>
+(cherry picked from commit fefa0248296413b6ee5ad2543d8feb1b31840aee)
+---
+ daemons/ipa-kdb/ipa_kdb.c            | 56 +----------------------
+ daemons/ipa-kdb/ipa_kdb.h            |  8 +++-
+ daemons/ipa-kdb/ipa_kdb_common.c     | 67 +++++++++++++++++++++++++++-
+ daemons/ipa-kdb/ipa_kdb_principals.c | 14 ++++--
+ 4 files changed, 84 insertions(+), 61 deletions(-)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb.c b/daemons/ipa-kdb/ipa_kdb.c
+index 9a56640ff..a3c3746c2 100644
+--- a/daemons/ipa-kdb/ipa_kdb.c
++++ b/daemons/ipa-kdb/ipa_kdb.c
+@@ -524,52 +524,6 @@ static krb5_principal ipadb_create_local_tgs(krb5_context kcontext,
+     return tgtp;
+ }
+ 
+-static char *no_attrs[] = {
+-    LDAP_NO_ATTRS,
+-
+-    NULL
+-};
+-
+-static krb5_error_code
+-should_support_pac_tkt_sign(krb5_context kcontext, bool *result)
+-{
+-    struct ipadb_context *ipactx;
+-    krb5_error_code kerr;
+-    LDAPMessage *res = NULL;
+-    char *masters_dn = NULL;
+-    int count;
+-
+-    char *kdc_filter = "(&(cn=KDC)(objectClass=ipaConfigObject)"
+-                       "(!(ipaConfigString=pacTktSignSupported)))";
+-
+-    ipactx = ipadb_get_context(kcontext);
+-    if (!ipactx) {
+-        kerr = KRB5_KDB_DBNOTINITED;
+-        goto done;
+-    }
+-
+-    count = asprintf(&masters_dn, "cn=masters,cn=ipa,cn=etc,%s", ipactx->base);
+-    if (count < 0) {
+-        kerr = ENOMEM;
+-        goto done;
+-    }
+-
+-    kerr = ipadb_simple_search(ipactx, masters_dn, LDAP_SCOPE_SUBTREE,
+-                               kdc_filter, no_attrs, &res);
+-    if (kerr)
+-        goto done;
+-
+-    count = ldap_count_entries(ipactx->lcontext, res);
+-
+-    if (result)
+-        *result = (count == 0);
+-
+-done:
+-    free(masters_dn);
+-    ldap_msgfree(res);
+-    return kerr;
+-}
+-
+ /* INTERFACE */
+ 
+ static krb5_error_code ipadb_init_library(void)
+@@ -590,7 +544,6 @@ static krb5_error_code ipadb_init_module(krb5_context kcontext,
+     krb5_error_code kerr;
+     int ret;
+     int i;
+-    bool pac_tkt_sign_supported;
+ 
+     /* make sure the context is freed to avoid leaking it */
+     ipactx = ipadb_get_context(kcontext);
+@@ -662,6 +615,8 @@ static krb5_error_code ipadb_init_module(krb5_context kcontext,
+         goto fail;
+     }
+ 
++    ipactx->optional_pac_tkt_chksum = IPADB_TRISTATE_UNDEFINED;
++
+     ret = ipadb_get_connection(ipactx);
+     if (ret != 0) {
+         /* Not a fatal failure, as the LDAP server may be temporarily down. */
+@@ -675,13 +630,6 @@ static krb5_error_code ipadb_init_module(krb5_context kcontext,
+         goto fail;
+     }
+ 
+-    /* Enforce PAC ticket signature verification if supported by all KDCs */
+-    kerr = should_support_pac_tkt_sign(kcontext, &pac_tkt_sign_supported);
+-    if (kerr) {
+-        ret = kerr;
+-        goto fail;
+-    }
+-    ipactx->optional_pac_tkt_chksum = !pac_tkt_sign_supported;
+ 
+     return 0;
+ 
+diff --git a/daemons/ipa-kdb/ipa_kdb.h b/daemons/ipa-kdb/ipa_kdb.h
+index 0f4d3e431..edf3b0dfc 100644
+--- a/daemons/ipa-kdb/ipa_kdb.h
++++ b/daemons/ipa-kdb/ipa_kdb.h
+@@ -126,6 +126,12 @@ struct ipadb_global_config {
+     bool disable_preauth_for_spns;
+ };
+ 
++enum ipadb_tristate_option {
++	IPADB_TRISTATE_FALSE = FALSE,
++	IPADB_TRISTATE_TRUE = TRUE,
++	IPADB_TRISTATE_UNDEFINED,
++};
++
+ #define IPA_CONTEXT_MAGIC 0x0c027ea7
+ struct ipadb_context {
+     int magic;
+@@ -143,7 +149,7 @@ struct ipadb_context {
+     krb5_key_salt_tuple *def_encs;
+     int n_def_encs;
+     struct ipadb_mspac *mspac;
+-    bool optional_pac_tkt_chksum;
++    enum ipadb_tristate_option optional_pac_tkt_chksum;
+ #ifdef HAVE_KRB5_CERTAUTH_PLUGIN
+     krb5_certauth_moddata certauth_moddata;
+ #endif
+diff --git a/daemons/ipa-kdb/ipa_kdb_common.c b/daemons/ipa-kdb/ipa_kdb_common.c
+index 42e0856d0..ae7742a32 100644
+--- a/daemons/ipa-kdb/ipa_kdb_common.c
++++ b/daemons/ipa-kdb/ipa_kdb_common.c
+@@ -158,12 +158,75 @@ static bool ipadb_need_retry(struct ipadb_context *ipactx, int error)
+     return false;
+ }
+ 
++static char *no_attrs[] = {
++    LDAP_NO_ATTRS,
++
++    NULL
++};
++
++static int
++should_support_pac_tkt_sign(struct ipadb_context *ipactx, bool *result)
++{
++    int ret;
++    LDAPMessage *res = NULL;
++    char *masters_dn = NULL;
++    int count;
++
++    char *kdc_filter = "(&(cn=KDC)(objectClass=ipaConfigObject)"
++                       "(!(ipaConfigString=pacTktSignSupported)))";
++
++    if (!ipactx) {
++        ret = KRB5_KDB_DBNOTINITED;
++        goto done;
++    }
++
++    count = asprintf(&masters_dn, "cn=masters,cn=ipa,cn=etc,%s", ipactx->base);
++    if (count < 0) {
++        ret = ENOMEM;
++        goto done;
++    }
++
++    ret = ipadb_simple_search(ipactx, masters_dn, LDAP_SCOPE_SUBTREE,
++                               kdc_filter, no_attrs, &res);
++    if (ret)
++        goto done;
++
++    count = ldap_count_entries(ipactx->lcontext, res);
++
++    if (result)
++        *result = (count == 0);
++
++done:
++    free(masters_dn);
++    ldap_msgfree(res);
++    return ret;
++}
++
+ static int ipadb_check_connection(struct ipadb_context *ipactx)
+ {
++    int ret = 0;
++
+     if (ipactx->lcontext == NULL) {
+-        return ipadb_get_connection(ipactx);
++        ret = ipadb_get_connection(ipactx);
++    }
++    if ((ret == 0) && (ipactx->optional_pac_tkt_chksum == IPADB_TRISTATE_UNDEFINED)) {
++        bool pac_tkt_sign_supported;
++
++	/* Enforce PAC ticket signature verification if supported by all KDCs
++	 * To avoid loops as all search functions call into
++	 * ipadb_check_connection(), mark that the init is complete at this
++	 * point. Default to not issuing PAC to be safe.
++         */
++        ipactx->optional_pac_tkt_chksum = IPADB_TRISTATE_FALSE;
++	ret = should_support_pac_tkt_sign(ipactx,
++                                          &pac_tkt_sign_supported);
++        if (ret == 0) {
++            ipactx->optional_pac_tkt_chksum = !pac_tkt_sign_supported;
++        } else {
++            ipactx->optional_pac_tkt_chksum = IPADB_TRISTATE_UNDEFINED;
++	}
+     }
+-    return 0;
++    return ret;
+ }
+ 
+ krb5_error_code ipadb_simple_search(struct ipadb_context *ipactx,
+diff --git a/daemons/ipa-kdb/ipa_kdb_principals.c b/daemons/ipa-kdb/ipa_kdb_principals.c
+index e6c3fba21..d35cec2e0 100644
+--- a/daemons/ipa-kdb/ipa_kdb_principals.c
++++ b/daemons/ipa-kdb/ipa_kdb_principals.c
+@@ -113,7 +113,9 @@ static char *std_principal_obj_classes[] = {
+ 
+ #define DEFAULT_TL_DATA_CONTENT "\x00\x00\x00\x00principal@UNINITIALIZED"
+ 
+-#define OPT_PAC_TKT_CHKSUM_STR_ATTR_NAME "optional_pac_tkt_chksum"
++#ifndef KRB5_KDB_SK_OPTIONAL_PAC_TKT_CHKSUM
++#define KRB5_KDB_SK_OPTIONAL_PAC_TKT_CHKSUM "optional_pac_tkt_chksum"
++#endif
+ 
+ static int ipadb_ldap_attr_to_tl_data(LDAP *lcontext, LDAPMessage *le,
+                                       char *attrname,
+@@ -1710,6 +1712,10 @@ krb5_error_code ipadb_get_principal(krb5_context kcontext,
+         if (kerr)
+             return kerr;
+ 
++        /* We should have been initialized at this point already */
++        if (ipactx->optional_pac_tkt_chksum == IPADB_TRISTATE_UNDEFINED) {
++                return KRB5_KDB_SERVER_INTERNAL_ERR;
++        }
+         /* PAC ticket signature should be optional for foreign realms, and local
+          * realm if not supported by all servers
+          */
+@@ -1719,7 +1725,7 @@ krb5_error_code ipadb_get_principal(krb5_context kcontext,
+             opt_pac_tkt_chksum_val = "false";
+ 
+         kerr = krb5_dbe_set_string(kcontext, *entry,
+-                                   OPT_PAC_TKT_CHKSUM_STR_ATTR_NAME,
++                                   KRB5_KDB_SK_OPTIONAL_PAC_TKT_CHKSUM,
+                                    opt_pac_tkt_chksum_val);
+     }
+ 
+@@ -2828,14 +2834,14 @@ remove_virtual_str_attrs(krb5_context kcontext, krb5_db_entry *entry)
+     krb5_error_code kerr;
+ 
+     kerr = krb5_dbe_get_string(kcontext, entry,
+-                               OPT_PAC_TKT_CHKSUM_STR_ATTR_NAME,
++                               KRB5_KDB_SK_OPTIONAL_PAC_TKT_CHKSUM,
+                                &str_attr_val);
+     if (kerr)
+         return kerr;
+ 
+     if (str_attr_val)
+         kerr = krb5_dbe_set_string(kcontext, entry,
+-                                   OPT_PAC_TKT_CHKSUM_STR_ATTR_NAME,
++                                   KRB5_KDB_SK_OPTIONAL_PAC_TKT_CHKSUM,
+                                    NULL);
+ 
+     krb5_dbe_free_string(kcontext, str_attr_val);
+-- 
+2.39.2
+

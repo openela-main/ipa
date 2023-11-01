@@ -1,0 +1,87 @@
+From fd32e6a3d95f28d2d11d41ee5dabb0d563cb5d51 Mon Sep 17 00:00:00 2001
+From: Julien Rische <jrische@redhat.com>
+Date: Mon, 31 Jul 2023 11:26:43 +0200
+Subject: [PATCH] ipa-kdb: fix error handling of is_master_host()
+
+Adding proper error handling to the is_master_host() function to allow
+it to make the difference between the absence of a master host object
+and a connection failure. This will keep the krb5kdc daemon from
+continuing to run with a NULL LDAP context.
+
+Fixes: https://pagure.io/freeipa/issue/9422
+
+Signed-off-by: Julien Rische <jrische@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ daemons/ipa-kdb/ipa_kdb_mspac.c | 41 +++++++++++++++++++--------------
+ 1 file changed, 24 insertions(+), 17 deletions(-)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb_mspac.c b/daemons/ipa-kdb/ipa_kdb_mspac.c
+index 83b507cb422c735f933edaebfc7b903b8fa908e4..1558e2bead288d9d00014e9b3b059934e80b54e4 100644
+--- a/daemons/ipa-kdb/ipa_kdb_mspac.c
++++ b/daemons/ipa-kdb/ipa_kdb_mspac.c
+@@ -401,27 +401,29 @@ static krb5_error_code ipadb_add_asserted_identity(struct ipadb_context *ipactx,
+     return 0;
+ }
+ 
+-static bool is_master_host(struct ipadb_context *ipactx, const char *fqdn)
++static krb5_error_code
++is_master_host(struct ipadb_context *ipactx, const char *fqdn, bool *result)
+ {
+-    int ret;
++    int err;
+     char *master_host_base = NULL;
+-    LDAPMessage *result = NULL;
+-    krb5_error_code err;
++    LDAPMessage *ldap_res = NULL;
+ 
+-    ret = asprintf(&master_host_base, "cn=%s,cn=masters,cn=ipa,cn=etc,%s",
++    err = asprintf(&master_host_base, "cn=%s,cn=masters,cn=ipa,cn=etc,%s",
+                                       fqdn, ipactx->base);
+-    if (ret == -1) {
+-        return false;
+-    }
++    if (err == -1)
++        return ENOMEM;
++
+     err = ipadb_simple_search(ipactx, master_host_base, LDAP_SCOPE_BASE,
+-                              NULL, NULL, &result);
++                              NULL, NULL, &ldap_res);
+     free(master_host_base);
+-    ldap_msgfree(result);
+-    if (err == 0) {
+-        return true;
+-    }
++    ldap_msgfree(ldap_res);
++    if (err != KRB5_KDB_NOENTRY && err != 0)
++        return err;
++
++    if (result)
++        *result = err != KRB5_KDB_NOENTRY;
+ 
+-    return false;
++    return 0;
+ }
+ 
+ static krb5_error_code ipadb_fill_info3(struct ipadb_context *ipactx,
+@@ -692,9 +694,14 @@ static krb5_error_code ipadb_fill_info3(struct ipadb_context *ipactx,
+     if ((is_host || is_service)) {
+         /* it is either host or service, so get the hostname first */
+         char *sep = strchr(info3->base.account_name.string, '/');
+-        bool is_master = is_master_host(
+-                            ipactx,
+-                            sep ? sep + 1 : info3->base.account_name.string);
++        bool is_master;
++
++        ret = is_master_host(ipactx,
++                             sep ? sep + 1 : info3->base.account_name.string,
++                             &is_master);
++        if (ret)
++            return ret;
++
+         if (is_master) {
+             /* Well known RID of domain controllers group */
+             if (info3->base.rid == 0) {
+-- 
+2.41.0
+

@@ -1,0 +1,43 @@
+From 36cba23f3f671886f5e7fa310c25a6e500c76e0b Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 16 Jan 2023 09:31:57 +0100
+Subject: [PATCH] Tests: force key type in ACME tests
+
+PKI can issue ACME certs only when the key type is rsa.
+
+With version 2.0.0, certbot defaults to ecdsa key type,
+and this causes test failures.
+For now, force rsa when requesting an ACME certificate.
+This change can be reverted when PKI fixes the issue
+on their side (https://github.com/dogtagpki/pki/issues/4273)
+
+Related: https://pagure.io/freeipa/issue/9298
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipatests/test_integration/test_acme.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/ipatests/test_integration/test_acme.py b/ipatests/test_integration/test_acme.py
+index a30f2fc756783c0a5c28ecf32c1e40f422c47a19..15d7543cfb0fa0fcb921166f7cd8f13d0535a41d 100644
+--- a/ipatests/test_integration/test_acme.py
++++ b/ipatests/test_integration/test_acme.py
+@@ -131,6 +131,7 @@ def certbot_standalone_cert(host, acme_server):
+             'certonly',
+             '--domain', host.hostname,
+             '--standalone',
++            '--key-type', 'rsa',
+         ]
+     )
+ 
+@@ -305,6 +306,7 @@ class TestACME(CALessBase):
+             '--manual-public-ip-logging-ok',
+             '--manual-auth-hook', CERTBOT_DNS_IPA_SCRIPT,
+             '--manual-cleanup-hook', CERTBOT_DNS_IPA_SCRIPT,
++            '--key-type', 'rsa',
+         ])
+ 
+     ##############
+-- 
+2.39.1
+

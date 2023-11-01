@@ -1,0 +1,574 @@
+From 51c378f66fcf59322a0774a6d9b37e7e9ac55a17 Mon Sep 17 00:00:00 2001
+From: Julien Rische <jrische@redhat.com>
+Date: Fri, 7 Apr 2023 17:04:06 +0200
+Subject: [PATCH] Tolerate absence of PAC ticket signature depending of server
+ capabilities
+
+Since November 2020, Active Directory KDC generates a new type of
+signature as part of the PAC. It is called "ticket signature", and is
+generated based on the encrypted part of the ticket. The presence of
+this signature is not mandatory in order for the PAC to be accepted for
+S4U requests.
+
+However, the behavior is different for MIT krb5. Support was added as
+part of the 1.20 release, and this signature is required in order to
+process S4U requests. Contrary to the PAC extended KDC signature, the
+code generating this signature cannot be isolated and backported to
+older krb5 versions because this version of the KDB API does not allow
+passing the content of the ticket's encrypted part to IPA.
+
+This is an issue in gradual upgrade scenarios where some IPA servers
+rely on 1.19 and older versions of MIT krb5, while others use version
+1.20 or newer. A service ticket that was provided by 1.19- IPA KDC will
+be rejected when used by a service against a 1.20+ IPA KDC for S4U
+requests.
+
+On Fedora, CentOS 9 Stream, and RHEL 9, when the krb5 version is 1.20 or
+newer, it will include a downstream-only update adding the
+"optional_pac_tkt_chksum" KDB string attribute allowing to tolerate the
+absence of PAC ticket signatures, if necessary.
+
+This commit adds an extra step during the installation and update
+processes where it adds a "pacTktSignSupported" ipaConfigString
+attribute in "cn=KDC,cn=[server],cn=masters,cn=ipa,cn=etc,[basedn]" if
+the MIT krb5 version IPA what built with was 1.20 or newer.
+
+This commit also set "optional_pac_tkt_chksum" as a virtual KDB entry
+attribute. This means the value of the attribute is not actually stored
+in the database (to avoid race conditions), but its value is determined
+at the KDC starting time by search the "pacTktSignSupported"
+ipaConfigString in the server list. If this value is missing for at
+least of them is missing, enforcement of the PAC ticket signature is
+disabled by setting "optional_pac_tkt_chksum" to true for the local
+realm TGS KDB entry.
+
+For foreign realm TGS KDB entries, the "optional_pac_tkt_chksum" virtual
+string attribute is set to true systematically, because, at least for
+now, trusted AD domains can still have PAC ticket signature support
+disabled.
+
+Given the fact the "pacTktSignSupported" ipaConfigString for a single
+server is added when this server is updated, and that the value of
+"optional_pac_tkt_chksum" is determined at KDC starting time based on
+the ipaConfigString attributes of all the KDCs in the domain, this
+requires to restart all the KDCs in the domain after all IPA servers
+were updated in order for PAC ticket signature enforcement to actually
+take effect.
+
+Fixes: https://pagure.io/freeipa/issue/9371
+Signed-off-by: Julien Rische <jrische@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit bbe545ff9feb972e549c743025e4a26b14ef8f89)
+---
+ VERSION.m4                           |   6 ++
+ configure.ac                         |   1 +
+ daemons/ipa-kdb/ipa_kdb.c            |  55 +++++++++++
+ daemons/ipa-kdb/ipa_kdb.h            |   1 +
+ daemons/ipa-kdb/ipa_kdb_principals.c | 139 +++++++++++++++++++++++----
+ ipapython/Makefile.am                |  15 +--
+ ipapython/version.py.in              |   4 +
+ ipaserver/install/krbinstance.py     |  25 ++++-
+ ipaserver/install/server/upgrade.py  |   5 +
+ ipaserver/masters.py                 |   2 +
+ 10 files changed, 225 insertions(+), 28 deletions(-)
+
+diff --git a/VERSION.m4 b/VERSION.m4
+index e5d60c4c3..9b727feca 100644
+--- a/VERSION.m4
++++ b/VERSION.m4
+@@ -137,6 +137,11 @@ ifelse(IPA_VERSION_IS_GIT_SNAPSHOT, yes,
+ IPA_GIT_VERSION),
+ NEWLINE)) dnl IPA_VERSION end
+ 
++########################################################
++# Version of MIT krb5 used to build IPA
++########################################################
++define(IPA_KRB5_BUILD_VERSION, translit(esyscmd(krb5-config --version | awk '{ print $NF }'), NEWLINE))
++
+ dnl DEBUG: uncomment following lines and run command m4 VERSION.m4
+ dnl `IPA_VERSION: ''IPA_VERSION'
+ dnl `IPA_GIT_VERSION: ''IPA_GIT_VERSION'
+@@ -144,3 +149,4 @@ dnl `IPA_GIT_BRANCH: ''IPA_GIT_BRANCH'
+ dnl `IPA_API_VERSION: ''IPA_API_VERSION'
+ dnl `IPA_DATA_VERSION: ''IPA_DATA_VERSION'
+ dnl `IPA_NUM_VERSION: ''IPA_NUM_VERSION'
++dnl `IPA_KRB5_BUILD_VERSION: ''IPA_KRB5_BUILD_VERSION'
+diff --git a/configure.ac b/configure.ac
+index 140045821..973cba33c 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -460,6 +460,7 @@ AC_SUBST(VENDOR_SUFFIX)
+ AC_SUBST([VERSION], [IPA_VERSION])
+ AC_SUBST([GIT_VERSION], [IPA_GIT_VERSION])
+ AC_SUBST([GIT_BRANCH], [IPA_GIT_BRANCH])
++AC_SUBST([KRB5_BUILD_VERSION], [IPA_KRB5_BUILD_VERSION])
+ # used by Makefile.am for files depending on templates
+ AC_SUBST([CONFIG_STATUS])
+ 
+diff --git a/daemons/ipa-kdb/ipa_kdb.c b/daemons/ipa-kdb/ipa_kdb.c
+index 93563536c..9a56640ff 100644
+--- a/daemons/ipa-kdb/ipa_kdb.c
++++ b/daemons/ipa-kdb/ipa_kdb.c
+@@ -524,6 +524,52 @@ static krb5_principal ipadb_create_local_tgs(krb5_context kcontext,
+     return tgtp;
+ }
+ 
++static char *no_attrs[] = {
++    LDAP_NO_ATTRS,
++
++    NULL
++};
++
++static krb5_error_code
++should_support_pac_tkt_sign(krb5_context kcontext, bool *result)
++{
++    struct ipadb_context *ipactx;
++    krb5_error_code kerr;
++    LDAPMessage *res = NULL;
++    char *masters_dn = NULL;
++    int count;
++
++    char *kdc_filter = "(&(cn=KDC)(objectClass=ipaConfigObject)"
++                       "(!(ipaConfigString=pacTktSignSupported)))";
++
++    ipactx = ipadb_get_context(kcontext);
++    if (!ipactx) {
++        kerr = KRB5_KDB_DBNOTINITED;
++        goto done;
++    }
++
++    count = asprintf(&masters_dn, "cn=masters,cn=ipa,cn=etc,%s", ipactx->base);
++    if (count < 0) {
++        kerr = ENOMEM;
++        goto done;
++    }
++
++    kerr = ipadb_simple_search(ipactx, masters_dn, LDAP_SCOPE_SUBTREE,
++                               kdc_filter, no_attrs, &res);
++    if (kerr)
++        goto done;
++
++    count = ldap_count_entries(ipactx->lcontext, res);
++
++    if (result)
++        *result = (count == 0);
++
++done:
++    free(masters_dn);
++    ldap_msgfree(res);
++    return kerr;
++}
++
+ /* INTERFACE */
+ 
+ static krb5_error_code ipadb_init_library(void)
+@@ -544,6 +590,7 @@ static krb5_error_code ipadb_init_module(krb5_context kcontext,
+     krb5_error_code kerr;
+     int ret;
+     int i;
++    bool pac_tkt_sign_supported;
+ 
+     /* make sure the context is freed to avoid leaking it */
+     ipactx = ipadb_get_context(kcontext);
+@@ -628,6 +675,14 @@ static krb5_error_code ipadb_init_module(krb5_context kcontext,
+         goto fail;
+     }
+ 
++    /* Enforce PAC ticket signature verification if supported by all KDCs */
++    kerr = should_support_pac_tkt_sign(kcontext, &pac_tkt_sign_supported);
++    if (kerr) {
++        ret = kerr;
++        goto fail;
++    }
++    ipactx->optional_pac_tkt_chksum = !pac_tkt_sign_supported;
++
+     return 0;
+ 
+ fail:
+diff --git a/daemons/ipa-kdb/ipa_kdb.h b/daemons/ipa-kdb/ipa_kdb.h
+index 7aa5be494..0f4d3e431 100644
+--- a/daemons/ipa-kdb/ipa_kdb.h
++++ b/daemons/ipa-kdb/ipa_kdb.h
+@@ -143,6 +143,7 @@ struct ipadb_context {
+     krb5_key_salt_tuple *def_encs;
+     int n_def_encs;
+     struct ipadb_mspac *mspac;
++    bool optional_pac_tkt_chksum;
+ #ifdef HAVE_KRB5_CERTAUTH_PLUGIN
+     krb5_certauth_moddata certauth_moddata;
+ #endif
+diff --git a/daemons/ipa-kdb/ipa_kdb_principals.c b/daemons/ipa-kdb/ipa_kdb_principals.c
+index e95cb453c..e6c3fba21 100644
+--- a/daemons/ipa-kdb/ipa_kdb_principals.c
++++ b/daemons/ipa-kdb/ipa_kdb_principals.c
+@@ -113,6 +113,8 @@ static char *std_principal_obj_classes[] = {
+ 
+ #define DEFAULT_TL_DATA_CONTENT "\x00\x00\x00\x00principal@UNINITIALIZED"
+ 
++#define OPT_PAC_TKT_CHKSUM_STR_ATTR_NAME "optional_pac_tkt_chksum"
++
+ static int ipadb_ldap_attr_to_tl_data(LDAP *lcontext, LDAPMessage *le,
+                                       char *attrname,
+                                       krb5_tl_data **result, int *num)
+@@ -178,10 +180,56 @@ done:
+     return ret;
+ }
+ 
+-static krb5_error_code ipadb_set_tl_data(krb5_db_entry *entry,
+-                                         krb5_int16 type,
+-                                         krb5_ui_2 length,
+-                                         const krb5_octet *data)
++static bool
++is_tgs_princ(krb5_context kcontext, krb5_const_principal princ)
++{
++    krb5_data *primary;
++    size_t l_tgs_name;
++
++    if (2 != krb5_princ_size(kcontext, princ))
++        return false;
++
++    primary = krb5_princ_component(kcontext, princ, 0);
++
++    l_tgs_name = strlen(KRB5_TGS_NAME);
++
++    if (l_tgs_name != primary->length)
++        return false;
++
++    return 0 == memcmp(primary->data, KRB5_TGS_NAME, l_tgs_name);
++}
++
++static krb5_error_code
++cmp_local_tgs_princ(krb5_context kcontext, const char *local_realm,
++                   krb5_const_principal princ, bool *result)
++{
++    krb5_principal local_tgs_princ;
++    size_t l_local_realm;
++    krb5_error_code kerr;
++    bool res;
++
++    l_local_realm = strlen(local_realm);
++
++    kerr = krb5_build_principal(kcontext, &local_tgs_princ,
++                                l_local_realm, local_realm,
++                                KRB5_TGS_NAME, local_realm, NULL);
++    if (kerr)
++        goto end;
++
++    res = (bool) krb5_principal_compare(kcontext, local_tgs_princ, princ);
++
++    if (result)
++        *result = res;
++
++end:
++    krb5_free_principal(kcontext, local_tgs_princ);
++    return kerr;
++}
++
++krb5_error_code ipadb_set_tl_data(krb5_db_entry *entry,
++                                  krb5_int16 type,
++                                  krb5_ui_2 length,
++                                  const krb5_octet *data)
+ {
+     krb5_error_code kerr;
+     krb5_tl_data *new_td = NULL;
+@@ -1632,6 +1680,8 @@ krb5_error_code ipadb_get_principal(krb5_context kcontext,
+                                     krb5_db_entry **entry)
+ {
+     struct ipadb_context *ipactx;
++    bool is_local_tgs_princ;
++    const char *opt_pac_tkt_chksum_val;
+     krb5_error_code kerr;
+ 
+     *entry = NULL;
+@@ -1647,11 +1697,33 @@ krb5_error_code ipadb_get_principal(krb5_context kcontext,
+ 
+     /* Lookup local names and aliases first. */
+     kerr = dbget_princ(kcontext, ipactx, search_for, flags, entry);
+-    if (kerr != KRB5_KDB_NOENTRY) {
++    if (kerr == KRB5_KDB_NOENTRY) {
++        kerr = dbget_alias(kcontext, ipactx, search_for, flags, entry);
++    }
++    if (kerr)
+         return kerr;
++
++    /* If TGS principal, some virtual attributes may be added */
++    if (is_tgs_princ(kcontext, (*entry)->princ)) {
++        kerr = cmp_local_tgs_princ(kcontext, ipactx->realm, (*entry)->princ,
++                                   &is_local_tgs_princ);
++        if (kerr)
++            return kerr;
++
++        /* PAC ticket signature should be optional for foreign realms, and local
++         * realm if not supported by all servers
++         */
++        if (!is_local_tgs_princ || ipactx->optional_pac_tkt_chksum)
++            opt_pac_tkt_chksum_val = "true";
++        else
++            opt_pac_tkt_chksum_val = "false";
++
++        kerr = krb5_dbe_set_string(kcontext, *entry,
++                                   OPT_PAC_TKT_CHKSUM_STR_ATTR_NAME,
++                                   opt_pac_tkt_chksum_val);
+     }
+ 
+-    return dbget_alias(kcontext, ipactx, search_for, flags, entry);
++    return kerr;
+ }
+ 
+ void ipadb_free_principal_e_data(krb5_context kcontext, krb5_octet *e_data)
+@@ -1954,6 +2026,20 @@ done:
+     return kerr;
+ }
+ 
++static bool should_filter_out_attr(krb5_tl_data *data)
++{
++    switch (data->tl_data_type) {
++        case KRB5_TL_DB_ARGS:
++        case KRB5_TL_KADM_DATA:
++        case KRB5_TL_LAST_ADMIN_UNLOCK:
++        case KRB5_TL_LAST_PWD_CHANGE:
++        case KRB5_TL_MKVNO:
++            return true;
++        default:
++            return false;
++    }
++}
++
+ static krb5_error_code ipadb_get_ldap_mod_extra_data(struct ipadb_mods *imods,
+                                                      krb5_tl_data *tl_data,
+                                                      int mod_op)
+@@ -1965,13 +2051,8 @@ static krb5_error_code ipadb_get_ldap_mod_extra_data(struct ipadb_mods *imods,
+     int n, i;
+ 
+     for (n = 0, data = tl_data; data; data = data->tl_data_next) {
+-        if (data->tl_data_type == KRB5_TL_LAST_PWD_CHANGE ||
+-            data->tl_data_type == KRB5_TL_KADM_DATA ||
+-            data->tl_data_type == KRB5_TL_DB_ARGS ||
+-            data->tl_data_type == KRB5_TL_MKVNO ||
+-            data->tl_data_type == KRB5_TL_LAST_ADMIN_UNLOCK) {
++        if (should_filter_out_attr(data))
+             continue;
+-        }
+         n++;
+     }
+ 
+@@ -1987,13 +2068,8 @@ static krb5_error_code ipadb_get_ldap_mod_extra_data(struct ipadb_mods *imods,
+ 
+     for (i = 0, data = tl_data; data; data = data->tl_data_next) {
+ 
+-        if (data->tl_data_type == KRB5_TL_LAST_PWD_CHANGE ||
+-            data->tl_data_type == KRB5_TL_KADM_DATA ||
+-            data->tl_data_type == KRB5_TL_DB_ARGS ||
+-            data->tl_data_type == KRB5_TL_MKVNO ||
+-            data->tl_data_type == KRB5_TL_LAST_ADMIN_UNLOCK) {
++        if (should_filter_out_attr(data))
+             continue;
+-        }
+ 
+         be_type = htons(data->tl_data_type);
+ 
+@@ -2745,10 +2821,37 @@ done:
+     return kerr;
+ }
+ 
++static krb5_error_code
++remove_virtual_str_attrs(krb5_context kcontext, krb5_db_entry *entry)
++{
++    char *str_attr_val;
++    krb5_error_code kerr;
++
++    kerr = krb5_dbe_get_string(kcontext, entry,
++                               OPT_PAC_TKT_CHKSUM_STR_ATTR_NAME,
++                               &str_attr_val);
++    if (kerr)
++        return kerr;
++
++    if (str_attr_val)
++        kerr = krb5_dbe_set_string(kcontext, entry,
++                                   OPT_PAC_TKT_CHKSUM_STR_ATTR_NAME,
++                                   NULL);
++
++    krb5_dbe_free_string(kcontext, str_attr_val);
++    return kerr;
++}
++
+ krb5_error_code ipadb_put_principal(krb5_context kcontext,
+                                     krb5_db_entry *entry,
+                                     char **db_args)
+ {
++    krb5_error_code kerr;
++
++    kerr = remove_virtual_str_attrs(kcontext, entry);
++    if (kerr)
++        return kerr;
++
+     if (entry->mask & KMASK_PRINCIPAL) {
+         return ipadb_add_principal(kcontext, entry);
+     } else {
+diff --git a/ipapython/Makefile.am b/ipapython/Makefile.am
+index 7038e8b57..6b336d8fe 100644
+--- a/ipapython/Makefile.am
++++ b/ipapython/Makefile.am
+@@ -13,11 +13,12 @@ bdist_wheel: version.py
+ 	$(AM_V_GEN)awk '$$1 == "default:" { print $$2 }' $< >$@
+ 
+ version.py: version.py.in .DEFAULT_PLUGINS $(top_builddir)/$(CONFIG_STATUS)
+-	$(AM_V_GEN)sed						\
+-		-e 's|@API_VERSION[@]|$(API_VERSION)|g'		\
+-		-e 's|@NUM_VERSION[@]|$(NUM_VERSION)|g'		\
+-		-e 's|@VERSION[@]|$(VERSION)|g'			\
+-		-e 's|@VENDOR_SUFFIX[@]|$(VENDOR_SUFFIX)|g'	\
+-		-e '/@DEFAULT_PLUGINS[@]/r .DEFAULT_PLUGINS'	\
+-		-e '/@DEFAULT_PLUGINS[@]/d'			\
++	$(AM_V_GEN)sed                                                \
++		-e 's|@API_VERSION[@]|$(API_VERSION)|g'               \
++		-e 's|@NUM_VERSION[@]|$(NUM_VERSION)|g'               \
++		-e 's|@VERSION[@]|$(VERSION)|g'                       \
++		-e 's|@VENDOR_SUFFIX[@]|$(VENDOR_SUFFIX)|g'           \
++		-e 's|@KRB5_BUILD_VERSION[@]|$(KRB5_BUILD_VERSION)|g' \
++		-e '/@DEFAULT_PLUGINS[@]/r .DEFAULT_PLUGINS'          \
++		-e '/@DEFAULT_PLUGINS[@]/d'                           \
+ 		$< > $@
+diff --git a/ipapython/version.py.in b/ipapython/version.py.in
+index 5a71fb8cf..a8f4218a7 100644
+--- a/ipapython/version.py.in
++++ b/ipapython/version.py.in
+@@ -17,6 +17,8 @@
+ # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ #
+ 
++from pkg_resources import parse_version
++
+ # The full version including strings
+ VERSION = "@VERSION@"
+ 
+@@ -51,3 +53,5 @@ API_VERSION = "@API_VERSION@"
+ DEFAULT_PLUGINS = frozenset(l.strip() for l in """
+ @DEFAULT_PLUGINS@
+ """.strip().splitlines())
++
++KRB5_BUILD_VERSION = parse_version("@KRB5_BUILD_VERSION@")
+diff --git a/ipaserver/install/krbinstance.py b/ipaserver/install/krbinstance.py
+index a5eaa7b17..acb7419d6 100644
+--- a/ipaserver/install/krbinstance.py
++++ b/ipaserver/install/krbinstance.py
+@@ -26,6 +26,7 @@ import socket
+ import dbus
+ 
+ import dns.name
++from pkg_resources import parse_version
+ 
+ from ipalib import x509
+ from ipalib.install import certstore
+@@ -34,6 +35,7 @@ from ipaserver.install import installutils
+ from ipapython import ipaldap
+ from ipapython import ipautil
+ from ipapython import kernel_keyring
++from ipapython.version import KRB5_BUILD_VERSION
+ from ipalib import api, errors
+ from ipalib.constants import ANON_USER
+ from ipalib.install import certmonger
+@@ -42,15 +44,17 @@ from ipapython.dogtag import KDC_PROFILE
+ 
+ from ipaserver.install import replication
+ from ipaserver.install import certs
+-from ipaserver.masters import find_providing_servers
++from ipaserver.masters import (
++    find_providing_servers,
++    PAC_TKT_SIGN_SUPPORTED,
++    PKINIT_ENABLED,
++)
+ from ipaplatform.constants import constants
+ from ipaplatform.tasks import tasks
+ from ipaplatform.paths import paths
+ 
+ logger = logging.getLogger(__name__)
+ 
+-PKINIT_ENABLED = 'pkinitEnabled'
+-
+ MASTER_KEY_TYPE = 'aes256-sha2'
+ SUPPORTED_ENCTYPES = ('aes256-sha2:special', 'aes128-sha2:special',
+                       'aes256-sha2:normal', 'aes128-sha2:normal',
+@@ -169,6 +173,13 @@ class KrbInstance(service.Service):
+         # Add the host to the ipaserver host group
+         self._ldap_update(['20-ipaservers_hostgroup.update'])
+ 
++    def pac_tkt_sign_support_enable(self):
++        """
++        Advertise PAC ticket signature support in master's KDC entry in LDAP
++        """
++        service.set_service_entry_config(
++            'KDC', self.fqdn, [PAC_TKT_SIGN_SUPPORTED], self.suffix)
++
+     def __common_setup(self, realm_name, host_name, domain_name, admin_password):
+         self.fqdn = host_name
+         self.realm = realm_name.upper()
+@@ -212,6 +223,10 @@ class KrbInstance(service.Service):
+ 
+         self.__common_post_setup()
+ 
++        if KRB5_BUILD_VERSION >= parse_version('1.20'):
++            self.step("enable PAC ticket signature support",
++                      self.pac_tkt_sign_support_enable)
++
+         self.start_creation()
+ 
+         self.kpasswd = KpasswdInstance()
+@@ -235,6 +250,10 @@ class KrbInstance(service.Service):
+ 
+         self.__common_post_setup()
+ 
++        if KRB5_BUILD_VERSION >= parse_version('1.20'):
++            self.step("enable PAC ticket signature support",
++                      self.pac_tkt_sign_support_enable)
++
+         self.start_creation()
+ 
+         self.kpasswd = KpasswdInstance()
+diff --git a/ipaserver/install/server/upgrade.py b/ipaserver/install/server/upgrade.py
+index 5f5a60d10..f8701c8a0 100644
+--- a/ipaserver/install/server/upgrade.py
++++ b/ipaserver/install/server/upgrade.py
+@@ -18,6 +18,7 @@ import sys
+ import tempfile
+ from contextlib import contextmanager
+ from augeas import Augeas
++from pkg_resources import parse_version
+ 
+ from ipalib import api, x509
+ from ipalib.constants import RENEWAL_CA_NAME, RA_AGENT_PROFILE, IPA_CA_RECORD
+@@ -36,6 +37,7 @@ from ipapython import ipautil, version
+ from ipapython import ipaldap
+ from ipapython import directivesetter
+ from ipapython.dn import DN
++from ipapython.version import KRB5_BUILD_VERSION
+ from ipaplatform.constants import constants
+ from ipaplatform.paths import paths
+ from ipaserver import servroles
+@@ -1961,6 +1963,9 @@ def upgrade_configuration():
+     enable_server_snippet()
+     setup_kpasswd_server(krb)
+ 
++    if KRB5_BUILD_VERSION >= parse_version('1.20'):
++        krb.pac_tkt_sign_support_enable()
++
+     # Must be executed after certificate_renewal_update
+     # (see function docstring for details)
+     http_certificate_ensure_ipa_ca_dnsname(http)
+diff --git a/ipaserver/masters.py b/ipaserver/masters.py
+index b532f2b72..c9b57b2a5 100644
+--- a/ipaserver/masters.py
++++ b/ipaserver/masters.py
+@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
+ CONFIGURED_SERVICE = u'configuredService'
+ ENABLED_SERVICE = u'enabledService'
+ HIDDEN_SERVICE = u'hiddenService'
++PAC_TKT_SIGN_SUPPORTED = u'pacTktSignSupported'
++PKINIT_ENABLED = u'pkinitEnabled'
+ 
+ # The service name as stored in cn=masters,cn=ipa,cn=etc. The values are:
+ # 0: systemd service name
+-- 
+2.39.2
+

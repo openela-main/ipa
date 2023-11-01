@@ -1,0 +1,158 @@
+From 20ff7c16022793c707f6c2b8fb38a801870bc0e2 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Wed, 8 Feb 2023 10:42:58 -0500
+Subject: [PATCH] Fix setting values of 0 in ACME pruning
+
+Replace comparisons of "if value" with "if value is not None"
+in order to handle 0.
+
+Add a short reference to the man page to indicat that a cert
+or request retention time of 0 means remove at the next
+execution.
+
+Also indicate that the search time limit is in seconds.
+
+Fixes: https://pagure.io/freeipa/issue/9325
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Francisco Trivino <ftrivino@redhat.com>
+---
+ doc/designs/expired_certificate_pruning.md |  4 ++--
+ install/tools/man/ipa-acme-manage.1        |  8 +++----
+ ipaserver/install/ipa_acme_manage.py       | 28 +++++++++++-----------
+ 3 files changed, 20 insertions(+), 20 deletions(-)
+
+diff --git a/doc/designs/expired_certificate_pruning.md b/doc/designs/expired_certificate_pruning.md
+index a23e452696ba2a150c4ad5a3e57360ae0a16a338..35ead7b00145b5df44caf542cba277f0e6e08b6a 100644
+--- a/doc/designs/expired_certificate_pruning.md
++++ b/doc/designs/expired_certificate_pruning.md
+@@ -67,11 +67,11 @@ There are four values each that can be managed for pruning certificates and requ
+ * expired cert/incomplete request time
+ * time unit
+ * LDAP search size limit
+-* LDAP search time limit
++* LDAP search time limit (in seconds)
+ 
+ The first two configure when an expired certificate or incomplete request will be deleted. The unit can be one of: minute, hour, day, year. By default it is 30 days.
+ 
+-The LDAP limits control how many entries are returned and how long the search can take. By default it is 1000 entries and unlimited time.
++The LDAP limits control how many entries are returned and how long the search can take. By default it is 1000 entries and unlimited time (0 == unlimited, unit is seconds).
+ 
+ ### Configuration settings
+ 
+diff --git a/install/tools/man/ipa-acme-manage.1 b/install/tools/man/ipa-acme-manage.1
+index e6cec4e4a7fd460c514a72456a2dc9a2e3682ebd..b8383c14f482698d2bcc8b08f0c0bf5882c3c298 100644
+--- a/install/tools/man/ipa-acme-manage.1
++++ b/install/tools/man/ipa-acme-manage.1
+@@ -79,7 +79,7 @@ For example, "0 0 1 * *" schedules the job to run at 12:00am on the first
+ day of each month.
+ .TP
+ \fB\-\-certretention=CERTRETENTION\fR
+-Certificate retention time. The default is 30.
++Certificate retention time. The default is 30. A value of 0 will remove expired certificates with no delay.
+ .TP
+ \fB\-\-certretentionunit=CERTRETENTIONUNIT\fR
+ Certificate retention units. Valid units are: minute, hour, day, year.
+@@ -89,10 +89,10 @@ The default is days.
+ LDAP search size limit searching for expired certificates. The default is 1000. This is a client-side limit. There may be additional server-side limitations.
+ .TP
+ \fB\-\-certsearchtimelimit=CERTSEARCHTIMELIMIT\fR
+-LDAP search time limit searching for expired certificates. The default is 0, no limit. This is a client-side limit. There may be additional server-side limitations.
++LDAP search time limit (seconds) searching for expired certificates. The default is 0, no limit. This is a client-side limit. There may be additional server-side limitations.
+ .TP
+ \fB\-\-requestretention=REQUESTRETENTION\fR
+-Request retention time. The default is 30.
++Request retention time. The default is 30. A value of 0 will remove expired requests with no delay.
+ .TP
+ \fB\-\-requestretentionunit=REQUESTRETENTIONUNIT\fR
+ Request retention units. Valid units are: minute, hour, day, year.
+@@ -102,7 +102,7 @@ The default is days.
+ LDAP search size limit searching for unfulfilled requests. The default is 1000. There may be additional server-side limitations.
+ .TP
+ \fB\-\-requestsearchtimelimit=REQUESTSEARCHTIMELIMIT\fR
+-LDAP search time limit searching for unfulfilled requests. The default is 0, no limit. There may be additional server-side limitations.
++LDAP search time limit (seconds) searching for unfulfilled requests. The default is 0, no limit. There may be additional server-side limitations.
+ .TP
+ \fB\-\-config\-show\fR
+ Show the current pruning configuration
+diff --git a/ipaserver/install/ipa_acme_manage.py b/ipaserver/install/ipa_acme_manage.py
+index b7b2111d9edcec2580aa4a485d7a7340146ff065..e7c35ff6fb5b7a30ac9e2c0c18f8db805cf06ee9 100644
+--- a/ipaserver/install/ipa_acme_manage.py
++++ b/ipaserver/install/ipa_acme_manage.py
+@@ -207,14 +207,14 @@ class IPAACMEManage(AdminTool):
+                         self.options.enable,
+                         self.options.disable,
+                         self.options.cron,
+-                        self.options.certretention,
++                        self.options.certretention is not None,
+                         self.options.certretentionunit,
+-                        self.options.requestretention,
++                        self.options.requestretention is not None,
+                         self.options.requestretentionunit,
+-                        self.options.certsearchsizelimit,
+-                        self.options.certsearchtimelimit,
+-                        self.options.requestsearchsizelimit,
+-                        self.options.requestsearchtimelimit,
++                        self.options.certsearchsizelimit is not None,
++                        self.options.certsearchtimelimit is not None,
++                        self.options.requestsearchsizelimit is not None,
++                        self.options.requestsearchtimelimit is not None,
+                     ]
+                 )
+                 and (self.options.config_show or self.options.run)
+@@ -226,7 +226,7 @@ class IPAACMEManage(AdminTool):
+             elif self.options.cron:
+                 if len(self.options.cron.split()) != 5:
+                     self.option_parser.error("Invalid format for --cron")
+-                # dogtag does no validation when setting an option so
++                # dogtag does no validation when setting this option so
+                 # do the minimum. The dogtag cron is limited compared to
+                 # crontab(5).
+                 opt = self.options.cron.split()
+@@ -255,7 +255,7 @@ class IPAACMEManage(AdminTool):
+                 'pki-server', command,
+                 f'{prefix}.{directive}'
+             ]
+-            if value:
++            if value is not None:
+                 args.extend([str(value)])
+             logger.debug(args)
+             result = run(args, raiseonerr=False, capture_output=True,
+@@ -350,28 +350,28 @@ class IPAACMEManage(AdminTool):
+ 
+         # pki-server ca-config-set can only set one option at a time so
+         # loop through all the options and set what is there.
+-        if self.options.certretention:
++        if self.options.certretention is not None:
+             ca_config_set('certRetentionTime',
+                           self.options.certretention)
+         if self.options.certretentionunit:
+             ca_config_set('certRetentionUnit',
+                           self.options.certretentionunit)
+-        if self.options.certsearchtimelimit:
++        if self.options.certsearchtimelimit is not None:
+             ca_config_set('certSearchTimeLimit',
+                           self.options.certsearchtimelimit)
+-        if self.options.certsearchsizelimit:
++        if self.options.certsearchsizelimit is not None:
+             ca_config_set('certSearchSizeLimit',
+                           self.options.certsearchsizelimit)
+-        if self.options.requestretention:
++        if self.options.requestretention is not None:
+             ca_config_set('requestRetentionTime',
+                           self.options.requestretention)
+         if self.options.requestretentionunit:
+             ca_config_set('requestRetentionUnit',
+                           self.options.requestretentionunit)
+-        if self.options.requestsearchsizelimit:
++        if self.options.requestsearchsizelimit is not None:
+             ca_config_set('requestSearchSizeLimit',
+                           self.options.requestsearchsizelimit)
+-        if self.options.requestsearchtimelimit:
++        if self.options.requestsearchtimelimit is not None:
+             ca_config_set('requestSearchTimeLimit',
+                           self.options.requestsearchtimelimit)
+         if self.options.cron:
+-- 
+2.39.1
+
