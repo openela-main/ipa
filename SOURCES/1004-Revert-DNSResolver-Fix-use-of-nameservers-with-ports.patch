@@ -1,0 +1,114 @@
+From 9a33838407f244e481523fe643bc0626874e8b1a Mon Sep 17 00:00:00 2001
+From: Rafael Guterres Jeffman <rjeffman@redhat.com>
+Date: Mon, 19 Dec 2022 14:57:03 -0300
+Subject: [PATCH] Revert "DNSResolver: Fix use of nameservers with ports"
+
+This reverts commit 5e2e4664aec641886923c2bec61ce25b96edb62a.
+---
+ ipapython/dnsutil.py                    | 41 -------------------------
+ ipatests/test_ipapython/test_dnsutil.py | 40 ------------------------
+ 2 files changed, 81 deletions(-)
+
+diff --git a/ipapython/dnsutil.py b/ipapython/dnsutil.py
+index 58de365ab..4baeaf8cc 100644
+--- a/ipapython/dnsutil.py
++++ b/ipapython/dnsutil.py
+@@ -144,47 +144,6 @@ class DNSResolver(dns.resolver.Resolver):
+             nameservers.remove(ipv4_loopback)
+         self.nameservers = nameservers
+ 
+-    @dns.resolver.Resolver.nameservers.setter
+-    def nameservers(self, nameservers):
+-        """
+-        *nameservers*, a ``list`` of nameservers with optional ports:
+-            "SERVER_IP port PORT_NUMBER".
+-
+-        Overloads dns.resolver.Resolver.nameservers setter to split off ports
+-        into nameserver_ports after setting nameservers successfully with the
+-        setter in dns.resolver.Resolver.
+-        """
+-        # Get nameserver_ports if it is already set
+-        if hasattr(self, "nameserver_ports"):
+-            nameserver_ports = self.nameserver_ports
+-        else:
+-            nameserver_ports = {}
+-
+-        # Check nameserver items in list and split out converted port number
+-        # into nameserver_ports: { nameserver: port }
+-        if isinstance(nameservers, list):
+-            _nameservers = []
+-            for nameserver in nameservers:
+-                splits = nameserver.split()
+-                if len(splits) == 3 and splits[1] == "port":
+-                    nameserver = splits[0]
+-                    try:
+-                        port = int(splits[2])
+-                        if port < 0 or port > 65535:
+-                            raise ValueError()
+-                    except ValueError:
+-                        raise ValueError(
+-                            "invalid nameserver: %s is not a valid port" %
+-                            splits[2])
+-                    nameserver_ports[nameserver] = port
+-                _nameservers.append(nameserver)
+-            nameservers = _nameservers
+-
+-        # Call dns.resolver.Resolver.nameservers setter
+-        dns.resolver.Resolver.nameservers.__set__(self, nameservers)
+-        # Set nameserver_ports after successfull call to setter
+-        self.nameserver_ports = nameserver_ports
+-
+ 
+ class DNSZoneAlreadyExists(dns.exception.DNSException):
+     supp_kwargs = {'zone', 'ns'}
+diff --git a/ipatests/test_ipapython/test_dnsutil.py b/ipatests/test_ipapython/test_dnsutil.py
+index 09463c69d..5e7a46197 100644
+--- a/ipatests/test_ipapython/test_dnsutil.py
++++ b/ipatests/test_ipapython/test_dnsutil.py
+@@ -101,43 +101,3 @@ class TestSortURI:
+         assert dnsutil.sort_prio_weight([h3, h2, h1]) == [h1, h2, h3]
+         assert dnsutil.sort_prio_weight([h3, h3, h3]) == [h3]
+         assert dnsutil.sort_prio_weight([h2, h2, h1, h1]) == [h1, h2]
+-
+-
+-class TestDNSResolver:
+-    def test_nameservers(self):
+-        res = dnsutil.DNSResolver()
+-        res.nameservers = ["4.4.4.4", "8.8.8.8"]
+-        assert res.nameservers == ["4.4.4.4", "8.8.8.8"]
+-
+-    def test_nameservers_with_ports(self):
+-        res = dnsutil.DNSResolver()
+-        res.nameservers = ["4.4.4.4 port 53", "8.8.8.8 port 8053"]
+-        assert res.nameservers == ["4.4.4.4", "8.8.8.8"]
+-        assert res.nameserver_ports == {"4.4.4.4": 53, "8.8.8.8": 8053}
+-
+-        res.nameservers = ["4.4.4.4 port 53", "8.8.8.8  port  8053"]
+-        assert res.nameservers == ["4.4.4.4", "8.8.8.8"]
+-        assert res.nameserver_ports == {"4.4.4.4": 53, "8.8.8.8": 8053}
+-
+-    def test_nameservers_with_bad_ports(self):
+-        res = dnsutil.DNSResolver()
+-        try:
+-            res.nameservers = ["4.4.4.4 port a"]
+-        except ValueError:
+-            pass
+-        else:
+-            pytest.fail("No fail on bad port a")
+-
+-        try:
+-            res.nameservers = ["4.4.4.4 port -1"]
+-        except ValueError:
+-            pass
+-        else:
+-            pytest.fail("No fail on bad port -1")
+-
+-        try:
+-            res.nameservers = ["4.4.4.4 port 65536"]
+-        except ValueError:
+-            pass
+-        else:
+-            pytest.fail("No fail on bad port 65536")
+-- 
+2.38.1
+

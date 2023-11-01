@@ -1,0 +1,46 @@
+From 703ab8c4dfb7f8fd1540c3849ad469d39695a26f Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Jan 25 2023 16:57:02 +0000
+Subject: trust-add: handle missing msSFU30MaxGidNumber
+
+
+When ipa trust-add is executed with --range-type ad-trust-posix,
+the server tries to find the max uidnumber and max gidnumber
+from AD domain controller.
+The values are extracted from the entry
+CN=<domain>,CN=ypservers,CN=ypServ30,CN=RpcServices,CN=System,<AD suffix>
+in the msSFU30MaxUidNumber and msSFU30MaxGidNumber attributes.
+
+msSFU30MaxUidNumber is required but not msSFU30MaxGidNumber.
+In case msSFU30MaxGidNumber is missing, the code is currently assigning
+a "None" value and later on evaluates the max between this value and
+msSFU30MaxUidNumber. The max function cannot compare None and a list
+of string and triggers an exception.
+
+To avoid the exception, assign [b'0'] to max gid if msSFU30MaxGidNumber
+is missing. This way, the comparison succeeds and max returns the
+value from msSFU30MaxUidNumber.
+
+Fixes: https://pagure.io/freeipa/issue/9310
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+
+---
+
+diff --git a/ipaserver/plugins/trust.py b/ipaserver/plugins/trust.py
+index c074f6d..79264b8 100644
+--- a/ipaserver/plugins/trust.py
++++ b/ipaserver/plugins/trust.py
+@@ -379,7 +379,10 @@ def add_range(myapi, trustinstance, range_name, dom_sid, *keys, **options):
+                 range_type = u'ipa-ad-trust-posix'
+ 
+                 max_uid = info.get('msSFU30MaxUidNumber')
+-                max_gid = info.get('msSFU30MaxGidNumber', None)
++                # if max_gid is missing, assume 0 and the max will
++                # be obtained from max_uid. We just checked that
++                # msSFU30MaxUidNumber is defined
++                max_gid = info.get('msSFU30MaxGidNumber', [b'0'])
+                 max_id = int(max(max_uid, max_gid)[0])
+ 
+                 base_id = int(info.get('msSFU30OrderNumber')[0])
+
