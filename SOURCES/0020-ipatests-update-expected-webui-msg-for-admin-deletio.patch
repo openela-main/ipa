@@ -1,0 +1,38 @@
+From 13d5e88eb4ebb7a0132cbb050a9d230304ecbcff Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Wed, 2 Aug 2023 15:41:57 +0200
+Subject: [PATCH] ipatests: update expected webui msg for admin deletion
+
+The deletion of the admin is now forbidden (even if it is
+not the last member of the admins group) and the error
+message has changed from "admin cannot be deleted or
+disabled because it is the last member of group admins"
+to " user admin cannot be deleted/modified: privileged user".
+
+Update the expected message in the webui test.
+
+Related: https://pagure.io/freeipa/issue/8878
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ ipatests/test_webui/test_user.py | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/ipatests/test_webui/test_user.py b/ipatests/test_webui/test_user.py
+index 8d44fbdb9380c94058307b02a96299d0e178cdc7..a8a92d00c7e1f40ef10eb9133cea8752daafe730 100644
+--- a/ipatests/test_webui/test_user.py
++++ b/ipatests/test_webui/test_user.py
+@@ -50,8 +50,7 @@ INV_FIRSTNAME = ("invalid 'first': Leading and trailing spaces are "
+ FIELD_REQ = 'Required field'
+ ERR_INCLUDE = 'may only include letters, numbers, _, -, . and $'
+ ERR_MISMATCH = 'Passwords must match'
+-ERR_ADMIN_DEL = ('admin cannot be deleted or disabled because it is the last '
+-                 'member of group admins')
++ERR_ADMIN_DEL = ('user admin cannot be deleted/modified: privileged user')
+ USR_EXIST = 'user with name "{}" already exists'
+ ENTRY_EXIST = 'This entry already exists'
+ ACTIVE_ERR = 'active user with name "{}" already exists'
+-- 
+2.41.0
+

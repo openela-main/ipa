@@ -1,0 +1,32 @@
+From d83a4b0babdc7beb124d3748b5815ce309739eb7 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Tue, 13 Jun 2023 17:01:49 -0400
+Subject: [PATCH] Revert "cert_find: fix call with --all"
+
+This reverts commit 1f30cc65276a532e7288217f216b72a2b0628c8f.
+
+The problem isn't with python-cryptography, it is with the
+IPACertificate class which does way more work on a certificate
+than is necessary in cert-find.
+
+Related: https://pagure.io/freeipa/issue/9331
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+---
+ ipaserver/plugins/cert.py | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/ipaserver/plugins/cert.py b/ipaserver/plugins/cert.py
+index 2e32f4ecd50ac92c28bcaffcebe9c2c87557858a..36a0e8cb31b4dbdd9bff09165d1d8aa203936d37 100644
+--- a/ipaserver/plugins/cert.py
++++ b/ipaserver/plugins/cert.py
+@@ -1807,7 +1807,6 @@ class cert_find(Search, CertMethod):
+                             # For the case of CA-less we need to keep
+                             # the certificate because getting it again later
+                             # would require unnecessary LDAP searches.
+-                            cert = cert.to_cryptography()
+                             obj['certificate'] = (
+                                 base64.b64encode(
+                                     cert.public_bytes(x509.Encoding.DER))
+-- 
+2.41.0
+

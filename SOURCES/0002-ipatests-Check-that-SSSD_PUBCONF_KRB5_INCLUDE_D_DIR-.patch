@@ -1,0 +1,48 @@
+From 8d34f453fb139c4cef055a4963f307a760316a73 Mon Sep 17 00:00:00 2001
+From: Anuja More <amore@redhat.com>
+Date: Thu, 11 May 2023 12:50:10 +0530
+Subject: [PATCH] ipatests: Check that SSSD_PUBCONF_KRB5_INCLUDE_D_DIR is not
+ included in krb5.conf
+
+SSSD already provides a config snippet which includes
+SSSD_PUBCONF_KRB5_INCLUDE_D_DIR, and having both breaks Java.
+Test checks that krb5.conf does not include
+SSSD_PUBCONF_KRB5_INCLUDE_D_DIR.
+
+Related: https://pagure.io/freeipa/issue/9267
+
+Signed-off-by: Anuja More <amore@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+---
+ .../test_integration/test_installation_client.py  | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/ipatests/test_integration/test_installation_client.py b/ipatests/test_integration/test_installation_client.py
+index 014b0f6ab34dd92c00c0187c2c86b8bfbaa70e81..56e1593bfcfa3eb7f9918fc6f2993d836884ea38 100644
+--- a/ipatests/test_integration/test_installation_client.py
++++ b/ipatests/test_integration/test_installation_client.py
+@@ -76,6 +76,21 @@ class TestInstallClient(IntegrationTest):
+         result = self.clients[0].run_command(['cat', '/etc/ssh/ssh_config'])
+         assert 'HostKeyAlgorithms' not in result.stdout_text
+ 
++    def test_client_install_with_krb5(self):
++        """Test that SSSD_PUBCONF_KRB5_INCLUDE_D_DIR is not added in krb5.conf
++
++        SSSD already provides a config snippet which includes
++        SSSD_PUBCONF_KRB5_INCLUDE_D_DIR, and having both breaks Java.
++        Test checks that krb5.conf does not include
++        SSSD_PUBCONF_KRB5_INCLUDE_D_DIR.
++
++        related: https://pagure.io/freeipa/issue/9267
++        """
++        krb5_cfg = self.master.get_file_contents(paths.KRB5_CONF)
++        assert 'includedir {dir}'.format(
++            dir=paths.SSSD_PUBCONF_KRB5_INCLUDE_D_DIR
++        ).encode() not in krb5_cfg
++
+ 
+ class TestClientInstallBind(IntegrationTest):
+     """
+-- 
+2.41.0
+

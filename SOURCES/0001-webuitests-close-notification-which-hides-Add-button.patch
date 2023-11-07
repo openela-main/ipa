@@ -1,0 +1,35 @@
+From 4f6ebb5fdf6d2514d4683247e5d1bfc6022a500e Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Tue, 6 Jun 2023 09:04:48 +0200
+Subject: [PATCH] webuitests: close notification which hides Add button
+
+The webui test test_service.py::test_service::test_arbitrary_certificates
+randomly fails.
+The test is creating a new service then navigates to the Service page
+and clicks on the Add Certificate button.
+The notification area may still be present and hide the button, with
+the message "Service successfully added".
+Close all notifications before navigating to the Service page.
+
+Fixes: https://pagure.io/freeipa/issue/9389
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Michal Polovka <mpolovka@redhat.com>
+---
+ ipatests/test_webui/test_service.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ipatests/test_webui/test_service.py b/ipatests/test_webui/test_service.py
+index f1d9a9d624bc587634e03a86050627a648feb26d..e2976d73acd1f574f1164828be9d8e871b737d7f 100644
+--- a/ipatests/test_webui/test_service.py
++++ b/ipatests/test_webui/test_service.py
+@@ -296,6 +296,7 @@ class test_service(sevice_tasks):
+         cert_widget_sel = "div.certificate-widget"
+ 
+         self.add_record(ENTITY, data)
++        self.close_notifications()
+         self.navigate_to_record(pkey)
+ 
+         # check whether certificate section is present
+-- 
+2.41.0
+

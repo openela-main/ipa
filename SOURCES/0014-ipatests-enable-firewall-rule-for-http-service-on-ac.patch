@@ -1,0 +1,42 @@
+From 1e8352486cd5f77ff79e18798f04f406baf0a9a1 Mon Sep 17 00:00:00 2001
+From: Mohammad Rizwan <myusuf@redhat.com>
+Date: Wed, 14 Jun 2023 17:32:02 +0530
+Subject: [PATCH] ipatests: enable firewall rule for http service on acme
+ client
+
+when system hardning done i.e in case of STIG, sometimes http challanges
+can't be validated by CA if port 80 is not open. This fix enable it to facilitate
+the communication.
+
+Signed-off-by: Mohammad Rizwan <myusuf@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+---
+ ipatests/test_integration/test_acme.py | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/ipatests/test_integration/test_acme.py b/ipatests/test_integration/test_acme.py
+index 9718c408b7f48dd78dc2abae32fb9ecb85445dfb..cca20983e65f99d5ba0bb7bc6dc2b5684a6f37d9 100644
+--- a/ipatests/test_integration/test_acme.py
++++ b/ipatests/test_integration/test_acme.py
+@@ -10,6 +10,7 @@ import pytest
+ 
+ from ipalib.constants import IPA_CA_RECORD
+ from ipatests.test_integration.base import IntegrationTest
++from ipatests.pytest_ipa.integration.firewall import Firewall
+ from ipatests.pytest_ipa.integration import tasks
+ from ipatests.test_integration.test_caless import CALessBase, ipa_certs_cleanup
+ from ipatests.test_integration.test_random_serial_numbers import (
+@@ -85,6 +86,9 @@ def prepare_acme_client(master, client):
+     acme_host = f'{IPA_CA_RECORD}.{master.domain.name}'
+     acme_server = f'https://{acme_host}/acme/directory'
+ 
++    # enable firewall rule on client
++    Firewall(client).enable_services(["http", "https"])
++
+     # install acme client packages
+     if not skip_certbot_tests:
+         tasks.install_packages(client, ['certbot'])
+-- 
+2.41.0
+

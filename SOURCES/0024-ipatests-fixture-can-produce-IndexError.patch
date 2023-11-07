@@ -1,0 +1,45 @@
+From f816b4d9e6ff7a47b0da1a368d2454add78af07c Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Fri, 11 Aug 2023 09:10:30 +0200
+Subject: [PATCH] ipatests: fixture can produce IndexError
+
+The fixture issue_and_expire_acme_cert returns a function
+that fills the hosts array. If the function is not called in
+the test (for instance because a test is skipped, as in
+TestACMEPrune::test_prune_cert_search_size_limit), hosts = []
+and hosts[0] raises an IndexError.
+
+Fix the fixture to check first that hosts is not empty.
+
+Related: https://pagure.io/freeipa/issue/9348
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Mohammad Rizwan Yusuf <myusuf@redhat.com>
+---
+ ipatests/test_integration/test_acme.py | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/ipatests/test_integration/test_acme.py b/ipatests/test_integration/test_acme.py
+index c7389732cd067d49541cd04ea6687a6b95b4669f..bc989a9a2a00b0ac68b9dcffd4ccea269314961b 100644
+--- a/ipatests/test_integration/test_acme.py
++++ b/ipatests/test_integration/test_acme.py
+@@ -633,9 +633,13 @@ def issue_and_expire_acme_cert():
+         tasks.move_date(host, 'start', '-90days-60minutes')
+ 
+     # restart ipa services as date moved and wait to get things settle
+-    time.sleep(10)
+-    hosts[0].run_command(['ipactl', 'restart'])
+-    time.sleep(10)
++    # if the internal fixture was not called (for instance because the test
++    # was skipped), hosts = [] and hosts[0] would produce an IndexError
++    # exception.
++    if hosts:
++        time.sleep(10)
++        hosts[0].run_command(['ipactl', 'restart'])
++        time.sleep(10)
+ 
+ 
+ class TestACMERenew(IntegrationTest):
+-- 
+2.41.0
+

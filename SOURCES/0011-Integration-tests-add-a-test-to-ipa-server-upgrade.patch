@@ -1,0 +1,69 @@
+From 3b58487c7b2f8ac133e37e8f90f85ff2fb05bf34 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 19 Jun 2023 10:36:59 +0200
+Subject: [PATCH] Integration tests: add a test to ipa-server-upgrade
+
+Add an integration test ensuring that the upgrade
+properly updates the attributes to be excluded from
+replication.
+
+Related: https://pagure.io/freeipa/issue/9385
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ .../test_simple_replication.py                | 30 +++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+
+diff --git a/ipatests/test_integration/test_simple_replication.py b/ipatests/test_integration/test_simple_replication.py
+index 17092a49966e61d5a4a9b04c15abcb1de8be9683..d1e65ef7cc3e748670f2cdebe2a5cb7172af27f0 100644
+--- a/ipatests/test_integration/test_simple_replication.py
++++ b/ipatests/test_integration/test_simple_replication.py
+@@ -23,8 +23,10 @@ import pytest
+ 
+ from ipaplatform.paths import paths
+ from ipapython.dn import DN
++from ipaserver.install.replication import EXCLUDES
+ from ipatests.pytest_ipa.integration import tasks
+ from ipatests.test_integration.base import IntegrationTest
++from ipatests.test_integration.test_topology import find_segment
+ 
+ 
+ def check_replication(source_host, dest_host, login):
+@@ -104,6 +106,34 @@ class TestSimpleReplication(IntegrationTest):
+             [paths.IPA_CUSTODIA_CHECK, self.master.hostname]
+         )
+ 
++    def test_fix_agreements(self):
++        """Test that upgrade fixes the list of attributes excluded from repl
++
++        Test for ticket 9385
++        """
++        # Prepare the server by removing some values from
++        # from the nsDS5ReplicatedAttributeList
++        segment = find_segment(self.master, self.replicas[0], "domain")
++        self.master.run_command([
++            "ipa", "topologysegment-mod", "domain", segment,
++            "--replattrs",
++            "(objectclass=*) $ EXCLUDE memberof idnssoaserial entryusn"])
++        # Run the upgrade
++        result = self.master.run_command(["ipa-server-upgrade"])
++        # Ensure that the upgrade updated the attribute without error
++        errmsg = "Error caught updating nsDS5ReplicatedAttributeList"
++        assert errmsg not in result.stdout_text
++        # Check the updated value
++        suffix = DN(self.master.domain.basedn)
++        dn = DN(('cn', str(suffix)), ('cn', 'mapping tree'), ('cn', 'config'))
++        result = tasks.ldapsearch_dm(self.master, str(dn),
++                                     ["nsDS5ReplicatedAttributeList"])
++        output = result.stdout_text.lower()
++
++        template = 'nsDS5ReplicatedAttributeList: (objectclass=*) $ EXCLUDE %s'
++        expected_value = template % " ".join(EXCLUDES)
++        assert expected_value.lower() in output
++
+     def test_replica_removal(self):
+         """Test replica removal"""
+         result = self.master.run_command(['ipa-replica-manage', 'list'])
+-- 
+2.41.0
+

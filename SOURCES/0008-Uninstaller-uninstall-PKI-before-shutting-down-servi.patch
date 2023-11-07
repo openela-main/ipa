@@ -1,0 +1,129 @@
+From f93a6d3ff52247ce5e582816fec689b8901fc984 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Wed, 14 Jun 2023 15:12:39 +0200
+Subject: [PATCH] Uninstaller: uninstall PKI before shutting down services
+
+The uninstaller is stopping all the services before
+calling pkidestroy to uninstall the CA.
+With PKI 11.4+ this sequence fails as pkidestroy tries
+to connect to PKI server in order to unregister from the
+security domain. The error interrupts the full completion
+of pkidestroy, is logged but doesn't make ipa uninstallation
+fail.
+The issue is that trying to re-install later on would fail because
+pkidestroy did not completely uninstall the CA.
+
+To avoid this, call pkidestroy before shutting down the services.
+Also add an uninstall_check method that restarts IPA if it is
+not running, and use pkidestroy --force to make sure that PKI
+is uninstalled even if restart failed.
+
+Fixes: https://pagure.io/freeipa/issue/9330
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipaserver/install/ca.py             | 18 ++++++++++++++++++
+ ipaserver/install/dogtaginstance.py |  2 +-
+ ipaserver/install/kra.py            |  2 ++
+ ipaserver/install/server/install.py |  8 +++++---
+ 4 files changed, 26 insertions(+), 4 deletions(-)
+
+diff --git a/ipaserver/install/ca.py b/ipaserver/install/ca.py
+index be0e732e8ff6966ccc0077d9339f9f0bc66ae6ec..c93ae1fce4c8848d493677eafee7952740e51631 100644
+--- a/ipaserver/install/ca.py
++++ b/ipaserver/install/ca.py
+@@ -169,6 +169,24 @@ def print_ca_configuration(options):
+ 
+ 
+ def uninstall_check(options):
++    """IPA needs to be running so pkidestroy can unregister CA"""
++    ca = cainstance.CAInstance(api.env.realm)
++    if not ca.is_installed():
++        return
++
++    result = ipautil.run([paths.IPACTL, 'status'],
++                         raiseonerr=False)
++
++    if result.returncode not in [0, 4]:
++        try:
++            logger.info(
++                "Starting services to unregister CA from security domain")
++            ipautil.run([paths.IPACTL, 'start'])
++        except Exception:
++            logger.info("Re-starting IPA failed, continuing uninstall")
++
++
++def uninstall_crl_check(options):
+     """Check if the host is CRL generation master"""
+     # Skip the checks if the host is not a CA instance
+     ca = cainstance.CAInstance(api.env.realm)
+diff --git a/ipaserver/install/dogtaginstance.py b/ipaserver/install/dogtaginstance.py
+index c2c6b3f49243f096448c178fafd09f429f0f46c8..4967aca01807e58dfcc3157af10b92eff5dba206 100644
+--- a/ipaserver/install/dogtaginstance.py
++++ b/ipaserver/install/dogtaginstance.py
+@@ -305,7 +305,7 @@ class DogtagInstance(service.Service):
+             self.print_msg("Unconfiguring %s" % self.subsystem)
+ 
+         args = [paths.PKIDESTROY,
+-                "-i", "pki-tomcat",
++                "-i", "pki-tomcat", "--force",
+                 "-s", self.subsystem]
+ 
+         # specify --log-file <path> on PKI 11.0.0 or later
+diff --git a/ipaserver/install/kra.py b/ipaserver/install/kra.py
+index 857c5165b808baee3f0815e78828fb899eb78a2d..59cbda812a853997752f7d932e0690e3a950aa1f 100644
+--- a/ipaserver/install/kra.py
++++ b/ipaserver/install/kra.py
+@@ -132,6 +132,8 @@ def uninstall_check(options):
+ 
+     if result.returncode not in [0, 4]:
+         try:
++            logger.info(
++                "Starting services to unregister KRA from security domain")
+             ipautil.run([paths.IPACTL, 'start'])
+         except Exception:
+             logger.info("Re-starting IPA failed, continuing uninstall")
+diff --git a/ipaserver/install/server/install.py b/ipaserver/install/server/install.py
+index 4e4076410f1c1af188a0ab3606ef13be39702b7d..ccb958232935de2166f2d4867b626f59d7ba5333 100644
+--- a/ipaserver/install/server/install.py
++++ b/ipaserver/install/server/install.py
+@@ -1110,6 +1110,7 @@ def uninstall_check(installer):
+             raise ScriptError("Aborting uninstall operation.")
+ 
+     kra.uninstall_check(options)
++    ca.uninstall_check(options)
+ 
+     try:
+         api.Backend.ldap2.connect(autobind=True)
+@@ -1132,7 +1133,7 @@ def uninstall_check(installer):
+     else:
+         dns.uninstall_check(options)
+ 
+-        ca.uninstall_check(options)
++        ca.uninstall_crl_check(options)
+ 
+         cleanup_dogtag_server_specific_data()
+ 
+@@ -1181,6 +1182,9 @@ def uninstall(installer):
+     # Uninstall the KRA prior to shutting the services down so it
+     # can un-register with the CA.
+     kra.uninstall()
++    # Uninstall the CA priori to shutting the services down so it
++    # can unregister from the security domain
++    ca.uninstall()
+ 
+     print("Shutting down all IPA services")
+     try:
+@@ -1194,8 +1198,6 @@ def uninstall(installer):
+ 
+     restore_time_sync(sstore, fstore)
+ 
+-    ca.uninstall()
+-
+     dns.uninstall()
+ 
+     httpinstance.HTTPInstance(fstore).uninstall()
+-- 
+2.41.0
+
