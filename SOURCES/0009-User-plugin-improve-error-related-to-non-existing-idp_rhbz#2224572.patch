@@ -1,0 +1,193 @@
+From 99aa03413421cf2839e89e10ca279ec19233dd01 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Jul 20 2023 08:23:36 +0000
+Subject: User plugin: improve error related to non existing idp
+
+
+The user and stageuser commands return the following error
+when the user is created/updated with a non existing idp:
+$ ipa user-add testuser --first test --last user --idp dummy
+ipa: ERROR: no such entry
+
+The error is not descriptive enough and has been modified to
+display instead:
+$ ipa user-add testuser --first test --last user --idp dummy
+ipa: ERROR: External IdP configuration dummy not found
+
+Fixes: https://pagure.io/freeipa/issue/9416
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+
+---
+
+diff --git a/ipaserver/plugins/baseuser.py b/ipaserver/plugins/baseuser.py
+index 73b76d3..ba5f9b7 100644
+--- a/ipaserver/plugins/baseuser.py
++++ b/ipaserver/plugins/baseuser.py
+@@ -708,7 +708,11 @@ class baseuser_mod(LDAPUpdate):
+                     if 'ipaidpuser' not in obj_classes:
+                         entry_attrs['objectclass'].append('ipaidpuser')
+ 
+-                    answer = self.api.Object['idp'].get_dn_if_exists(cl)
++                    try:
++                        answer = self.api.Object['idp'].get_dn_if_exists(cl)
++                    except errors.NotFound:
++                        reason = "External IdP configuration {} not found"
++                        raise errors.NotFound(reason=_(reason).format(cl))
+                     entry_attrs['ipaidpconfiglink'] = answer
+ 
+             # Note: we could have used the method add_missing_object_class
+diff --git a/ipaserver/plugins/stageuser.py b/ipaserver/plugins/stageuser.py
+index 51438a8..852e51b 100644
+--- a/ipaserver/plugins/stageuser.py
++++ b/ipaserver/plugins/stageuser.py
+@@ -404,7 +404,11 @@ class stageuser_add(baseuser_add):
+                 if 'ipaidpuser' not in entry_attrs['objectclass']:
+                     entry_attrs['objectclass'].append('ipaidpuser')
+ 
+-                answer = self.api.Object['idp'].get_dn_if_exists(cl)
++                try:
++                    answer = self.api.Object['idp'].get_dn_if_exists(cl)
++                except errors.NotFound:
++                    reason = "External IdP configuration {} not found"
++                    raise errors.NotFound(reason=_(reason).format(cl))
+                 entry_attrs['ipaidpconfiglink'] = answer
+ 
+         self.pre_common_callback(ldap, dn, entry_attrs, attrs_list, *keys,
+diff --git a/ipaserver/plugins/user.py b/ipaserver/plugins/user.py
+index 643b44f..a337e1f 100644
+--- a/ipaserver/plugins/user.py
++++ b/ipaserver/plugins/user.py
+@@ -638,7 +638,11 @@ class user_add(baseuser_add):
+             if 'ipaidpuser' not in entry_attrs['objectclass']:
+                 entry_attrs['objectclass'].append('ipaidpuser')
+ 
+-            answer = self.api.Object['idp'].get_dn_if_exists(rcl)
++            try:
++                answer = self.api.Object['idp'].get_dn_if_exists(rcl)
++            except errors.NotFound:
++                reason = "External IdP configuration {} not found"
++                raise errors.NotFound(reason=_(reason).format(rcl))
+             entry_attrs['ipaidpconfiglink'] = answer
+ 
+         self.pre_common_callback(ldap, dn, entry_attrs, attrs_list, *keys,
+
+From dbcbe9a39c99008c6858bab53e2807b7bf01ba65 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Jul 20 2023 08:23:36 +0000
+Subject: xmlrpc tests: add a test for user plugin with non-existing idp
+
+
+Add new tests checking the error returned for
+ipa user-add ... --idp nonexistingidp
+ipa user-mod ... --idp nonexistingidp
+ipa stageuser-add ... --idp nonexistingidp
+ipa stageuser-mod ... --idp nonexistingidp
+
+The expected error message is:
+ipa: ERROR: External IdP configuration nonexistingidp not found
+
+Related: https://pagure.io/freeipa/issue/9416
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+
+---
+
+diff --git a/ipatests/test_xmlrpc/test_stageuser_plugin.py b/ipatests/test_xmlrpc/test_stageuser_plugin.py
+index 394015f..9ae5561 100644
+--- a/ipatests/test_xmlrpc/test_stageuser_plugin.py
++++ b/ipatests/test_xmlrpc/test_stageuser_plugin.py
+@@ -39,6 +39,8 @@ gid = u'456'
+ invalidrealm1 = u'suser1@NOTFOUND.ORG'
+ invalidrealm2 = u'suser1@BAD@NOTFOUND.ORG'
+ 
++nonexistentidp = 'IdPDoesNotExist'
++
+ invaliduser1 = u'+tuser1'
+ invaliduser2 = u'tuser1234567890123456789012345678901234567890'
+ invaliduser3 = u'1234'
+@@ -431,6 +433,15 @@ class TestCreateInvalidAttributes(XMLRPC_test):
+                     invalidrealm2))):
+             command()
+ 
++    def test_create_invalid_idp(self, stageduser):
++        stageduser.ensure_missing()
++        command = stageduser.make_create_command(
++            options={u'ipaidpconfiglink': nonexistentidp})
++        with raises_exact(errors.NotFound(
++                reason="External IdP configuration {} not found".format(
++                    nonexistentidp))):
++            command()
++
+ 
+ @pytest.mark.tier1
+ class TestUpdateInvalidAttributes(XMLRPC_test):
+@@ -466,6 +477,15 @@ class TestUpdateInvalidAttributes(XMLRPC_test):
+                 message=u'invalid \'gidnumber\': must be at least 1')):
+             command()
+ 
++    def test_update_invalididp(self, stageduser):
++        stageduser.ensure_exists()
++        command = stageduser.make_update_command(
++            updates={u'ipaidpconfiglink': nonexistentidp})
++        with raises_exact(errors.NotFound(
++                reason="External IdP configuration {} not found".format(
++                    nonexistentidp))):
++            command()
++
+ 
+ @pytest.mark.tier1
+ class TestActive(XMLRPC_test):
+diff --git a/ipatests/test_xmlrpc/test_user_plugin.py b/ipatests/test_xmlrpc/test_user_plugin.py
+index 8ac19a4..baa2867 100644
+--- a/ipatests/test_xmlrpc/test_user_plugin.py
++++ b/ipatests/test_xmlrpc/test_user_plugin.py
+@@ -86,6 +86,8 @@ expired_expiration_string = "1991-12-07T19:54:13Z"
+ # Date in ISO format (2013-12-10T12:00:00)
+ isodate_re = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$')
+ 
++nonexistentidp = 'IdPDoesNotExist'
++
+ 
+ @pytest.fixture(scope='class')
+ def user_min(request, xmlrpc_setup):
+@@ -542,6 +544,18 @@ class TestUpdate(XMLRPC_test):
+         command()
+         user.delete()
+ 
++    def test_update_invalid_idp(self, user):
++        """ Test user-mod --idp with a non-existent idp """
++        user.ensure_exists()
++        command = user.make_update_command(
++            updates=dict(ipaidpconfiglink=nonexistentidp)
++        )
++        with raises_exact(errors.NotFound(
++            reason="External IdP configuration {} not found".format(
++                nonexistentidp)
++        )):
++            command()
++
+ 
+ @pytest.mark.tier1
+ class TestCreate(XMLRPC_test):
+@@ -770,6 +784,17 @@ class TestCreate(XMLRPC_test):
+         user_radius.check_create(result)
+         user_radius.delete()
+ 
++    def test_create_with_invalididp(self):
++        testuser = UserTracker(
++            name='idpuser', givenname='idp', sn='user',
++            ipaidpconfiglink=nonexistentidp
++        )
++        with raises_exact(errors.NotFound(
++            reason="External IdP configuration {} not found".format(
++                nonexistentidp)
++        )):
++            testuser.create()
++
+ 
+ @pytest.mark.tier1
+ class TestUserWithGroup(XMLRPC_test):
+

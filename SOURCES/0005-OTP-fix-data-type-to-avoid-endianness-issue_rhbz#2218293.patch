@@ -1,0 +1,52 @@
+From a7e167154b889f75463ccc9cd91a75c1afb22da9 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Jun 28 2023 19:43:16 +0000
+Subject: OTP: fix data type to avoid endianness issue
+
+
+When 389-ds process an OTP authentication, the ipa-pwd-extop
+plugin reads a buffer to extract the authentication type.
+The type is stored in an int but the data is a ber_tag_t.
+
+On big endian machines the type cast does not cause any issue
+but on s390x the buffer that should return 128 is seen as 0.
+
+As a consequence, the plugin considers that the method is not
+LDAP_AUTH_SIMPLE and exits early, without processing the OTP.
+
+The fix is simple and consists in using the right type
+(ber_tag_t is an unsigned long).
+
+Fixes: https://pagure.io/freeipa/issue/9402
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+
+---
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+index 9375941..4562652 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+@@ -1433,7 +1433,7 @@ static int ipapwd_pre_bind(Slapi_PBlock *pb)
+     Slapi_DN *target_sdn = NULL;
+     Slapi_DN *sdn = NULL;
+     const char *dn = NULL;
+-    int method = 0;
++    ber_tag_t method = 0;
+     bool syncreq;
+     bool otpreq;
+     int ret = 0;
+@@ -1454,8 +1454,10 @@ static int ipapwd_pre_bind(Slapi_PBlock *pb)
+     }
+ 
+     /* We're only interested in simple authentication. */
+-    if (method != LDAP_AUTH_SIMPLE || credentials->bv_len == 0)
++    if (method != LDAP_AUTH_SIMPLE || credentials->bv_len == 0) {
++        LOG("Not handled (not simple bind or NULL dn/credentials)\n");
+         return 0;
++    }
+ 
+     /* Retrieve the user's entry. */
+     sdn = slapi_sdn_dup(target_sdn);
+
