@@ -1,0 +1,70 @@
+From 0d44e959e5bbe822b51137a8e7cf48fa25533805 Mon Sep 17 00:00:00 2001
+From: Rafael Guterres Jeffman <rjeffman@redhat.com>
+Date: Fri, 10 Dec 2021 12:15:36 -0300
+Subject: [PATCH] Revert "freeipa.spec: depend on bind-dnssec-utils"
+
+This reverts commit f89d59b6e18b54967682f6a37ce92ae67ab3fcda.
+---
+ freeipa.spec.in             | 4 +---
+ ipaplatform/base/paths.py   | 2 +-
+ ipaplatform/fedora/paths.py | 1 +
+ ipaserver/dnssec/bindmgr.py | 1 -
+ 4 files changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/freeipa.spec.in b/freeipa.spec.in
+index 8f5c370e5..e20edb7bc 100755
+--- a/freeipa.spec.in
++++ b/freeipa.spec.in
+@@ -585,11 +585,9 @@ Requires: %{name}-server = %{version}-%{release}
+ Requires: bind-dyndb-ldap >= 11.2-2
+ Requires: bind >= %{bind_version}
+ Requires: bind-utils >= %{bind_version}
+-# bind-dnssec-utils is required by the OpenDNSSec integration
+-# https://pagure.io/freeipa/issue/9026
+-Requires: bind-dnssec-utils >= %{bind_version}
+ %if %{with bind_pkcs11}
+ Requires: bind-pkcs11 >= %{bind_version}
++Requires: bind-pkcs11-utils >= %{bind_version}
+ %else
+ Requires: softhsm >= %{softhsm_version}
+ Requires: openssl-pkcs11 >= %{openssl_pkcs11_version}
+diff --git a/ipaplatform/base/paths.py b/ipaplatform/base/paths.py
+index 7d21367ec..42a47f1df 100644
+--- a/ipaplatform/base/paths.py
++++ b/ipaplatform/base/paths.py
+@@ -258,8 +258,7 @@ class BasePathNamespace:
+     IPA_PKI_RETRIEVE_KEY = "/usr/libexec/ipa/ipa-pki-retrieve-key"
+     IPA_HTTPD_PASSWD_READER = "/usr/libexec/ipa/ipa-httpd-pwdreader"
+     IPA_PKI_WAIT_RUNNING = "/usr/libexec/ipa/ipa-pki-wait-running"
+-    DNSSEC_KEYFROMLABEL = "/usr/sbin/dnssec-keyfromlabel"
+-    DNSSEC_KEYFROMLABEL_9_17 = "/usr/bin/dnssec-keyfromlabel"
++    DNSSEC_KEYFROMLABEL = "/usr/sbin/dnssec-keyfromlabel-pkcs11"
+     GETSEBOOL = "/usr/sbin/getsebool"
+     GROUPADD = "/usr/sbin/groupadd"
+     USERMOD = "/usr/sbin/usermod"
+diff --git a/ipaplatform/fedora/paths.py b/ipaplatform/fedora/paths.py
+index 4e993c063..92a948966 100644
+--- a/ipaplatform/fedora/paths.py
++++ b/ipaplatform/fedora/paths.py
+@@ -36,6 +36,7 @@ class FedoraPathNamespace(RedHatPathNamespace):
+     NAMED_CRYPTO_POLICY_FILE = "/etc/crypto-policies/back-ends/bind.config"
+     if HAS_NFS_CONF:
+         SYSCONFIG_NFS = '/etc/nfs.conf'
++    DNSSEC_KEYFROMLABEL = "/usr/sbin/dnssec-keyfromlabel"
+
+
+ paths = FedoraPathNamespace()
+diff --git a/ipaserver/dnssec/bindmgr.py b/ipaserver/dnssec/bindmgr.py
+index 0c79cc03d..a15c0e601 100644
+--- a/ipaserver/dnssec/bindmgr.py
++++ b/ipaserver/dnssec/bindmgr.py
+@@ -127,7 +127,6 @@ class BINDMgr:
+         )
+         cmd = [
+             paths.DNSSEC_KEYFROMLABEL,
+-            '-E', 'pkcs11',
+             '-K', workdir,
+             '-a', attrs['idnsSecAlgorithm'][0],
+             '-l', uri
+--
+2.31.1

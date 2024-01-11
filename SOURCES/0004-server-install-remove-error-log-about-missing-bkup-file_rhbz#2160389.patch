@@ -1,0 +1,52 @@
+From 6f50b00953c0000d6da8db0f5e8974ae33d7b5d5 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Jan 16 2023 07:44:50 +0000
+Subject: server install: remove error log about missing bkup file
+
+
+The client installer code can be called in 3 different ways:
+- from ipa-client-install CLI
+- from ipa-replica-install CLI if the client is not already installed
+- from ipa-server-install
+
+In the last case, the client installer is called with
+options.on_master=True
+As a result, it's skipping the part that is creating the krb5
+configuration:
+    if not options.on_master:
+        nolog = tuple()
+        configure_krb5_conf(...)
+
+The configure_krb5_conf method is the place where the krb5.conf file is
+backup'ed with the extention ".ipabkp". For a master installation, this
+code is not called and the ipabkp file does not exist => delete raises
+an error.
+
+When delete fails because the file does not exist, no need to log an
+error message.
+
+Fixes: https://pagure.io/freeipa/issue/9306
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+
+---
+
+diff --git a/ipaclient/install/client.py b/ipaclient/install/client.py
+index e5d3e82..6e7f17d 100644
+--- a/ipaclient/install/client.py
++++ b/ipaclient/install/client.py
+@@ -124,10 +124,9 @@ def cleanup(func):
+             os.rmdir(ccache_dir)
+         except OSError:
+             pass
+-        try:
+-            os.remove(krb_name + ".ipabkp")
+-        except OSError:
+-            logger.error("Could not remove %s.ipabkp", krb_name)
++        # During master installation, the .ipabkp file is not created
++        # Ignore the delete error if it is "file does not exist"
++        remove_file(krb_name + ".ipabkp")
+ 
+     return inner
+ 
+

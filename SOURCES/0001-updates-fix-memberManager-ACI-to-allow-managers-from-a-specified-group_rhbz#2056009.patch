@@ -1,0 +1,41 @@
+From 651e28c1fb6b86ad1fbd4ea98644e00b7042499c Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Dec 02 2022 12:21:22 +0000
+Subject: updates: fix memberManager ACI to allow managers from a specified group
+
+
+The original implementation of the member manager added support for both
+user and group managers but left out upgrade scenario. This means when
+upgrading existing installation a manager whose rights defined by the
+group membership would not be able to add group members until the ACI is
+fixed.
+
+Remove old ACI and add a full one during upgrade step.
+
+Fixes: https://pagure.io/freeipa/issue/9286
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+
+---
+
+diff --git a/install/updates/20-aci.update b/install/updates/20-aci.update
+index a168bb9..4a7ba13 100644
+--- a/install/updates/20-aci.update
++++ b/install/updates/20-aci.update
+@@ -141,11 +141,13 @@ add:aci:(targetattr = "usercertificate")(version 3.0;acl "selfservice:Users can 
+ 
+ # Allow member managers to modify members of user groups
+ dn: cn=groups,cn=accounts,$SUFFIX
+-add:aci: (targetattr = "member")(targetfilter = "(objectclass=ipaUserGroup)")(version 3.0; acl "Allow member managers to modify members of user groups"; allow (write) userattr = "memberManager#USERDN";)
++remove:aci: (targetattr = "member")(targetfilter = "(objectclass=ipaUserGroup)")(version 3.0; acl "Allow member managers to modify members of user groups"; allow (write) userattr = "memberManager#USERDN";)
++add:aci: (targetattr = "member")(targetfilter = "(objectclass=ipaUserGroup)")(version 3.0; acl "Allow member managers to modify members of user groups"; allow (write) userattr = "memberManager#USERDN" or userattr = "memberManager#GROUPDN";)
+ 
+ # Allow member managers to modify members of host groups
+ dn: cn=hostgroups,cn=accounts,$SUFFIX
+-add:aci: (targetattr = "member")(targetfilter = "(objectclass=ipaHostGroup)")(version 3.0; acl "Allow member managers to modify members of host groups"; allow (write) userattr = "memberManager#USERDN";)
++remove:aci: (targetattr = "member")(targetfilter = "(objectclass=ipaHostGroup)")(version 3.0; acl "Allow member managers to modify members of host groups"; allow (write) userattr = "memberManager#USERDN";)
++add:aci: (targetattr = "member")(targetfilter = "(objectclass=ipaHostGroup)")(version 3.0; acl "Allow member managers to modify members of host groups"; allow (write) userattr = "memberManager#USERDN" or userattr = "memberManager#GROUPDN";)
+ 
+ # Hosts can add and delete their own services
+ dn: cn=services,cn=accounts,$SUFFIX
+
