@@ -1,0 +1,54 @@
+From 631dd72369385b0793e5bc0e019c088b4f1e2bb3 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 26 Jun 2023 18:24:46 +0200
+Subject: [PATCH] OTP: fix data type to avoid endianness issue
+
+When 389-ds process an OTP authentication, the ipa-pwd-extop
+plugin reads a buffer to extract the authentication type.
+The type is stored in an int but the data is a ber_tag_t.
+
+On big endian machines the type cast does not cause any issue
+but on s390x the buffer that should return 128 is seen as 0.
+
+As a consequence, the plugin considers that the method is not
+LDAP_AUTH_SIMPLE and exits early, without processing the OTP.
+
+The fix is simple and consists in using the right type
+(ber_tag_t is an unsigned long).
+
+Fixes: https://pagure.io/freeipa/issue/9402
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+index 937594117956d57540d4cf4eabeef6d22860aec8..45626523ffa1030cdff4f3e0ccdfa1618a51ccaf 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+@@ -1433,7 +1433,7 @@ static int ipapwd_pre_bind(Slapi_PBlock *pb)
+     Slapi_DN *target_sdn = NULL;
+     Slapi_DN *sdn = NULL;
+     const char *dn = NULL;
+-    int method = 0;
++    ber_tag_t method = 0;
+     bool syncreq;
+     bool otpreq;
+     int ret = 0;
+@@ -1454,8 +1454,10 @@ static int ipapwd_pre_bind(Slapi_PBlock *pb)
+     }
+ 
+     /* We're only interested in simple authentication. */
+-    if (method != LDAP_AUTH_SIMPLE || credentials->bv_len == 0)
++    if (method != LDAP_AUTH_SIMPLE || credentials->bv_len == 0) {
++        LOG("Not handled (not simple bind or NULL dn/credentials)\n");
+         return 0;
++    }
+ 
+     /* Retrieve the user's entry. */
+     sdn = slapi_sdn_dup(target_sdn);
+-- 
+2.41.0
+

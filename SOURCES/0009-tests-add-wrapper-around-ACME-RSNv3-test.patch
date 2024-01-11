@@ -1,0 +1,43 @@
+From d24b69981d94fce7b1e1aa4a5c1ab88a123f96b5 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Fri, 3 Feb 2023 10:04:31 -0500
+Subject: [PATCH] tests: add wrapper around ACME RSNv3 test
+
+This test is located outside of the TestACMEPrune because
+it enables RSNv3 while the server installed by TestACME doesn't.
+
+It still needs a wrapper to enforce a version of PKI that
+supports pruning because that is checked first in the tool.
+Re-ordering that wouldn't be a good user experience.
+
+https://pagure.io/freeipa/issue/9322
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipatests/test_integration/test_acme.py | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_acme.py b/ipatests/test_integration/test_acme.py
+index 93e785d8febd9fa8d7b3ef87ecb3f2eb42ac5da2..5ceba05976059de69414a79634d98045c3ab68bb 100644
+--- a/ipatests/test_integration/test_acme.py
++++ b/ipatests/test_integration/test_acme.py
+@@ -393,7 +393,14 @@ class TestACME(CALessBase):
+ 
+     def test_acme_pruning_no_random_serial(self):
+         """This ACME install is configured without random serial
+-           numbers. Verify that we can't enable pruning on it."""
++           numbers. Verify that we can't enable pruning on it.
++
++           This test is located here because by default installs
++           don't enable RSNv3.
++        """
++        if (tasks.get_pki_version(self.master)
++           < tasks.parse_version('11.3.0')):
++            raise pytest.skip("Certificate pruning is not available")
+         self.master.run_command(['ipa-acme-manage', 'enable'])
+         result = self.master.run_command(
+             ['ipa-acme-manage', 'pruning', '--enable'],
+-- 
+2.39.1
+

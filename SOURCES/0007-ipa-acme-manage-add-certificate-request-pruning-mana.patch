@@ -1,0 +1,684 @@
+From 9246a8a003b2b0062e07c289cd7cde8fe902b16f Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Thu, 12 Jan 2023 15:06:27 -0500
+Subject: [PATCH] ipa-acme-manage: add certificate/request pruning management
+
+Configures PKI to remove expired certificates and non-resolved
+requests on a schedule.
+
+This is geared towards ACME which can generate a lot of certificates
+over a short period of time but is general purpose. It lives in
+ipa-acme-manage because that is the primary reason for including it.
+
+Random Serial Numbers v3 must be enabled for this to work.
+
+Enabling pruning enables the job scheduler within CS and sets the
+job user as the IPA RA user which has full rights to certificates
+and requests.
+
+Disabling pruning does not disable the job scheduler because the
+tool is stateless. Having the scheduler enabled should not be a
+problem.
+
+A restart of PKI is required to apply any changes. This tool forks
+out to pki-server which does direct writes to CS.cfg. It might
+be easier to use our own tooling for this but this makes the
+integration tighter so we pick up any improvements in PKI.
+
+The "cron" setting is quite limited, taking only integer values
+and *. It does not accept ranges, either - or /.
+
+No error checking is done in PKI when setting a value, only when
+attempting to use it, so some rudimentary validation is done.
+
+Fixes: https://pagure.io/freeipa/issue/9294
+
+Signed-off-by: Rob Crittenden rcritten@redhat.com
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ install/tools/man/ipa-acme-manage.1    |  83 +++++++
+ ipaserver/install/ipa_acme_manage.py   | 303 ++++++++++++++++++++++++-
+ ipatests/test_integration/test_acme.py | 158 +++++++++++++
+ 3 files changed, 534 insertions(+), 10 deletions(-)
+
+diff --git a/install/tools/man/ipa-acme-manage.1 b/install/tools/man/ipa-acme-manage.1
+index e15d25bd0017d8bd71e425fcb633827fa6f67693..e6cec4e4a7fd460c514a72456a2dc9a2e3682ebd 100644
+--- a/install/tools/man/ipa-acme-manage.1
++++ b/install/tools/man/ipa-acme-manage.1
+@@ -27,6 +27,89 @@ Disable the ACME service on this host.
+ .TP
+ \fBstatus\fR
+ Display the status of the ACME service.
++.TP
++\fBpruning\fR
++Configure certificate and request pruning.
++
++.SH "PRUNING"
++Pruning is a job that runs in the CA that can remove expired
++certificates and certificate requests which have not been issued.
++This is particularly important when using short-lived certificates
++like those issued with the ACME protocol. Pruning requires that
++the IPA server be installed with random serial numbers enabled.
++
++The CA needs to be restarted after modifying the pruning configuration.
++
++The job is a cron-like task within the CA that is controlled by a
++number of options which dictate how long after the certificate or
++request is considered no longer valid and removed from the LDAP
++database.
++
++The cron time and date fields are:
++.IP
++.ta 1.5i
++field	allowed values
++.br
++-----	--------------
++.br
++minute	0-59
++.br
++hour	0-23
++.br
++day of month	1-31
++.br
++month	1-12
++.br
++day of week	0-6 (0 is Sunday)
++.br
++.PP
++
++The cron syntax is limited to * or specific numbers. Ranges are not supported.
++
++.TP
++\fB\-\-enable\fR
++Enable certificate pruning.
++.TP
++\fB\-\-disable\fR
++Disable certificate pruning.
++.TP
++\fB\-\-cron=CRON\fR
++Configure the pruning cron job. The syntax is similar to crontab(5) syntax.
++For example, "0 0 1 * *" schedules the job to run at 12:00am on the first
++day of each month.
++.TP
++\fB\-\-certretention=CERTRETENTION\fR
++Certificate retention time. The default is 30.
++.TP
++\fB\-\-certretentionunit=CERTRETENTIONUNIT\fR
++Certificate retention units. Valid units are: minute, hour, day, year.
++The default is days.
++.TP
++\fB\-\-certsearchsizelimit=CERTSEARCHSIZELIMIT\fR
++LDAP search size limit searching for expired certificates. The default is 1000. This is a client-side limit. There may be additional server-side limitations.
++.TP
++\fB\-\-certsearchtimelimit=CERTSEARCHTIMELIMIT\fR
++LDAP search time limit searching for expired certificates. The default is 0, no limit. This is a client-side limit. There may be additional server-side limitations.
++.TP
++\fB\-\-requestretention=REQUESTRETENTION\fR
++Request retention time. The default is 30.
++.TP
++\fB\-\-requestretentionunit=REQUESTRETENTIONUNIT\fR
++Request retention units. Valid units are: minute, hour, day, year.
++The default is days.
++.TP
++\fB\-\-requestsearchsizelimit=REQUESTSEARCHSIZELIMIT\fR
++LDAP search size limit searching for unfulfilled requests. The default is 1000. There may be additional server-side limitations.
++.TP
++\fB\-\-requestsearchtimelimit=REQUESTSEARCHTIMELIMIT\fR
++LDAP search time limit searching for unfulfilled requests. The default is 0, no limit. There may be additional server-side limitations.
++.TP
++\fB\-\-config\-show\fR
++Show the current pruning configuration
++.TP
++\fB\-\-run\fR
++Run the pruning job now. The IPA RA certificate is used to authenticate to the PKI REST backend.
++
+ 
+ .SH "EXIT STATUS"
+ 0 if the command was successful
+diff --git a/ipaserver/install/ipa_acme_manage.py b/ipaserver/install/ipa_acme_manage.py
+index 0474b9f4a051063ac6df41a81877a2af9d4a2096..b7b2111d9edcec2580aa4a485d7a7340146ff065 100644
+--- a/ipaserver/install/ipa_acme_manage.py
++++ b/ipaserver/install/ipa_acme_manage.py
+@@ -2,7 +2,12 @@
+ # Copyright (C) 2020  FreeIPA Contributors see COPYING for license
+ #
+ 
++
+ import enum
++import pki.util
++import logging
++
++from optparse import OptionGroup  # pylint: disable=deprecated-module
+ 
+ from ipalib import api, errors, x509
+ from ipalib import _
+@@ -10,10 +15,64 @@ from ipalib.facts import is_ipa_configured
+ from ipaplatform.paths import paths
+ from ipapython.admintool import AdminTool
+ from ipapython import cookie, dogtag
++from ipapython.ipautil import run
++from ipapython.certdb import NSSDatabase, EXTERNAL_CA_TRUST_FLAGS
+ from ipaserver.install import cainstance
++from ipaserver.install.ca import lookup_random_serial_number_version
+ 
+ from ipaserver.plugins.dogtag import RestClient
+ 
++logger = logging.getLogger(__name__)
++
++default_pruning_options = {
++    'certRetentionTime': '30',
++    'certRetentionUnit': 'day',
++    'certSearchSizeLimit': '1000',
++    'certSearchTimeLimit': '0',
++    'requestRetentionTime': 'day',
++    'requestRetentionUnit': '30',
++    'requestSearchSizeLimit': '1000',
++    'requestSearchTimeLimit': '0',
++    'cron': ''
++}
++
++pruning_labels = {
++    'certRetentionTime': 'Certificate Retention Time',
++    'certRetentionUnit': 'Certificate Retention Unit',
++    'certSearchSizeLimit': 'Certificate Search Size Limit',
++    'certSearchTimeLimit': 'Certificate Search Time Limit',
++    'requestRetentionTime': 'Request Retention Time',
++    'requestRetentionUnit': 'Request Retention Unit',
++    'requestSearchSizeLimit': 'Request Search Size Limit',
++    'requestSearchTimeLimit': 'Request Search Time Limit',
++    'cron': 'cron Schedule'
++}
++
++
++def validate_range(val, min, max):
++    """dogtag appears to have no error checking in the cron
++       entry so do some minimum amount of validation. It is
++       left as an exercise for the user to do month/day
++       validation so requesting Feb 31 will be accepted.
++
++       Only * and a number within a min/max range are allowed.
++    """
++    if val == '*':
++        return
++
++    if '-' in val or '/' in val:
++        raise ValueError(f"{val} ranges are not supported")
++
++    try:
++        int(val)
++    except ValueError:
++        # raise a clearer error
++        raise ValueError(f"{val} is not a valid integer")
++
++    if int(val) < min or int(val) > max:
++        raise ValueError(f"{val} not within the range {min}-{max}")
++
++
+ # Manages the FreeIPA ACME service on a per-server basis.
+ #
+ # This program is a stop-gap until the deployment-wide management of
+@@ -66,32 +125,121 @@ class acme_state(RestClient):
+         status, unused, _unused = self._request('/acme/disable',
+                                                 headers=headers)
+         if status != 200:
+-            raise RuntimeError('Failed to disble ACME')
++            raise RuntimeError('Failed to disable ACME')
+ 
+ 
+ class Command(enum.Enum):
+     ENABLE = 'enable'
+     DISABLE = 'disable'
+     STATUS = 'status'
++    PRUNE = 'pruning'
+ 
+ 
+ class IPAACMEManage(AdminTool):
+     command_name = "ipa-acme-manage"
+-    usage = "%prog [enable|disable|status]"
++    usage = "%prog [enable|disable|status|pruning]"
+     description = "Manage the IPA ACME service"
+ 
++    @classmethod
++    def add_options(cls, parser):
++
++        group = OptionGroup(parser, 'Pruning')
++        group.add_option(
++            "--enable", dest="enable", action="store_true",
++            default=False, help="Enable certificate pruning")
++        group.add_option(
++            "--disable", dest="disable", action="store_true",
++            default=False, help="Disable certificate pruning")
++        group.add_option(
++            "--cron", dest="cron", action="store",
++            default=None, help="Configure the pruning cron job")
++        group.add_option(
++            "--certretention", dest="certretention", action="store",
++            default=None, help="Certificate retention time", type=int)
++        group.add_option(
++            "--certretentionunit", dest="certretentionunit", action="store",
++            choices=['minute', 'hour', 'day', 'year'],
++            default=None, help="Certificate retention units")
++        group.add_option(
++            "--certsearchsizelimit", dest="certsearchsizelimit",
++            action="store",
++            default=None, help="LDAP search size limit", type=int)
++        group.add_option(
++            "--certsearchtimelimit", dest="certsearchtimelimit", action="store",
++            default=None, help="LDAP search time limit", type=int)
++        group.add_option(
++            "--requestretention", dest="requestretention", action="store",
++            default=None, help="Request retention time", type=int)
++        group.add_option(
++            "--requestretentionunit", dest="requestretentionunit",
++            choices=['minute', 'hour', 'day', 'year'],
++            action="store", default=None, help="Request retention units")
++        group.add_option(
++            "--requestsearchsizelimit", dest="requestsearchsizelimit",
++            action="store",
++            default=None, help="LDAP search size limit", type=int)
++        group.add_option(
++            "--requestsearchtimelimit", dest="requestsearchtimelimit",
++            action="store",
++            default=None, help="LDAP search time limit", type=int)
++        group.add_option(
++            "--config-show", dest="config_show", action="store_true",
++            default=False, help="Show the current pruning configuration")
++        group.add_option(
++            "--run", dest="run", action="store_true",
++            default=False, help="Run the pruning job now")
++        parser.add_option_group(group)
++        super(IPAACMEManage, cls).add_options(parser, debug_option=True)
++
++
+     def validate_options(self):
+-        # needs root now - if/when this program changes to an API
+-        # wrapper we will no longer need root.
+         super(IPAACMEManage, self).validate_options(needs_root=True)
+ 
+         if len(self.args) < 1:
+             self.option_parser.error(f'missing command argument')
+-        else:
+-            try:
+-                self.command = Command(self.args[0])
+-            except ValueError:
+-                self.option_parser.error(f'unknown command "{self.args[0]}"')
++
++        if self.args[0] == "pruning":
++            if self.options.enable and self.options.disable:
++                self.option_parser.error("Cannot both enable and disable")
++            elif (
++                any(
++                    [
++                        self.options.enable,
++                        self.options.disable,
++                        self.options.cron,
++                        self.options.certretention,
++                        self.options.certretentionunit,
++                        self.options.requestretention,
++                        self.options.requestretentionunit,
++                        self.options.certsearchsizelimit,
++                        self.options.certsearchtimelimit,
++                        self.options.requestsearchsizelimit,
++                        self.options.requestsearchtimelimit,
++                    ]
++                )
++                and (self.options.config_show or self.options.run)
++            ):
++
++                self.option_parser.error(
++                    "Cannot change and show config or run at the same time"
++                )
++            elif self.options.cron:
++                if len(self.options.cron.split()) != 5:
++                    self.option_parser.error("Invalid format for --cron")
++                # dogtag does no validation when setting an option so
++                # do the minimum. The dogtag cron is limited compared to
++                # crontab(5).
++                opt = self.options.cron.split()
++                validate_range(opt[0], 0, 59)
++                validate_range(opt[1], 0, 23)
++                validate_range(opt[2], 1, 31)
++                validate_range(opt[3], 1, 12)
++                validate_range(opt[4], 0, 6)
++
++        try:
++            self.command = Command(self.args[0])
++        except ValueError:
++            self.option_parser.error(f'unknown command "{self.args[0]}"')
+ 
+     def check_san_status(self):
+         """
+@@ -100,6 +248,140 @@ class IPAACMEManage(AdminTool):
+         cert = x509.load_certificate_from_file(paths.HTTPD_CERT_FILE)
+         cainstance.check_ipa_ca_san(cert)
+ 
++    def pruning(self):
++        def run_pki_server(command, directive, prefix, value=None):
++            """Take a set of arguments to append to pki-server"""
++            args = [
++                'pki-server', command,
++                f'{prefix}.{directive}'
++            ]
++            if value:
++                args.extend([str(value)])
++            logger.debug(args)
++            result = run(args, raiseonerr=False, capture_output=True,
++                         capture_error=True)
++            if result.returncode != 0:
++                raise RuntimeError(result.error_output)
++            return result
++
++        def ca_config_set(directive, value,
++                          prefix='jobsScheduler.job.pruning'):
++            run_pki_server('ca-config-set', directive, prefix, value)
++            # ca-config-set always succeeds, even if the option is
++            # not supported.
++            newvalue = ca_config_show(directive)
++            if str(value) != newvalue.strip():
++                raise RuntimeError('Updating %s failed' % directive)
++
++        def ca_config_show(directive):
++            result = run_pki_server('ca-config-show', directive,
++                                    prefix='jobsScheduler.job.pruning')
++            return result.output.strip()
++
++        def config_show():
++            status = ca_config_show('enabled')
++            if status.strip() == 'true':
++                print("Status: enabled")
++            else:
++                print("Status: disabled")
++            for option in (
++                'certRetentionTime', 'certRetentionUnit',
++                'certSearchSizeLimit', 'certSearchTimeLimit',
++                'requestRetentionTime', 'requestRetentionUnit',
++                'requestSearchSizeLimit', 'requestSearchTimeLimit',
++                'cron',
++            ):
++                value = ca_config_show(option)
++                if value:
++                    print("{}: {}".format(pruning_labels[option], value))
++                else:
++                    print("{}: {}".format(pruning_labels[option],
++                                          default_pruning_options[option]))
++
++        def run_pruning():
++            """Run the pruning job manually"""
++
++            with NSSDatabase() as tmpdb:
++                print("Preparing...")
++                tmpdb.create_db()
++                tmpdb.import_files((paths.RA_AGENT_PEM, paths.RA_AGENT_KEY),
++                                   import_keys=True)
++                tmpdb.import_files((paths.IPA_CA_CRT,))
++                for nickname, trust_flags in tmpdb.list_certs():
++                    if trust_flags.has_key:
++                        ra_nickname = nickname
++                        continue
++                    # external is suffucient for our purposes: C,,
++                    tmpdb.trust_root_cert(nickname, EXTERNAL_CA_TRUST_FLAGS)
++                print("Starting job...")
++                args = ['pki', '-C', tmpdb.pwd_file, '-d', tmpdb.secdir,
++                        '-n', ra_nickname,
++                        'ca-job-start', 'pruning']
++                logger.debug(args)
++                run(args, stdin='y')
++
++        pki_version = pki.util.Version(pki.specification_version())
++        if pki_version < pki.util.Version("11.3.0"):
++            raise RuntimeError(
++                'Certificate pruning is not supported in PKI version %s'
++                % pki_version
++            )
++
++        if lookup_random_serial_number_version(api) == 0:
++            raise RuntimeError(
++                'Certificate pruning requires random serial numbers'
++            )
++
++        if self.options.config_show:
++            config_show()
++            return
++
++        if self.options.run:
++            run_pruning()
++            return
++
++        # Don't play the enable/disable at the same time game
++        if self.options.enable:
++            ca_config_set('owner', 'ipara')
++            ca_config_set('enabled', 'true')
++            ca_config_set('enabled', 'true', 'jobsScheduler')
++        elif self.options.disable:
++            ca_config_set('enabled', 'false')
++
++        # pki-server ca-config-set can only set one option at a time so
++        # loop through all the options and set what is there.
++        if self.options.certretention:
++            ca_config_set('certRetentionTime',
++                          self.options.certretention)
++        if self.options.certretentionunit:
++            ca_config_set('certRetentionUnit',
++                          self.options.certretentionunit)
++        if self.options.certsearchtimelimit:
++            ca_config_set('certSearchTimeLimit',
++                          self.options.certsearchtimelimit)
++        if self.options.certsearchsizelimit:
++            ca_config_set('certSearchSizeLimit',
++                          self.options.certsearchsizelimit)
++        if self.options.requestretention:
++            ca_config_set('requestRetentionTime',
++                          self.options.requestretention)
++        if self.options.requestretentionunit:
++            ca_config_set('requestRetentionUnit',
++                          self.options.requestretentionunit)
++        if self.options.requestsearchsizelimit:
++            ca_config_set('requestSearchSizeLimit',
++                          self.options.requestsearchsizelimit)
++        if self.options.requestsearchtimelimit:
++            ca_config_set('requestSearchTimeLimit',
++                          self.options.requestsearchtimelimit)
++        if self.options.cron:
++            ca_config_set('cron', self.options.cron)
++
++        config_show()
++
++        print("The CA service must be restarted for changes to take effect")
++
++
+     def run(self):
+         if not is_ipa_configured():
+             print("IPA is not configured.")
+@@ -123,7 +405,8 @@ class IPAACMEManage(AdminTool):
+             elif self.command == Command.STATUS:
+                 status = "enabled" if dogtag.acme_status() else "disabled"
+                 print("ACME is {}".format(status))
+-                return 0
++            elif self.command == Command.PRUNE:
++                self.pruning()
+             else:
+                 raise RuntimeError('programmer error: unhandled enum case')
+ 
+diff --git a/ipatests/test_integration/test_acme.py b/ipatests/test_integration/test_acme.py
+index 15d7543cfb0fa0fcb921166f7cd8f13d0535a41d..93e785d8febd9fa8d7b3ef87ecb3f2eb42ac5da2 100644
+--- a/ipatests/test_integration/test_acme.py
++++ b/ipatests/test_integration/test_acme.py
+@@ -12,6 +12,9 @@ from ipalib.constants import IPA_CA_RECORD
+ from ipatests.test_integration.base import IntegrationTest
+ from ipatests.pytest_ipa.integration import tasks
+ from ipatests.test_integration.test_caless import CALessBase, ipa_certs_cleanup
++from ipatests.test_integration.test_random_serial_numbers import (
++    pki_supports_RSNv3
++)
+ from ipaplatform.osinfo import osinfo
+ from ipaplatform.paths import paths
+ from ipatests.test_integration.test_external_ca import (
+@@ -388,6 +391,16 @@ class TestACME(CALessBase):
+         status = check_acme_status(self.replicas[0], 'disabled')
+         assert status == 'disabled'
+ 
++    def test_acme_pruning_no_random_serial(self):
++        """This ACME install is configured without random serial
++           numbers. Verify that we can't enable pruning on it."""
++        self.master.run_command(['ipa-acme-manage', 'enable'])
++        result = self.master.run_command(
++            ['ipa-acme-manage', 'pruning', '--enable'],
++            raiseonerr=False)
++        assert result.returncode == 1
++        assert "requires random serial numbers" in result.stderr_text
++
+     @server_install_teardown
+     def test_third_party_certs(self):
+         """Require ipa-ca SAN on replacement web certificates"""
+@@ -630,3 +643,148 @@ class TestACMERenew(IntegrationTest):
+         renewed_expiry = cert.not_valid_after
+ 
+         assert initial_expiry != renewed_expiry
++
++
++class TestACMEPrune(IntegrationTest):
++    """Validate that ipa-acme-manage configures dogtag for pruning"""
++
++    random_serial = True
++
++    @classmethod
++    def install(cls, mh):
++        if not pki_supports_RSNv3(mh.master):
++            raise pytest.skip("RNSv3 not supported")
++        tasks.install_master(cls.master, setup_dns=True,
++                             random_serial=True)
++
++    @classmethod
++    def uninstall(cls, mh):
++        if not pki_supports_RSNv3(mh.master):
++            raise pytest.skip("RSNv3 not supported")
++        super(TestACMEPrune, cls).uninstall(mh)
++
++    def test_enable_pruning(self):
++        if (tasks.get_pki_version(self.master)
++           < tasks.parse_version('11.3.0')):
++            raise pytest.skip("Certificate pruning is not available")
++        cs_cfg = self.master.get_file_contents(paths.CA_CS_CFG_PATH)
++        assert "jobsScheduler.job.pruning.enabled=false".encode() in cs_cfg
++
++        self.master.run_command(['ipa-acme-manage', 'pruning', '--enable'])
++
++        cs_cfg = self.master.get_file_contents(paths.CA_CS_CFG_PATH)
++        assert "jobsScheduler.enabled=true".encode() in cs_cfg
++        assert "jobsScheduler.job.pruning.enabled=true".encode() in cs_cfg
++        assert "jobsScheduler.job.pruning.owner=ipara".encode() in cs_cfg
++
++    def test_pruning_options(self):
++        if (tasks.get_pki_version(self.master)
++           < tasks.parse_version('11.3.0')):
++            raise pytest.skip("Certificate pruning is not available")
++
++        self.master.run_command(
++            ['ipa-acme-manage', 'pruning',
++             '--certretention=60',
++             '--certretentionunit=minute',
++             '--certsearchsizelimit=2000',
++             '--certsearchtimelimit=5',]
++        )
++        cs_cfg = self.master.get_file_contents(paths.CA_CS_CFG_PATH)
++        assert (
++            "jobsScheduler.job.pruning.certRetentionTime=60".encode()
++            in cs_cfg
++        )
++        assert (
++            "jobsScheduler.job.pruning.certRetentionUnit=minute".encode()
++            in cs_cfg
++        )
++        assert (
++            "jobsScheduler.job.pruning.certSearchSizeLimit=2000".encode()
++            in cs_cfg
++        )
++        assert (
++            "jobsScheduler.job.pruning.certSearchTimeLimit=5".encode()
++            in cs_cfg
++        )
++
++        self.master.run_command(
++            ['ipa-acme-manage', 'pruning',
++             '--requestretention=60',
++             '--requestretentionunit=minute',
++             '--requestresearchsizelimit=2000',
++             '--requestsearchtimelimit=5',]
++        )
++        cs_cfg = self.master.get_file_contents(paths.CA_CS_CFG_PATH)
++        assert (
++            "jobsScheduler.job.pruning.requestRetentionTime=60".encode()
++            in cs_cfg
++        )
++        assert (
++            "jobsScheduler.job.pruning.requestRetentionUnit=minute".encode()
++            in cs_cfg
++        )
++        assert (
++            "jobsScheduler.job.pruning.requestSearchSizeLimit=2000".encode()
++            in cs_cfg
++        )
++        assert (
++            "jobsScheduler.job.pruning.requestSearchTimeLimit=5".encode()
++            in cs_cfg
++        )
++
++        self.master.run_command(
++            ['ipa-acme-manage', 'pruning',
++             '--cron="0 23 1 * *',]
++        )
++        cs_cfg = self.master.get_file_contents(paths.CA_CS_CFG_PATH)
++        assert (
++            "jobsScheduler.job.pruning.cron=0 23 1 * *".encode()
++            in cs_cfg
++        )
++
++    def test_pruning_negative_options(self):
++        """Negative option testing for things we directly cover"""
++        if (tasks.get_pki_version(self.master)
++           < tasks.parse_version('11.3.0')):
++            raise pytest.skip("Certificate pruning is not available")
++
++        result = self.master.run_command(
++            ['ipa-acme-manage', 'pruning',
++             '--enable', '--disable'],
++            raiseonerr=False
++        )
++        assert result.returncode == 1
++        assert "Cannot both enable and disable" in result.stderr_text
++
++        for cmd in ('--config-show', '--run'):
++            result = self.master.run_command(
++                ['ipa-acme-manage', 'pruning',
++                 cmd, '--enable'],
++                raiseonerr=False
++            )
++            assert result.returncode == 1
++            assert "Cannot change and show config" in result.stderr_text
++
++        result = self.master.run_command(
++            ['ipa-acme-manage', 'pruning',
++             '--cron="* *"'],
++            raiseonerr=False
++        )
++        assert result.returncode == 1
++        assert "Invalid format format --cron" in result.stderr_text
++
++        result = self.master.run_command(
++            ['ipa-acme-manage', 'pruning',
++             '--cron="100 * * * *"'],
++            raiseonerr=False
++        )
++        assert result.returncode == 1
++        assert "100 not within the range 0-59" in result.stderr_text
++
++        result = self.master.run_command(
++            ['ipa-acme-manage', 'pruning',
++             '--cron="10 1-5 * * *"'],
++            raiseonerr=False
++        )
++        assert result.returncode == 1
++        assert "1-5 ranges are not supported" in result.stderr_text
+-- 
+2.39.1
+
