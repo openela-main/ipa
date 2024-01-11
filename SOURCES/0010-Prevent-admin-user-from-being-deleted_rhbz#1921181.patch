@@ -1,0 +1,169 @@
+From f215d3f45396fa29bdd69f56096b50842df14908 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Aug 01 2023 22:03:03 +0000
+Subject: Prevent the admin user from being deleted
+
+
+admin is required for trust operations
+
+Note that testing for removing the last member is now
+irrelevant because admin must always exist so the test
+for it was removed, but the code check remains. It is done
+after the protected member check.
+
+Fixes: https://pagure.io/freeipa/issue/8878
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+
+---
+
+diff --git a/ipaserver/plugins/user.py b/ipaserver/plugins/user.py
+index a337e1f..6f5e349 100644
+--- a/ipaserver/plugins/user.py
++++ b/ipaserver/plugins/user.py
+@@ -138,14 +138,23 @@ MEMBEROF_ADMINS = "(memberOf={})".format(
+ )
+ 
+ NOT_MEMBEROF_ADMINS = '(!{})'.format(MEMBEROF_ADMINS)
++PROTECTED_USERS = ('admin',)
+ 
+ 
+ def check_protected_member(user, protected_group_name=u'admins'):
+     '''
+-    Ensure the last enabled member of a protected group cannot be deleted or
+-    disabled by raising LastMemberError.
++    Ensure admin and the last enabled member of a protected group cannot
++    be deleted or disabled by raising ProtectedEntryError or
++    LastMemberError as appropriate.
+     '''
+ 
++    if user in PROTECTED_USERS:
++        raise errors.ProtectedEntryError(
++            label=_("user"),
++            key=user,
++            reason=_("privileged user"),
++        )
++
+     # Get all users in the protected group
+     result = api.Command.user_find(in_group=protected_group_name)
+ 
+@@ -868,6 +877,12 @@ class user_mod(baseuser_mod):
+ 
+     def pre_callback(self, ldap, dn, entry_attrs, attrs_list, *keys, **options):
+         dn, oc = self.obj.get_either_dn(*keys, **options)
++        if options.get('rename') and keys[-1] in PROTECTED_USERS:
++            raise errors.ProtectedEntryError(
++                label=_("user"),
++                key=keys[-1],
++                reason=_("privileged user"),
++            )
+         if 'objectclass' not in entry_attrs and 'rename' not in options:
+             entry_attrs.update({'objectclass': oc})
+         self.pre_common_callback(ldap, dn, entry_attrs, attrs_list, *keys,
+diff --git a/ipatests/test_xmlrpc/test_user_plugin.py b/ipatests/test_xmlrpc/test_user_plugin.py
+index baa2867..df105a2 100644
+--- a/ipatests/test_xmlrpc/test_user_plugin.py
++++ b/ipatests/test_xmlrpc/test_user_plugin.py
+@@ -978,22 +978,32 @@ class TestManagers(XMLRPC_test):
+ 
+ @pytest.mark.tier1
+ class TestAdmins(XMLRPC_test):
+-    def test_remove_original_admin(self):
+-        """ Try to remove the only admin """
++    def test_delete_admin(self):
++        """ Try to delete the protected admin user """
+         tracker = Tracker()
+-        command = tracker.make_command('user_del', [admin1])
++        command = tracker.make_command('user_del', admin1)
+ 
+-        with raises_exact(errors.LastMemberError(
+-                key=admin1, label=u'group', container=admin_group)):
++        with raises_exact(errors.ProtectedEntryError(label=u'user',
++                          key=admin1, reason='privileged user')):
++            command()
++
++    def test_rename_admin(self):
++        """ Try to rename the admin user """
++        tracker = Tracker()
++        command = tracker.make_command('user_mod', admin1,
++                                       **dict(rename=u'newadmin'))
++
++        with raises_exact(errors.ProtectedEntryError(label=u'user',
++                          key=admin1, reason='privileged user')):
+             command()
+ 
+     def test_disable_original_admin(self):
+-        """ Try to disable the only admin """
++        """ Try to disable the original admin """
+         tracker = Tracker()
+         command = tracker.make_command('user_disable', admin1)
+ 
+-        with raises_exact(errors.LastMemberError(
+-                key=admin1, label=u'group', container=admin_group)):
++        with raises_exact(errors.ProtectedEntryError(label=u'user',
++                          key=admin1, reason='privileged user')):
+             command()
+ 
+     def test_create_admin2(self, admin2):
+@@ -1011,21 +1021,11 @@ class TestAdmins(XMLRPC_test):
+         admin2.disable()
+         tracker = Tracker()
+ 
+-        with raises_exact(errors.LastMemberError(
+-                key=admin1, label=u'group', container=admin_group)):
++        with raises_exact(errors.ProtectedEntryError(label=u'user',
++                          key=admin1, reason='privileged user')):
+             tracker.run_command('user_disable', admin1)
+-        with raises_exact(errors.LastMemberError(
+-                key=admin1, label=u'group', container=admin_group)):
+-            tracker.run_command('user_del', admin1)
+         admin2.delete()
+ 
+-        with raises_exact(errors.LastMemberError(
+-                key=admin1, label=u'group', container=admin_group)):
+-            tracker.run_command('user_disable', admin1)
+-        with raises_exact(errors.LastMemberError(
+-                key=admin1, label=u'group', container=admin_group)):
+-            tracker.run_command('user_del', admin1)
+-
+ 
+ @pytest.mark.tier1
+ class TestPreferredLanguages(XMLRPC_test):
+
+From 7d62d84bdd3c2acd2f4bf70bb5fabf14c72e8ee7 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Aug 08 2023 14:50:32 +0000
+Subject: ipatests: update expected webui msg for admin deletion
+
+
+The deletion of the admin is now forbidden (even if it is
+not the last member of the admins group) and the error
+message has changed from "admin cannot be deleted or
+disabled because it is the last member of group admins"
+to " user admin cannot be deleted/modified: privileged user".
+
+Update the expected message in the webui test.
+
+Related: https://pagure.io/freeipa/issue/8878
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+
+---
+
+diff --git a/ipatests/test_webui/test_user.py b/ipatests/test_webui/test_user.py
+index 8d44fbd..a8a92d0 100644
+--- a/ipatests/test_webui/test_user.py
++++ b/ipatests/test_webui/test_user.py
+@@ -50,8 +50,7 @@ INV_FIRSTNAME = ("invalid 'first': Leading and trailing spaces are "
+ FIELD_REQ = 'Required field'
+ ERR_INCLUDE = 'may only include letters, numbers, _, -, . and $'
+ ERR_MISMATCH = 'Passwords must match'
+-ERR_ADMIN_DEL = ('admin cannot be deleted or disabled because it is the last '
+-                 'member of group admins')
++ERR_ADMIN_DEL = ('user admin cannot be deleted/modified: privileged user')
+ USR_EXIST = 'user with name "{}" already exists'
+ ENTRY_EXIST = 'This entry already exists'
+ ACTIVE_ERR = 'active user with name "{}" already exists'
+

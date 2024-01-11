@@ -1,0 +1,173 @@
+From 7a94acca6a9efb546f1cf59f63fcb89f98944ea5 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Thu, 25 May 2023 08:16:33 +0200
+Subject: [PATCH] ACME tests: fix issue_and_expire_acme_cert method
+
+The fixture issue_and_expire_acme_cert is changing the date
+on master and client. It also resets the admin password as
+it gets expired after the date change.
+Currently the code is resetting the password by performing
+kinit on the client, which leaves the master with an expired
+ticket in its cache. Reset the password on the master instead
+in order to have a valid ticket for the next operations.
+
+Fixes: https://pagure.io/freeipa/issue/9383
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Mohammad Rizwan <myusuf@redhat.com>
+---
+ ipatests/test_integration/test_acme.py | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/ipatests/test_integration/test_acme.py b/ipatests/test_integration/test_acme.py
+index c73f441fc..c69e810da 100644
+--- a/ipatests/test_integration/test_acme.py
++++ b/ipatests/test_integration/test_acme.py
+@@ -583,20 +583,20 @@ class TestACMERenew(IntegrationTest):
+             tasks.kdestroy_all(host)
+             tasks.move_date(host, 'stop', '+90days')
+ 
+-        tasks.get_kdcinfo(host)
++        tasks.get_kdcinfo(self.master)
+         # Note raiseonerr=False:
+         # the assert is located after kdcinfo retrieval.
+         # run kinit command repeatedly until sssd gets settle
+         # after date change
+         tasks.run_repeatedly(
+-            host, "KRB5_TRACE=/dev/stdout kinit admin",
++            self.master, "KRB5_TRACE=/dev/stdout kinit admin",
+             stdin_text='{0}\n{0}\n{0}\n'.format(
+-                self.clients[0].config.admin_password
++                self.master.config.admin_password
+             )
+         )
+         # Retrieve kdc.$REALM after the password change, just in case SSSD
+         # domain status flipped to online during the password change.
+-        tasks.get_kdcinfo(host)
++        tasks.get_kdcinfo(self.master)
+ 
+         yield
+ 
+-- 
+2.41.0
+
+From 998bafee86a870ad1ea4d6bccf12f0fae64c398c Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Wed, 31 May 2023 11:50:14 +0200
+Subject: [PATCH] ipatest: remove xfail from test_smb
+
+test_smb is now successful because the windows server version
+has been updated to windows-server-2022 with
+- KB5012170
+- KB5025230
+- KB5022507
+- servicing stack 10.0.20348.1663
+in freeipa-pr-ci commit 3ba4151.
+
+Remove the xfail.
+
+Fixes: https://pagure.io/freeipa/issue/9124
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Mohammad Rizwan <myusuf@redhat.com>
+---
+ ipatests/test_integration/test_smb.py | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_smb.py b/ipatests/test_integration/test_smb.py
+index 30f8d5901..eb3981bdd 100644
+--- a/ipatests/test_integration/test_smb.py
++++ b/ipatests/test_integration/test_smb.py
+@@ -349,7 +349,6 @@ class TestSMB(IntegrationTest):
+     @pytest.mark.skipif(
+         osinfo.id == 'fedora' and osinfo.version_number <= (31,),
+         reason='Test requires krb 1.18')
+-    @pytest.mark.xfail(reason="Pagure ticket 9124", strict=True)
+     def test_smb_service_s4u2self(self):
+         """Test S4U2Self operation by IPA service
+            against both AD and IPA users
+-- 
+2.41.0
+
+From 1b51fa4cb07380d1102891233e85a7940f804c72 Mon Sep 17 00:00:00 2001
+From: Anuja More <amore@redhat.com>
+Date: Thu, 11 May 2023 12:50:10 +0530
+Subject: [PATCH] ipatests: Check that SSSD_PUBCONF_KRB5_INCLUDE_D_DIR is not
+ included in krb5.conf
+
+SSSD already provides a config snippet which includes
+SSSD_PUBCONF_KRB5_INCLUDE_D_DIR, and having both breaks Java.
+Test checks that krb5.conf does not include
+SSSD_PUBCONF_KRB5_INCLUDE_D_DIR.
+
+Related: https://pagure.io/freeipa/issue/9267
+
+Signed-off-by: Anuja More <amore@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ .../test_integration/test_installation_client.py  | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/ipatests/test_integration/test_installation_client.py b/ipatests/test_integration/test_installation_client.py
+index 014b0f6ab..56e1593bf 100644
+--- a/ipatests/test_integration/test_installation_client.py
++++ b/ipatests/test_integration/test_installation_client.py
+@@ -76,6 +76,21 @@ class TestInstallClient(IntegrationTest):
+         result = self.clients[0].run_command(['cat', '/etc/ssh/ssh_config'])
+         assert 'HostKeyAlgorithms' not in result.stdout_text
+ 
++    def test_client_install_with_krb5(self):
++        """Test that SSSD_PUBCONF_KRB5_INCLUDE_D_DIR is not added in krb5.conf
++
++        SSSD already provides a config snippet which includes
++        SSSD_PUBCONF_KRB5_INCLUDE_D_DIR, and having both breaks Java.
++        Test checks that krb5.conf does not include
++        SSSD_PUBCONF_KRB5_INCLUDE_D_DIR.
++
++        related: https://pagure.io/freeipa/issue/9267
++        """
++        krb5_cfg = self.master.get_file_contents(paths.KRB5_CONF)
++        assert 'includedir {dir}'.format(
++            dir=paths.SSSD_PUBCONF_KRB5_INCLUDE_D_DIR
++        ).encode() not in krb5_cfg
++
+ 
+ class TestClientInstallBind(IntegrationTest):
+     """
+-- 
+2.41.0
+
+From f599e2d67bad5945e4dcf99fdd584f01f1e20d1e Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Tue, 6 Jun 2023 09:04:48 +0200
+Subject: [PATCH] webuitests: close notification which hides Add button
+
+The webui test test_service.py::test_service::test_arbitrary_certificates
+randomly fails.
+The test is creating a new service then navigates to the Service page
+and clicks on the Add Certificate button.
+The notification area may still be present and hide the button, with
+the message "Service successfully added".
+Close all notifications before navigating to the Service page.
+
+Fixes: https://pagure.io/freeipa/issue/9389
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Michal Polovka <mpolovka@redhat.com>
+---
+ ipatests/test_webui/test_service.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ipatests/test_webui/test_service.py b/ipatests/test_webui/test_service.py
+index f1d9a9d62..e2976d73a 100644
+--- a/ipatests/test_webui/test_service.py
++++ b/ipatests/test_webui/test_service.py
+@@ -296,6 +296,7 @@ class test_service(sevice_tasks):
+         cert_widget_sel = "div.certificate-widget"
+ 
+         self.add_record(ENTITY, data)
++        self.close_notifications()
+         self.navigate_to_record(pkey)
+ 
+         # check whether certificate section is present
+-- 
+2.41.0
+

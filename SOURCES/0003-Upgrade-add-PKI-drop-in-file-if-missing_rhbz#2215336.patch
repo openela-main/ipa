@@ -1,0 +1,87 @@
+From 86c1426b2d376a390e87b074d3e10d85fa124abf Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Jun 21 2023 17:02:48 +0000
+Subject: Upgrade: add PKI drop-in file if missing
+
+
+During the installation of IPA server, the installer adds a drop-in
+file in /etc/systemd/system/pki-tomcatd@pki-tomcat.service.d/ipa.conf
+that ensures the CA is reachable before the start command returns.
+If the file is missing (for instance because the server was installed
+with an old version before this drop-in was created), the upgrade
+should add the file.
+
+Fixes: https://pagure.io/freeipa/issue/9381
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+
+---
+
+diff --git a/ipaserver/install/server/upgrade.py b/ipaserver/install/server/upgrade.py
+index dd22ac2..e4dc7ae 100644
+--- a/ipaserver/install/server/upgrade.py
++++ b/ipaserver/install/server/upgrade.py
+@@ -1737,6 +1737,10 @@ def upgrade_configuration():
+                      os.path.join(paths.USR_SHARE_IPA_DIR,
+                                   "ipa-kdc-proxy.conf.template"))
+         if ca.is_configured():
++            # Ensure that the drop-in file is present
++            if not os.path.isfile(paths.SYSTEMD_PKI_TOMCAT_IPA_CONF):
++                ca.add_ipa_wait()
++
+             # Handle upgrade of AJP connector configuration
+             rewrite = ca.secure_ajp_connector()
+             if ca.ajp_secret:
+
+From 356ec5cbfe0876686239f938bdf54892dc30571e Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Jun 21 2023 17:02:48 +0000
+Subject: Integration test: add a test for upgrade and PKI drop-in file
+
+
+Add an upgrade test with the following scenario:
+- remove PKI drop-in file (to simulate an upgrade from an old
+version)
+- remove caECServerCertWithSCT profile from LDAP
+- launch the ipa-server-upgrade command
+- check that the upgrade added the file
+
+Related: https://pagure.io/freeipa/issue/9381
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+
+---
+
+diff --git a/ipatests/test_integration/test_upgrade.py b/ipatests/test_integration/test_upgrade.py
+index 9203503..182e3b5 100644
+--- a/ipatests/test_integration/test_upgrade.py
++++ b/ipatests/test_integration/test_upgrade.py
+@@ -455,3 +455,25 @@ class TestUpgrade(IntegrationTest):
+             assert 'tXTRecord' in location_krb_rec
+             assert len(location_krb_rec['tXTRecord']) == 1
+             assert location_krb_rec['tXTRecord'][0] == f'"{realm}"'
++
++    def test_pki_dropin_file(self):
++        """Test that upgrade adds the drop-in file if missing
++
++        Test for ticket 9381
++        Simulate an update from a version that didn't provide
++        /etc/systemd/system/pki-tomcatd@pki-tomcat.service.d/ipa.conf,
++        remove one of the certificate profiles from LDAP and check that upgrade
++        completes successfully and adds the missing file.
++        When the drop-in file is missing, the upgrade tries to login to
++        PKI in order to migrate the profile and fails because PKI failed to
++        start.
++        """
++        self.master.run_command(["rm", "-f", paths.SYSTEMD_PKI_TOMCAT_IPA_CONF])
++        ldif = textwrap.dedent("""
++             dn: cn=caECServerCertWithSCT,ou=certificateProfiles,ou=ca,o=ipaca
++             changetype: delete
++             """)
++        tasks.ldapmodify_dm(self.master, ldif)
++        self.master.run_command(['ipa-server-upgrade'])
++        assert self.master.transport.file_exists(
++            paths.SYSTEMD_PKI_TOMCAT_IPA_CONF)
+
