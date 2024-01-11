@@ -1,0 +1,42 @@
+From 4a62a21499a4884f0db55d01966a6ff532a4ed1e Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 14 Aug 2023 10:53:05 +0200
+Subject: [PATCH] Installer: activate nss and pam services in sssd.conf
+
+If there is already a sssd.conf file before the installer is
+executed, the nss and pam services may not be enabled by the
+installer. This happens for instance if the machine is hardened
+for STIG and sssd.conf does not define services=... in the
+[sssd] section.
+
+The consequence is that trust cannot be established with an AD
+domain.
+
+The installer must enable nss and pam services even if there is
+a pre-existing sssd.conf file.
+
+Fixes: https://pagure.io/freeipa/issue/9427
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ ipaclient/install/client.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/ipaclient/install/client.py b/ipaclient/install/client.py
+index ef29a2c8a3f673860cb22e0e6953853fd96a8572..07d62a748f77e990a38e28e3675abb05eef0da8d 100644
+--- a/ipaclient/install/client.py
++++ b/ipaclient/install/client.py
+@@ -969,6 +969,9 @@ def configure_sssd_conf(
+         nss_service.set_option('memcache_timeout', 600)
+         sssdconfig.save_service(nss_service)
+ 
++    sssd_enable_service(sssdconfig, 'nss')
++    sssd_enable_service(sssdconfig, 'pam')
++
+     domain.set_option('ipa_domain', cli_domain)
+     domain.set_option('ipa_hostname', client_hostname)
+     if cli_domain.lower() != cli_realm.lower():
+-- 
+2.41.0
+

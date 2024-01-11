@@ -1,0 +1,79 @@
+From 387873080f1bc14aeaad89311b06dc46934be1ab Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Wed, 19 Jul 2023 13:24:55 +0200
+Subject: [PATCH] User plugin: improve error related to non existing idp
+
+The user and stageuser commands return the following error
+when the user is created/updated with a non existing idp:
+$ ipa user-add testuser --first test --last user --idp dummy
+ipa: ERROR: no such entry
+
+The error is not descriptive enough and has been modified to
+display instead:
+$ ipa user-add testuser --first test --last user --idp dummy
+ipa: ERROR: External IdP configuration dummy not found
+
+Fixes: https://pagure.io/freeipa/issue/9416
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipaserver/plugins/baseuser.py  | 6 +++++-
+ ipaserver/plugins/stageuser.py | 6 +++++-
+ ipaserver/plugins/user.py      | 6 +++++-
+ 3 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/ipaserver/plugins/baseuser.py b/ipaserver/plugins/baseuser.py
+index 73b76d328a88639afd40bd261c8a35f324ec865b..ba5f9b7763662b32f238c0fb0ca548ff2f07db0d 100644
+--- a/ipaserver/plugins/baseuser.py
++++ b/ipaserver/plugins/baseuser.py
+@@ -708,7 +708,11 @@ class baseuser_mod(LDAPUpdate):
+                     if 'ipaidpuser' not in obj_classes:
+                         entry_attrs['objectclass'].append('ipaidpuser')
+ 
+-                    answer = self.api.Object['idp'].get_dn_if_exists(cl)
++                    try:
++                        answer = self.api.Object['idp'].get_dn_if_exists(cl)
++                    except errors.NotFound:
++                        reason = "External IdP configuration {} not found"
++                        raise errors.NotFound(reason=_(reason).format(cl))
+                     entry_attrs['ipaidpconfiglink'] = answer
+ 
+             # Note: we could have used the method add_missing_object_class
+diff --git a/ipaserver/plugins/stageuser.py b/ipaserver/plugins/stageuser.py
+index 51438a83a95d15fb320148d2934a52f13a38f390..852e51b0eb0d757940b84721a6f01e43c5f36dd2 100644
+--- a/ipaserver/plugins/stageuser.py
++++ b/ipaserver/plugins/stageuser.py
+@@ -404,7 +404,11 @@ class stageuser_add(baseuser_add):
+                 if 'ipaidpuser' not in entry_attrs['objectclass']:
+                     entry_attrs['objectclass'].append('ipaidpuser')
+ 
+-                answer = self.api.Object['idp'].get_dn_if_exists(cl)
++                try:
++                    answer = self.api.Object['idp'].get_dn_if_exists(cl)
++                except errors.NotFound:
++                    reason = "External IdP configuration {} not found"
++                    raise errors.NotFound(reason=_(reason).format(cl))
+                 entry_attrs['ipaidpconfiglink'] = answer
+ 
+         self.pre_common_callback(ldap, dn, entry_attrs, attrs_list, *keys,
+diff --git a/ipaserver/plugins/user.py b/ipaserver/plugins/user.py
+index 643b44f141e3add76f95cbeec6e90fec0ad4c9ad..a337e1fc7b44ef41ad16e18bd965b7af0a767d05 100644
+--- a/ipaserver/plugins/user.py
++++ b/ipaserver/plugins/user.py
+@@ -638,7 +638,11 @@ class user_add(baseuser_add):
+             if 'ipaidpuser' not in entry_attrs['objectclass']:
+                 entry_attrs['objectclass'].append('ipaidpuser')
+ 
+-            answer = self.api.Object['idp'].get_dn_if_exists(rcl)
++            try:
++                answer = self.api.Object['idp'].get_dn_if_exists(rcl)
++            except errors.NotFound:
++                reason = "External IdP configuration {} not found"
++                raise errors.NotFound(reason=_(reason).format(rcl))
+             entry_attrs['ipaidpconfiglink'] = answer
+ 
+         self.pre_common_callback(ldap, dn, entry_attrs, attrs_list, *keys,
+-- 
+2.41.0
+

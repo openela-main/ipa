@@ -1,0 +1,55 @@
+From 5e291da42898cc646f699c21a44b03b833d346e8 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Tue, 27 Jun 2023 15:30:08 +0200
+Subject: [PATCH] tests: fix backup-restore scenario with replica
+
+The test TestBackupAndRestoreWithReplica is simulating a
+master crash in order to check the behavior after ipa-restore.
+
+Since commit 67a33e5, the uninstaller restarts the services in
+order to unregister the server from PKI security domain. An
+indirect consequence is that master/replica communication is re-
+established and operations removing entries (done by the uninstaller)
+are replicated to the replica.
+This means that the scenario does not really simulate a server crash.
+
+To make sure that no replication happens during this "crash", stop
+the replica first, then uninstall the master, and finally restart
+the replica before calling the ipa-restore command on the master.
+
+Fixes: https://pagure.io/freeipa/issue/9404
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipatests/test_integration/test_backup_and_restore.py | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/ipatests/test_integration/test_backup_and_restore.py b/ipatests/test_integration/test_backup_and_restore.py
+index 390c065f373e9a8a667f228a09eebd9ac033a19f..83b6a6b44d805fb0615e2128d4be984c6f858bf9 100644
+--- a/ipatests/test_integration/test_backup_and_restore.py
++++ b/ipatests/test_integration/test_backup_and_restore.py
+@@ -602,6 +602,12 @@ class TestBackupAndRestoreWithReplica(IntegrationTest):
+             tasks.user_add(self.replica1, 'test2_replica')
+ 
+             # simulate master crash
++            # the replica is stopped to make sure master uninstallation
++            # does not delete any entry on the replica. In case of a
++            # real master crash there would not be any communication between
++            # master and replica
++            self.replica1.run_command(['ipactl', 'stop'])
++
+             self.master.run_command(['ipactl', 'stop'])
+             tasks.uninstall_master(self.master, clean=False)
+ 
+@@ -612,6 +618,7 @@ class TestBackupAndRestoreWithReplica(IntegrationTest):
+             self.master.run_command([
+                 "systemctl", "disable", "oddjobd"
+             ])
++            self.replica1.run_command(['ipactl', 'start'])
+ 
+             self.master.run_command(['ipa-restore', '-U', backup_path])
+ 
+-- 
+2.41.0
+

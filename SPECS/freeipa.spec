@@ -66,7 +66,7 @@
 %if 0%{?rhel}
 %global package_name ipa
 %global alt_name freeipa
-%global krb5_version 1.20.1-9
+%global krb5_version 1.20.1-1
 %global krb5_kdb_version 9.0
 # 0.7.16: https://github.com/drkjam/netaddr/issues/71
 %global python_netaddr_version 0.7.19
@@ -178,7 +178,7 @@
 # RHEL 8.2+, F32+ has 3.58
 %global nss_version 3.44.0-4
 
-%define krb5_base_version %(LC_ALL=C /usr/bin/pkgconf --modversion krb5 | grep -Eo '^[^.]+\.[^.]+' || echo %krb5_version)
+%define krb5_base_version %(LC_ALL=C /usr/bin/pkgconf --modversion krb5 2>/dev/null | grep -Eo '^[^.]+\.[^.]+' || echo %krb5_version)
 %global kdcproxy_version 0.4-3
 
 %if 0%{?fedora} >= 33 || 0%{?rhel} >= 9
@@ -210,7 +210,7 @@
 
 # Work-around fact that RPM SPEC parser does not accept
 # "Version: @VERSION@" in freeipa.spec.in used for Autoconf string replacement
-%define IPA_VERSION 4.10.1
+%define IPA_VERSION 4.10.2
 # Release candidate version -- uncomment with one percent for RC versions
 #%%global rc_version %%nil
 %define AT_SIGN @
@@ -223,10 +223,10 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        9%{?rc_version:.%rc_version}%{?dist}
+Release:        4%{?rc_version:.%rc_version}%{?dist}.1
 Summary:        The Identity, Policy and Audit system
 
-License:        GPLv3+
+License:        GPL-3.0-or-later
 URL:            http://www.freeipa.org/
 Source0:        https://releases.pagure.org/freeipa/freeipa-%{version}%{?rc_version}.tar.gz
 # Only use detached signature for the distribution builds. If it is a developer build, skip it
@@ -247,32 +247,32 @@ Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
 %endif
 %if 0%{?rhel} == 9
-Patch0001:      0001-updates-fix-memberManager-ACI-to-allow-managers-from.patch
-Patch0002:      0002-Spec-file-ipa-client-depends-on-krb5-pkinit-openssl.patch
-Patch0003:      0003-server-install-remove-error-log-about-missing-bkup-f.patch
-Patch0004:      0004-ipa-tests-Add-LANG-before-kinit-command-to-fix-issue.patch
-Patch0005:      0005-trust-add-handle-missing-msSFU30MaxGidNumber.patch
-Patch0006:      0006-doc-Design-for-certificate-pruning.patch
-Patch0007:      0007-ipa-acme-manage-add-certificate-request-pruning-mana.patch
-Patch0008:      0008-doc-add-the-run-command-for-manual-job-execution.patch
-Patch0009:      0009-tests-add-wrapper-around-ACME-RSNv3-test.patch
-Patch0010:      0010-automember-rebuild-add-a-notice-about-high-CPU-usage.patch
-Patch0011:      0011-Fix-setting-values-of-0-in-ACME-pruning.patch
-Patch0012:      0012-Wipe-the-ipa-ca-DNS-record-when-updating-system-reco.patch
-Patch0013:      0013-ipa-kdb-PAC-consistency-checker-needs-to-handle-chil.patch
-Patch0014:      0014-Add-test-for-SSH-with-GSSAPI-auth.patch
-Patch0015:      0015-webui-tests-fix-assertion-in-test_subid.py.patch
-Patch0016:      0016-ipatests-mark-test_smb-as-xfail.patch
-Patch0017:      0017-Tests-force-key-type-in-ACME-tests.patch
-Patch0018:      0018-tests-Add-ipa_ca_name-checking-to-DNS-system-records.patch
-Patch0019:      0019-tests-Add-new-ipa-ca-error-messages-to-IPADNSSystemR.patch
-Patch0020:      0020-ipatests-tests-for-certificate-pruning.patch
-Patch0021:      0021-ipatests-ensure-that-ipa-automember-rebuild-prints-a.patch
-Patch0022:      0022-ipatests-fix-tests-in-TestACMEPrune.patch
-Patch0023:      0023-Tolerate-absence-of-PAC-ticket-signature-depending-o.patch
-Patch0024:      0024-ipa-kdb-postpone-ticket-checksum-configuration.patch
-Patch0025:      0025-OTP-fix-data-type-to-avoid-endianness-issue.patch
-Patch0026:      0026-ipa-kdb-fix-error-handling-of-is_master_host.patch
+Patch0001:      0001-webuitests-close-notification-which-hides-Add-button.patch
+Patch0002:      0002-ipatests-Check-that-SSSD_PUBCONF_KRB5_INCLUDE_D_DIR-.patch
+Patch0003:      0003-Revert-Use-the-OpenSSL-certificate-parser-in-cert-fi.patch
+Patch0004:      0004-Revert-cert_find-fix-call-with-all.patch
+Patch0005:      0005-Use-the-python-cryptography-parser-directly-in-cert-.patch
+Patch0006:      0006-Upgrade-add-PKI-drop-in-file-if-missing.patch
+Patch0007:      0007-Integration-test-add-a-test-for-upgrade-and-PKI-drop.patch
+Patch0008:      0008-Uninstaller-uninstall-PKI-before-shutting-down-servi.patch
+Patch0009:      0009-Detection-of-PKI-subsystem.patch
+Patch0010:      0010-Upgrade-fix-replica-agreement.patch
+Patch0011:      0011-Integration-tests-add-a-test-to-ipa-server-upgrade.patch
+Patch0012:      0012-tests-fix-backup-restore-scenario-with-replica.patch
+Patch0013:      0013-OTP-fix-data-type-to-avoid-endianness-issue.patch
+Patch0014:      0014-ipatests-enable-firewall-rule-for-http-service-on-ac.patch
+Patch0015:      0015-User-plugin-improve-error-related-to-non-existing-id.patch
+Patch0016:      0016-xmlrpc-tests-add-a-test-for-user-plugin-with-non-exi.patch
+Patch0017:      0017-Fix-memory-leak-in-the-OTP-last-token-plugin.patch
+Patch0018:      0018-Prevent-the-admin-user-from-being-deleted.patch
+Patch0019:      0019-ipa-kdb-fix-error-handling-of-is_master_host.patch
+Patch0020:      0020-ipatests-update-expected-webui-msg-for-admin-deletio.patch
+Patch0021:      0021-ipatests-remove-fixture-call-and-wait-to-get-things-.patch
+Patch0022:      0022-ipatests-fix-test_topology.patch
+Patch0023:      0023-ipatests-idm-api-related-tests.patch
+Patch0024:      0024-ipatests-fixture-can-produce-IndexError.patch
+Patch0025:      0025-Installer-activate-nss-and-pam-services-in-sssd.conf.patch
+Patch0026:      0026-updates-add-ACIs-for-RBCD-self-management.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -323,7 +323,12 @@ BuildRequires:  libpwquality-devel
 BuildRequires:  libsss_idmap-devel
 BuildRequires:  libsss_certmap-devel
 BuildRequires:  libsss_nss_idmap-devel >= %{sssd_version}
+%if 0%{?fedora} >= 39 || 0%{?rhel} >= 10
+# Do not use nodejs20 on fedora < 39, https://pagure.io/freeipa/issue/9374
 BuildRequires:  nodejs(abi)
+%else
+BuildRequires:  nodejs(abi) < 111
+%endif
 # use old dependency on RHEL 8 for now
 %if 0%{?fedora} >= 31 || 0%{?rhel} >= 9
 BuildRequires:  python3-rjsmin
@@ -504,7 +509,7 @@ Requires: policycoreutils >= 2.1.12-5
 Requires: tar
 Requires(pre): certmonger >= %{certmonger_version}
 Requires(pre): 389-ds-base >= %{ds_version}
-Requires: fontawesome-fonts
+Requires: font(fontawesome)
 Requires: open-sans-fonts
 %if 0%{?fedora} >= 32 || 0%{?rhel} >= 9
 # https://pagure.io/freeipa/issue/8632
@@ -718,6 +723,7 @@ Requires: jansson
 %endif
 Requires: sssd-ipa >= %{sssd_version}
 Requires: sssd-idp >= %{sssd_version}
+Requires: sssd-krb5 >= %{sssd_version}
 Requires: certmonger >= %{certmonger_version}
 Requires: nss-tools >= %{nss_version}
 Requires: bind-utils
@@ -1263,10 +1269,8 @@ if [ $1 -gt 1 ] ; then
     test -f '/var/lib/ipa-client/sysrestore/sysrestore.index' && restore=$(wc -l '/var/lib/ipa-client/sysrestore/sysrestore.index' | awk '{print $1}')
 
     if [ -f '/etc/sssd/sssd.conf' -a $restore -ge 2 ]; then
-        if ! grep -E -q '/var/lib/sss/pubconf/krb5.include.d/' /etc/krb5.conf  2>/dev/null ; then
-            echo "includedir /var/lib/sss/pubconf/krb5.include.d/" > /etc/krb5.conf.ipanew
-            cat /etc/krb5.conf >> /etc/krb5.conf.ipanew
-            mv -Z /etc/krb5.conf.ipanew /etc/krb5.conf
+        if grep -E -q '/var/lib/sss/pubconf/krb5.include.d/' /etc/krb5.conf  2>/dev/null ; then
+            sed -i '\;includedir /var/lib/sss/pubconf/krb5.include.d;d' /etc/krb5.conf
         fi
     fi
 
@@ -1760,14 +1764,37 @@ fi
 %endif
 
 %changelog
-* Wed Aug 09 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.1-9
-- Resolves: rhbz#2230074 Interrupt request processing in ipadb_fill_info3() if connection to 389ds is lost
+* Tue Oct 10 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-4.1
+- Resolves: RHEL-12373 ACIs are missing for RBCD self-management
 
-* Tue Jul 18 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.1-8
-- Resolves: rhbz#2223556 User authentication failing on OTP validation using multiple tokens, succeeds with password only
+* Thu Aug 17 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-4
+- Resolves: rhbz#2231847 RHEL 8.8 & 9.2 fails to create AD trust with STIG applied
+- Resolves: rhbz#2232056 Include latest test fixes in python3-ipatests
 
-* Thu Jun 01 2023 Julien Rische <jrische@redhat.com> - 4.10.1-7
-- Resolves: rhbz#2211389 Handle PAC signatures based on domain and server capabilities
+* Thu Aug 10 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-3
+- Resolves: rhbz#2229712 Delete operation protection for admin user
+- Resolves: rhbz#2227831 Interrupt request processing in ipadb_fill_info3() if connection to 389ds is lost
+- Resolves: rhbz#2227784 libipa_otp_lasttoken plugin memory leak
+- Resolves: rhbz#2224570 Improved error messages are needed when attempting to add a non-existing idp to a user
+- Resolves: rhbz#2230251 Backport latest test fixes to python3-ipatests
+
+* Thu Jun 29 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-2
+- Resolves: rhbz#2192969 Better handling of the command line and web UI cert search and/or list features
+- Resolves: rhbz#2214933 Uninstalling of the IPA server is encountering a failure during the unconfiguration of the CA (Unconfiguring CA)
+- Resolves: rhbz#2216114 After updating the RHEL from 8.7 to 8.8, IPA services fails to start
+- Resolves: rhbz#2216549 Upgrade to 4.9.10-6.0.1 fails: attributes are managed by topology plugin
+- Resolves: rhbz#2216611 Backport latest test fixes in python3-ipatests
+- Resolves: rhbz#2216872 User authentication failing on OTP validation using multiple tokens, succeeds with password only
+
+* Tue Jun 06 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-1
+- Resolves: rhbz#2196426 [Rebase] Rebase ipa to latest 4.10.x release for RHEL 9.3
+- Resolves: rhbz#2192969 Better handling of the command line and web UI cert search and/or list features
+- Resolves: rhbz#2192625 Better catch of the IPA web UI event "IPA Error 4301:CertificateOperationError", and IPA httpd error CertificateOperationError
+- Resolves: rhbz#2188567 IPA client Kerberos configuration incompatible with java
+- Resolves: rhbz#2182683 Tolerate absence of PAC ticket signature depending of domain and servers capabilities [rhel-9]
+- Resolves: rhbz#2180914 Sequence processing failures for group_add using server context
+- Resolves: rhbz#2165880 Add RBCD support to IPA
+- Resolves: rhbz#2160399 get_ranges - [file ipa_sidgen_common.c, line 276]: Failed to convert LDAP entry to range struct
 
 * Wed Feb 22 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.1-6
 - Resolves: rhbz#2169632 Backport latest test fixes in python3-ipatests

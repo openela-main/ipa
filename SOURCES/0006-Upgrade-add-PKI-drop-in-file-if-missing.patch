@@ -1,0 +1,38 @@
+From f25003a730c0e28c22fae5fce607df734b55525c Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 19 Jun 2023 19:01:25 +0200
+Subject: [PATCH] Upgrade: add PKI drop-in file if missing
+
+During the installation of IPA server, the installer adds a drop-in
+file in /etc/systemd/system/pki-tomcatd@pki-tomcat.service.d/ipa.conf
+that ensures the CA is reachable before the start command returns.
+If the file is missing (for instance because the server was installed
+with an old version before this drop-in was created), the upgrade
+should add the file.
+
+Fixes: https://pagure.io/freeipa/issue/9381
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipaserver/install/server/upgrade.py | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/ipaserver/install/server/upgrade.py b/ipaserver/install/server/upgrade.py
+index f8701c8a0d43c7c1c1090e8576976b1c370b0104..8f3d57353605f28103c69cb0a34bf1c16fc4ae19 100644
+--- a/ipaserver/install/server/upgrade.py
++++ b/ipaserver/install/server/upgrade.py
+@@ -1742,6 +1742,10 @@ def upgrade_configuration():
+                      os.path.join(paths.USR_SHARE_IPA_DIR,
+                                   "ipa-kdc-proxy.conf.template"))
+         if ca.is_configured():
++            # Ensure that the drop-in file is present
++            if not os.path.isfile(paths.SYSTEMD_PKI_TOMCAT_IPA_CONF):
++                ca.add_ipa_wait()
++
+             # Handle upgrade of AJP connector configuration
+             rewrite = ca.secure_ajp_connector()
+             if ca.ajp_secret:
+-- 
+2.41.0
+

@@ -1,0 +1,136 @@
+From 4b02322fc786ee9caaa0380659507a2cec0d4101 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Thu, 25 May 2023 18:24:29 -0400
+Subject: [PATCH] Prevent the admin user from being deleted
+
+admin is required for trust operations
+
+Note that testing for removing the last member is now
+irrelevant because admin must always exist so the test
+for it was removed, but the code check remains. It is done
+after the protected member check.
+
+Fixes: https://pagure.io/freeipa/issue/8878
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ ipaserver/plugins/user.py                | 19 +++++++++--
+ ipatests/test_xmlrpc/test_user_plugin.py | 40 ++++++++++++------------
+ 2 files changed, 37 insertions(+), 22 deletions(-)
+
+diff --git a/ipaserver/plugins/user.py b/ipaserver/plugins/user.py
+index a337e1fc7b44ef41ad16e18bd965b7af0a767d05..6f5e34917e1b838a463dee146a4e9390f20c130a 100644
+--- a/ipaserver/plugins/user.py
++++ b/ipaserver/plugins/user.py
+@@ -138,14 +138,23 @@ MEMBEROF_ADMINS = "(memberOf={})".format(
+ )
+ 
+ NOT_MEMBEROF_ADMINS = '(!{})'.format(MEMBEROF_ADMINS)
++PROTECTED_USERS = ('admin',)
+ 
+ 
+ def check_protected_member(user, protected_group_name=u'admins'):
+     '''
+-    Ensure the last enabled member of a protected group cannot be deleted or
+-    disabled by raising LastMemberError.
++    Ensure admin and the last enabled member of a protected group cannot
++    be deleted or disabled by raising ProtectedEntryError or
++    LastMemberError as appropriate.
+     '''
+ 
++    if user in PROTECTED_USERS:
++        raise errors.ProtectedEntryError(
++            label=_("user"),
++            key=user,
++            reason=_("privileged user"),
++        )
++
+     # Get all users in the protected group
+     result = api.Command.user_find(in_group=protected_group_name)
+ 
+@@ -868,6 +877,12 @@ class user_mod(baseuser_mod):
+ 
+     def pre_callback(self, ldap, dn, entry_attrs, attrs_list, *keys, **options):
+         dn, oc = self.obj.get_either_dn(*keys, **options)
++        if options.get('rename') and keys[-1] in PROTECTED_USERS:
++            raise errors.ProtectedEntryError(
++                label=_("user"),
++                key=keys[-1],
++                reason=_("privileged user"),
++            )
+         if 'objectclass' not in entry_attrs and 'rename' not in options:
+             entry_attrs.update({'objectclass': oc})
+         self.pre_common_callback(ldap, dn, entry_attrs, attrs_list, *keys,
+diff --git a/ipatests/test_xmlrpc/test_user_plugin.py b/ipatests/test_xmlrpc/test_user_plugin.py
+index baa28672e7552140a703ecdfa5772b445298cb37..df105a23529b29944411a6418e5db55d56e2c72a 100644
+--- a/ipatests/test_xmlrpc/test_user_plugin.py
++++ b/ipatests/test_xmlrpc/test_user_plugin.py
+@@ -978,22 +978,32 @@ class TestManagers(XMLRPC_test):
+ 
+ @pytest.mark.tier1
+ class TestAdmins(XMLRPC_test):
+-    def test_remove_original_admin(self):
+-        """ Try to remove the only admin """
++    def test_delete_admin(self):
++        """ Try to delete the protected admin user """
+         tracker = Tracker()
+-        command = tracker.make_command('user_del', [admin1])
++        command = tracker.make_command('user_del', admin1)
+ 
+-        with raises_exact(errors.LastMemberError(
+-                key=admin1, label=u'group', container=admin_group)):
++        with raises_exact(errors.ProtectedEntryError(label=u'user',
++                          key=admin1, reason='privileged user')):
++            command()
++
++    def test_rename_admin(self):
++        """ Try to rename the admin user """
++        tracker = Tracker()
++        command = tracker.make_command('user_mod', admin1,
++                                       **dict(rename=u'newadmin'))
++
++        with raises_exact(errors.ProtectedEntryError(label=u'user',
++                          key=admin1, reason='privileged user')):
+             command()
+ 
+     def test_disable_original_admin(self):
+-        """ Try to disable the only admin """
++        """ Try to disable the original admin """
+         tracker = Tracker()
+         command = tracker.make_command('user_disable', admin1)
+ 
+-        with raises_exact(errors.LastMemberError(
+-                key=admin1, label=u'group', container=admin_group)):
++        with raises_exact(errors.ProtectedEntryError(label=u'user',
++                          key=admin1, reason='privileged user')):
+             command()
+ 
+     def test_create_admin2(self, admin2):
+@@ -1011,21 +1021,11 @@ class TestAdmins(XMLRPC_test):
+         admin2.disable()
+         tracker = Tracker()
+ 
+-        with raises_exact(errors.LastMemberError(
+-                key=admin1, label=u'group', container=admin_group)):
++        with raises_exact(errors.ProtectedEntryError(label=u'user',
++                          key=admin1, reason='privileged user')):
+             tracker.run_command('user_disable', admin1)
+-        with raises_exact(errors.LastMemberError(
+-                key=admin1, label=u'group', container=admin_group)):
+-            tracker.run_command('user_del', admin1)
+         admin2.delete()
+ 
+-        with raises_exact(errors.LastMemberError(
+-                key=admin1, label=u'group', container=admin_group)):
+-            tracker.run_command('user_disable', admin1)
+-        with raises_exact(errors.LastMemberError(
+-                key=admin1, label=u'group', container=admin_group)):
+-            tracker.run_command('user_del', admin1)
+-
+ 
+ @pytest.mark.tier1
+ class TestPreferredLanguages(XMLRPC_test):
+-- 
+2.41.0
+

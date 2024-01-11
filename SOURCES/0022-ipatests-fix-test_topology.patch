@@ -1,0 +1,60 @@
+From 1278e614dd93bf0ac3d6e0c36cb9c277808afb2c Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Fri, 11 Aug 2023 08:01:18 +0200
+Subject: [PATCH] ipatests: fix test_topology
+
+The test TestTopologyOptions::test_add_remove_segment is
+randomly failing downstream. Test scenario:
+- create a line topology master <-> repl1 <-> repl2
+- create user on master
+- wait for repl success on master
+- check that the user is seen on repl2
+
+The test waits for replication to complete on the master but
+it should also wait for the replication to complete on repl1
+before checking the user presence on repl2.
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Anuja More <amore@redhat.com>
+---
+ ipatests/test_integration/test_topology.py | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/ipatests/test_integration/test_topology.py b/ipatests/test_integration/test_topology.py
+index 8a240fa3c081a05b8f4501fe48694e01086003a1..618c9d5dcce994cd0359a291b044eb2cf0bddc74 100644
+--- a/ipatests/test_integration/test_topology.py
++++ b/ipatests/test_integration/test_topology.py
+@@ -124,6 +124,9 @@ class TestTopologyOptions(IntegrationTest):
+                                             self.replicas[0],
+                                             self.replicas[1])
+         assert err == "", err
++        # At this point we have replicas[1] <-> master <-> replicas[0]
++        #                          ^--------------------------^
++
+         # Make sure the new segment is shown by `ipa topologysegment-find`
+         result1 = self.master.run_command(['ipa', 'topologysegment-find',
+                                            DOMAIN_SUFFIX_NAME]).stdout_text
+@@ -137,9 +140,12 @@ class TestTopologyOptions(IntegrationTest):
+         deleteme = find_segment(self.master, self.replicas[1])
+         returncode, error = tasks.destroy_segment(self.master, deleteme)
+         assert returncode == 0, error
++        # At this point we have master <-> replicas[0] <-> replicas[1]
++
+         # Wait till replication ends and make sure replica1 does not have
+         # segment that was deleted on master
+         master_ldap = self.master.ldap_connect()
++        repl_ldap = self.replicas[0].ldap_connect()
+         tasks.wait_for_replication(master_ldap)
+         result3 = self.replicas[0].run_command(['ipa', 'topologysegment-find',
+                                                DOMAIN_SUFFIX_NAME]).stdout_text
+@@ -150,6 +156,7 @@ class TestTopologyOptions(IntegrationTest):
+                                  '--first', 'test',
+                                  '--last', 'user'])
+         tasks.wait_for_replication(master_ldap)
++        tasks.wait_for_replication(repl_ldap)
+         result4 = self.replicas[1].run_command(['ipa', 'user-find'])
+         assert('someuser' in result4.stdout_text), 'User not found: someuser'
+         # We end up having a line topology: master <-> replica1 <-> replica2
+-- 
+2.41.0
+

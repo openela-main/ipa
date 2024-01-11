@@ -1,0 +1,115 @@
+From d9aa75459d650e5282a160a3eef09ed175dc5b51 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Wed, 7 Jun 2023 11:44:05 -0400
+Subject: [PATCH] Use the python-cryptography parser directly in cert-find
+
+cert-find is a rather complex beast because it not only
+looks for certificates in the optional CA but within the
+IPA LDAP database as well. It has a process to deduplicate
+the certificates since any PKI issued certificates will
+also be associated with an IPA record.
+
+In order to obtain the data to deduplicate the certificates
+the cert from LDAP must be parser for issuer and serial number.
+ipaldap has automation to determine the datatype of an
+attribute and will use the ipalib.x509 IPACertificate class to
+decode a certificate automatically if you access
+entry['usercertificate'].
+
+The downside is that this is comparatively slow. Here is the
+parse time in microseconds:
+
+cryptography 0.0081
+OpenSSL.crypto 0.2271
+ipalib.x509 2.6814
+
+Since only issuer and subject are required there is no need to
+make the expensive IPACertificate call.
+
+The IPACertificate parsing time is fine if you're parsing one
+certificate but if the LDAP search returns a lot of certificates,
+say in the thousands, then those microseconds add up quickly.
+In testing it took ~17 seconds to parse 5k certificates (excluding
+transmission overhead, etc).
+
+cert-find when there are a lot of certificates has been
+historically slow. It isn't related to the CA which returns
+large sets (well, 5k anyway) in a second or two. It was the
+LDAP comparision adding tens of seconds to the runtime.
+
+When searching with the default sizelimit of 100 the time is
+~10s without this patch. With it the time is 1.5s.
+
+CLI times from before and after searching for all certs:
+
+original:
+
+-------------------------------
+Number of entries returned 5038
+-------------------------------
+real    0m15.507s
+user    0m0.828s
+sys     0m0.241s
+
+using cryptography:
+
+real    0m4.037s
+user    0m0.816s
+sys     0m0.193s
+
+Fixes: https://pagure.io/freeipa/issue/9331
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+---
+ ipaserver/plugins/cert.py                |  3 ++-
+ ipatests/test_xmlrpc/test_cert_plugin.py | 12 +++++++++++-
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/ipaserver/plugins/cert.py b/ipaserver/plugins/cert.py
+index 36a0e8cb31b4dbdd9bff09165d1d8aa203936d37..4fb85069a835d94969c9d05789714345ecc60e2e 100644
+--- a/ipaserver/plugins/cert.py
++++ b/ipaserver/plugins/cert.py
+@@ -1795,7 +1795,8 @@ class cert_find(Search, CertMethod):
+         ca_enabled = getattr(context, 'ca_enabled')
+         for entry in entries:
+             for attr in ('usercertificate', 'usercertificate;binary'):
+-                for cert in entry.get(attr, []):
++                for der in entry.raw.get(attr, []):
++                    cert = cryptography.x509.load_der_x509_certificate(der)
+                     cert_key = self._get_cert_key(cert)
+                     try:
+                         obj = result[cert_key]
+diff --git a/ipatests/test_xmlrpc/test_cert_plugin.py b/ipatests/test_xmlrpc/test_cert_plugin.py
+index 433cebcd79f792e5c97307c6d599e50855ff4151..583c67fd942a61f42e578cc51a0e456cacf9a5e5 100644
+--- a/ipatests/test_xmlrpc/test_cert_plugin.py
++++ b/ipatests/test_xmlrpc/test_cert_plugin.py
+@@ -254,6 +254,16 @@ class test_cert(BaseCert):
+         result = _emails_are_valid(email_addrs, [])
+         assert not result
+ 
++    def test_00012_cert_find_all(self):
++        """
++        Test that cert-find --all returns successfully.
++
++        We don't know how many we'll get but there should be at least 10
++        by default.
++        """
++        res = api.Command['cert_find'](all=True)
++        assert 'count' in res and res['count'] >= 10
++
+     def test_99999_cleanup(self):
+         """
+         Clean up cert test data
+@@ -283,7 +293,7 @@ class test_cert_find(XMLRPC_test):
+ 
+     short = api.env.host.split('.', maxsplit=1)[0]
+ 
+-    def test_0001_find_all(self):
++    def test_0001_find_all_certs(self):
+         """
+         Search for all certificates.
+ 
+-- 
+2.41.0
+
