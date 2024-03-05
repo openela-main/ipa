@@ -223,7 +223,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        4%{?rc_version:.%rc_version}%{?dist}.1
+Release:        5%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -273,6 +273,8 @@ Patch0023:      0023-ipatests-idm-api-related-tests.patch
 Patch0024:      0024-ipatests-fixture-can-produce-IndexError.patch
 Patch0025:      0025-Installer-activate-nss-and-pam-services-in-sssd.conf.patch
 Patch0026:      0026-updates-add-ACIs-for-RBCD-self-management.patch
+Patch0027:      0027-Check-the-HTTP-Referer-header-on-all-requests.patch
+Patch0028:      0028-Integration-tests-for-verifying-Referer-header-in-th.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -1764,6 +1766,9 @@ fi
 %endif
 
 %changelog
+* Fri Nov 24 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-5
+- Resolves: RHEL-12588 ipa: Invalid CSRF protection
+
 * Tue Oct 10 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-4.1
 - Resolves: RHEL-12373 ACIs are missing for RBCD self-management
 
