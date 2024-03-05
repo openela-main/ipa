@@ -1,0 +1,261 @@
+From f42a106e84c1fd609350da2540289ce945a7ecbd Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Thu, 11 May 2023 10:53:58 +0200
+Subject: [PATCH] user or group name: explain the supported format
+
+The commands ipa user-add or ipa group-add validate the
+format of the user/group name and display the following
+message when it does not conform to the expectations:
+invalid 'login': may only include letters, numbers, _, -, . and $
+
+The format is more complex, for instance '1234567' is an invalid
+user name but the failure is inconsistent with the error message.
+Modify the error message to point to ipa help user/group and add
+more details in the help message.
+
+Same change for idoverrideuser and idoverridegroup:
+The user/group name must follow these rules:
+- cannot contain only numbers
+- must start with a letter, a number, _ or .
+- may contain letters, numbers, _, ., or -
+- may end with a letter, a number, _, ., - or $
+
+Fixes: https://bugzilla.redhat.com/show_bug.cgi?id=2150217
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rafael Guterres Jeffman <rjeffman@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipalib/constants.py                           |  5 +++++
+ ipaserver/plugins/baseuser.py                 |  2 +-
+ ipaserver/plugins/group.py                    | 10 ++++++++--
+ ipaserver/plugins/idviews.py                  |  5 +++--
+ ipaserver/plugins/stageuser.py                |  6 ++++++
+ ipaserver/plugins/user.py                     |  6 ++++++
+ ipatests/test_xmlrpc/test_group_plugin.py     |  5 +++--
+ ipatests/test_xmlrpc/test_stageuser_plugin.py |  3 ++-
+ ipatests/test_xmlrpc/test_user_plugin.py      |  7 ++++---
+ 9 files changed, 38 insertions(+), 11 deletions(-)
+
+diff --git a/ipalib/constants.py b/ipalib/constants.py
+index 4b759a573..104419bc2 100644
+--- a/ipalib/constants.py
++++ b/ipalib/constants.py
+@@ -319,6 +319,11 @@ MAXHOSTFQDNLEN = 253
+ PATTERN_GROUPUSER_NAME = (
+     '(?!^[0-9]+$)^[a-zA-Z0-9_.][a-zA-Z0-9_.-]*[a-zA-Z0-9_.$-]?$'
+ )
++ERRMSG_GROUPUSER_NAME = (
++    'may only include letters, numbers, _, -, . and $'
++    ', refer to \'ipa help {}\' for complete format '
++    'description'
++)
+ 
+ # Kerberos Anonymous principal name
+ ANON_USER = 'WELLKNOWN/ANONYMOUS'
+diff --git a/ipaserver/plugins/baseuser.py b/ipaserver/plugins/baseuser.py
+index 684a65242..bae6c54ff 100644
+--- a/ipaserver/plugins/baseuser.py
++++ b/ipaserver/plugins/baseuser.py
+@@ -211,7 +211,7 @@ class baseuser(LDAPObject):
+     takes_params = (
+         Str('uid',
+             pattern=constants.PATTERN_GROUPUSER_NAME,
+-            pattern_errmsg='may only include letters, numbers, _, -, . and $',
++            pattern_errmsg=constants.ERRMSG_GROUPUSER_NAME.format('user'),
+             maxlength=255,
+             cli_name='login',
+             label=_('User login'),
+diff --git a/ipaserver/plugins/group.py b/ipaserver/plugins/group.py
+index afdad93c1..0333ed622 100644
+--- a/ipaserver/plugins/group.py
++++ b/ipaserver/plugins/group.py
+@@ -24,7 +24,7 @@ import logging
+ 
+ from ipalib import api
+ from ipalib import Int, Str, Flag
+-from ipalib.constants import PATTERN_GROUPUSER_NAME
++from ipalib.constants import PATTERN_GROUPUSER_NAME, ERRMSG_GROUPUSER_NAME
+ from ipalib.plugable import Registry
+ from .baseldap import (
+     add_external_post_callback,
+@@ -70,6 +70,12 @@ converted to non-POSIX groups.
+ 
+ Every group must have a description.
+ 
++The group name must follow these rules:
++- cannot contain only numbers
++- must start with a letter, a number, _ or .
++- may contain letters, numbers, _, ., or -
++- may end with a letter, a number, _, ., - or $
++
+ POSIX groups must have a Group ID (GID) number. Changing a GID is
+ supported but can have an impact on your file permissions. It is not necessary
+ to supply a GID when creating a group. IPA will generate one automatically
+@@ -330,7 +336,7 @@ class group(LDAPObject):
+     takes_params = (
+         Str('cn',
+             pattern=PATTERN_GROUPUSER_NAME,
+-            pattern_errmsg='may only include letters, numbers, _, -, . and $',
++            pattern_errmsg=ERRMSG_GROUPUSER_NAME.format('group'),
+             maxlength=255,
+             cli_name='group_name',
+             label=_('Group name'),
+diff --git a/ipaserver/plugins/idviews.py b/ipaserver/plugins/idviews.py
+index 4f4b3a2f7..6a16884cf 100644
+--- a/ipaserver/plugins/idviews.py
++++ b/ipaserver/plugins/idviews.py
+@@ -37,6 +37,7 @@ from ipalib.constants import (
+     IPA_ANCHOR_PREFIX,
+     SID_ANCHOR_PREFIX,
+     PATTERN_GROUPUSER_NAME,
++    ERRMSG_GROUPUSER_NAME
+ )
+ from ipalib.plugable import Registry
+ from ipalib.util import (normalize_sshpubkey, validate_sshpubkey,
+@@ -1025,7 +1026,7 @@ class idoverrideuser(baseidoverride):
+     takes_params = baseidoverride.takes_params + (
+         Str('uid?',
+             pattern=PATTERN_GROUPUSER_NAME,
+-            pattern_errmsg='may only include letters, numbers, _, -, . and $',
++            pattern_errmsg=ERRMSG_GROUPUSER_NAME.format('user'),
+             maxlength=255,
+             cli_name='login',
+             label=_('User login'),
+@@ -1128,7 +1129,7 @@ class idoverridegroup(baseidoverride):
+     takes_params = baseidoverride.takes_params + (
+         Str('cn?',
+             pattern=PATTERN_GROUPUSER_NAME,
+-            pattern_errmsg='may only include letters, numbers, _, -, . and $',
++            pattern_errmsg=ERRMSG_GROUPUSER_NAME.format('group'),
+             maxlength=255,
+             cli_name='group_name',
+             label=_('Group name'),
+diff --git a/ipaserver/plugins/stageuser.py b/ipaserver/plugins/stageuser.py
+index 760dff7ab..51438a83a 100644
+--- a/ipaserver/plugins/stageuser.py
++++ b/ipaserver/plugins/stageuser.py
+@@ -94,6 +94,12 @@ usernames that start with a digit or usernames that exceed a certain length
+ may cause problems for some UNIX systems.
+ Use 'ipa config-mod' to change the username format allowed by IPA tools.
+ 
++The user name must follow these rules:
++- cannot contain only numbers
++- must start with a letter, a number, _ or .
++- may contain letters, numbers, _, ., or -
++- may end with a letter, a number, _, ., - or $
++
+ 
+ EXAMPLES:
+ 
+diff --git a/ipaserver/plugins/user.py b/ipaserver/plugins/user.py
+index fa8a67d3d..643b44f14 100644
+--- a/ipaserver/plugins/user.py
++++ b/ipaserver/plugins/user.py
+@@ -88,6 +88,12 @@ usernames that start with a digit or usernames that exceed a certain length
+ may cause problems for some UNIX systems.
+ Use 'ipa config-mod' to change the username format allowed by IPA tools.
+ 
++The user name must follow these rules:
++- cannot contain only numbers
++- must start with a letter, a number, _ or .
++- may contain letters, numbers, _, ., or -
++- may end with a letter, a number, _, ., - or $
++
+ Disabling a user account prevents that user from obtaining new Kerberos
+ credentials. It does not invalidate any credentials that have already
+ been issued.
+diff --git a/ipatests/test_xmlrpc/test_group_plugin.py b/ipatests/test_xmlrpc/test_group_plugin.py
+index f9a0e2cfe..27bc21fbc 100644
+--- a/ipatests/test_xmlrpc/test_group_plugin.py
++++ b/ipatests/test_xmlrpc/test_group_plugin.py
+@@ -25,6 +25,7 @@ Test the `ipaserver/plugins/group.py` module.
+ import pytest
+ 
+ from ipalib import errors
++from ipalib.constants import ERRMSG_GROUPUSER_NAME
+ from ipatests.test_xmlrpc import objectclasses
+ from ipatests.test_xmlrpc.xmlrpc_test import (
+     fuzzy_digits, fuzzy_uuid, fuzzy_set_ci,
+@@ -169,7 +170,7 @@ class TestGroup(XMLRPC_test):
+         )
+         with raises_exact(errors.ValidationError(
+                 name='group_name',
+-                error=u'may only include letters, numbers, _, -, . and $')):
++                error=ERRMSG_GROUPUSER_NAME.format('group'))):
+             command()
+ 
+     def test_create_with_name_starting_with_numeric(self):
+@@ -188,7 +189,7 @@ class TestGroup(XMLRPC_test):
+         )
+         with raises_exact(errors.ValidationError(
+             name='group_name',
+-            error=u'may only include letters, numbers, _, -, . and $',
++            error=ERRMSG_GROUPUSER_NAME.format('group'),
+         )):
+             testgroup.create()
+ 
+diff --git a/ipatests/test_xmlrpc/test_stageuser_plugin.py b/ipatests/test_xmlrpc/test_stageuser_plugin.py
+index fd146876c..bd877aa94 100644
+--- a/ipatests/test_xmlrpc/test_stageuser_plugin.py
++++ b/ipatests/test_xmlrpc/test_stageuser_plugin.py
+@@ -12,6 +12,7 @@ import six
+ 
+ from collections import OrderedDict
+ from ipalib import api, errors
++from ipalib.constants import ERRMSG_GROUPUSER_NAME
+ from ipaplatform.constants import constants as platformconstants
+ 
+ from ipatests.test_xmlrpc.xmlrpc_test import XMLRPC_test, raises_exact
+@@ -357,7 +358,7 @@ class TestCreateInvalidAttributes(XMLRPC_test):
+         command = invalid.make_create_command()
+         with raises_exact(errors.ValidationError(
+             name='login',
+-                error=u"may only include letters, numbers, _, -, . and $")):
++                error=ERRMSG_GROUPUSER_NAME.format('user'))):
+             command()
+ 
+     def test_create_long_uid(self):
+diff --git a/ipatests/test_xmlrpc/test_user_plugin.py b/ipatests/test_xmlrpc/test_user_plugin.py
+index c156a8793..eadfe6a65 100644
+--- a/ipatests/test_xmlrpc/test_user_plugin.py
++++ b/ipatests/test_xmlrpc/test_user_plugin.py
+@@ -31,6 +31,7 @@ import ldap
+ import re
+ 
+ from ipalib import api, errors
++from ipalib.constants import ERRMSG_GROUPUSER_NAME
+ from ipaplatform.constants import constants as platformconstants
+ from ipapython import ipautil
+ from ipatests.test_xmlrpc import objectclasses
+@@ -502,7 +503,7 @@ class TestUpdate(XMLRPC_test):
+         )
+         with raises_exact(errors.ValidationError(
+                 name='rename',
+-                error=u'may only include letters, numbers, _, -, . and $')):
++                error=ERRMSG_GROUPUSER_NAME.format('user'))):
+             command()
+ 
+     def test_add_radius_username(self, user):
+@@ -556,7 +557,7 @@ class TestCreate(XMLRPC_test):
+         command = testuser.make_create_command()
+         with raises_exact(errors.ValidationError(
+                 name=u'login',
+-                error=u'may only include letters, numbers, _, -, . and $')):
++                error=ERRMSG_GROUPUSER_NAME.format('user'))):
+             command()
+ 
+     def test_create_with_too_long_login(self):
+@@ -730,7 +731,7 @@ class TestCreate(XMLRPC_test):
+         )
+         with raises_exact(errors.ValidationError(
+                 name=u'login',
+-                error=u'may only include letters, numbers, _, -, . and $',
++                error=ERRMSG_GROUPUSER_NAME.format('user'),
+         )):
+             testuser.create()
+ 
+-- 
+2.40.1
+

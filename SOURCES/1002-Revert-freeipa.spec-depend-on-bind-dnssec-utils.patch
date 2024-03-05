@@ -15,7 +15,7 @@ diff --git a/freeipa.spec.in b/freeipa.spec.in
 index 8f5c370e5..e20edb7bc 100755
 --- a/freeipa.spec.in
 +++ b/freeipa.spec.in
-@@ -585,11 +585,9 @@ Requires: %{name}-server = %{version}-%{release}
+@@ -576,11 +576,9 @@ Requires: %{name}-server = %{version}-%{release}
  Requires: bind-dyndb-ldap >= 11.2-2
  Requires: bind >= %{bind_version}
  Requires: bind-utils >= %{bind_version}
@@ -32,16 +32,15 @@ diff --git a/ipaplatform/base/paths.py b/ipaplatform/base/paths.py
 index 7d21367ec..42a47f1df 100644
 --- a/ipaplatform/base/paths.py
 +++ b/ipaplatform/base/paths.py
-@@ -258,8 +258,7 @@ class BasePathNamespace:
+@@ -259,7 +259,6 @@ class BasePathNamespace:
      IPA_PKI_RETRIEVE_KEY = "/usr/libexec/ipa/ipa-pki-retrieve-key"
      IPA_HTTPD_PASSWD_READER = "/usr/libexec/ipa/ipa-httpd-pwdreader"
      IPA_PKI_WAIT_RUNNING = "/usr/libexec/ipa/ipa-pki-wait-running"
 -    DNSSEC_KEYFROMLABEL = "/usr/sbin/dnssec-keyfromlabel"
--    DNSSEC_KEYFROMLABEL_9_17 = "/usr/bin/dnssec-keyfromlabel"
 +    DNSSEC_KEYFROMLABEL = "/usr/sbin/dnssec-keyfromlabel-pkcs11"
+-    DNSSEC_KEYFROMLABEL_9_17 = "/usr/bin/dnssec-keyfromlabel"
      GETSEBOOL = "/usr/sbin/getsebool"
      GROUPADD = "/usr/sbin/groupadd"
-     USERMOD = "/usr/sbin/usermod"
 diff --git a/ipaplatform/fedora/paths.py b/ipaplatform/fedora/paths.py
 index 4e993c063..92a948966 100644
 --- a/ipaplatform/fedora/paths.py

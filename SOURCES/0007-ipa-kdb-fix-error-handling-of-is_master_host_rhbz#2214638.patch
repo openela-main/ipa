@@ -1,7 +1,8 @@
-From 50d0aa3fe3c730acf6f3ce502509be3b9a712c30 Mon Sep 17 00:00:00 2001
+From b5793c854035a122ed4c66f917cc427e5024e46a Mon Sep 17 00:00:00 2001
 From: Julien Rische <jrische@redhat.com>
-Date: Mon, 31 Jul 2023 11:26:43 +0200
-Subject: [PATCH] ipa-kdb: fix error handling of is_master_host()
+Date: Aug 02 2023 11:52:30 +0000
+Subject: ipa-kdb: fix error handling of is_master_host()
+
 
 Adding proper error handling to the is_master_host() function to allow
 it to make the difference between the absence of a master host object
@@ -12,13 +13,11 @@ Fixes: https://pagure.io/freeipa/issue/9422
 
 Signed-off-by: Julien Rische <jrische@redhat.com>
 Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
-(cherry picked from commit b5793c854035a122ed4c66f917cc427e5024e46a)
+
 ---
- daemons/ipa-kdb/ipa_kdb_mspac.c | 41 +++++++++++++++++++--------------
- 1 file changed, 24 insertions(+), 17 deletions(-)
 
 diff --git a/daemons/ipa-kdb/ipa_kdb_mspac.c b/daemons/ipa-kdb/ipa_kdb_mspac.c
-index 476d1cb55..bf0aa3048 100644
+index 8da7543..83cb991 100644
 --- a/daemons/ipa-kdb/ipa_kdb_mspac.c
 +++ b/daemons/ipa-kdb/ipa_kdb_mspac.c
 @@ -401,27 +401,29 @@ static krb5_error_code ipadb_add_asserted_identity(struct ipadb_context *ipactx,
@@ -83,6 +82,4 @@ index 476d1cb55..bf0aa3048 100644
          if (is_master) {
              /* Well known RID of domain controllers group */
              if (info3->base.rid == 0) {
--- 
-2.41.0
 

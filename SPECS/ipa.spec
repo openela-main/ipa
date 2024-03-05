@@ -64,7 +64,7 @@
 %if 0%{?rhel}
 %global package_name ipa
 %global alt_name freeipa
-%global krb5_version 1.18.2-24
+%global krb5_version 1.18.2-26
 %global krb5_kdb_version 8.0
 # 0.7.16: https://github.com/drkjam/netaddr/issues/71
 %global python_netaddr_version 0.7.19
@@ -176,7 +176,7 @@
 
 # Work-around fact that RPM SPEC parser does not accept
 # "Version: @VERSION@" in freeipa.spec.in used for Autoconf string replacement
-%define IPA_VERSION 4.9.11
+%define IPA_VERSION 4.9.12
 # Release candidate version -- uncomment with one percent for RC versions
 #%%global rc_version %%nil
 %define AT_SIGN @
@@ -189,7 +189,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        7%{?rc_version:.%rc_version}%{?dist}
+Release:        11%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPLv3+
@@ -209,15 +209,22 @@ Source1:        https://releases.pagure.org/freeipa/freeipa-%{version}%{?rc_vers
 # RHEL spec file only: START
 %if %{NON_DEVELOPER_BUILD}
 %if 0%{?rhel} >= 8
-Patch0001:      0001-updates-fix-memberManager-ACI-to-allow-managers-from-a-specified-group_rhbz#2056009.patch
-Patch0002:      0002-trust-add-handle-missing-msSFU30MaxGidNumber_rhbz#2162355.patch
-Patch0003:      0003-Backport-latest-test-fixes-python3-ipatests_rhbz#2166929.patch
-Patch0004:      0004-server-install-remove-error-log-about-missing-bkup-file_rhbz#2160389.patch
-Patch0005:      0005-automember-rebuild-add-a-notice-about-high-CPU-usage_rhbz#2018198.patch
-Patch0006:      0006-ipa-kdb-PAC-consistency-checker-needs-to-handle-child-domains-as-well_rhbz#2166324.patch
-Patch0007:      0007-Wipe-the-ipa-ca-DNS-record-when-updating-system-records_rhbz#2158775.patch
-Patch0008:      0008-kdb-Use-krb5_pac_full_sign_compat-when-available.patch
-Patch0009:      0009-ipa-kdb-fix-error-handling-of-is_master_host.patch
+Patch0001:      0001-user-or-group-name-explain-the-supported-format_rhbz#2150217.patch
+Patch0002:      0002-Use-the-python-cryptography-parser-directly-in-cert-find_rhbz#2164349.patch
+Patch0003:      0003-Upgrade-add-PKI-drop-in-file-if-missing_rhbz#2215336.patch
+Patch0004:      0004-Upgrade-fix-replica-agreement_rhbz#2216551.patch
+Patch0005:      0005-OTP-fix-data-type-to-avoid-endianness-issue_rhbz#2218293.patch
+Patch0006:      0006-Backport-test-updates-8-9-release_rhbz#2218847.patch
+Patch0007:      0007-ipa-kdb-fix-error-handling-of-is_master_host_rhbz#2214638.patch
+Patch0008:      0008-ipatests-enable-firewall-rule-for-http-service-on-acme-client_rhbz#2230256.patch
+Patch0009:      0009-User-plugin-improve-error-related-to-non-existing-idp_rhbz#2224572.patch
+Patch0010:      0010-Prevent-admin-user-from-being-deleted_rhbz#1921181.patch
+Patch0011:      0011-Fix-memory-leak-in-the-OTP-last-token-plugin_rhbz#2227783.patch
+Patch0012:      0012-ipatests-fix-test_topology_rhbz#2232351.patch
+Patch0013:      0013-Installer-activate-nss-and-pam-services-in-sssd.conf_rhbz#2216532.patch
+Patch0014:      0014-ipa-kdb-Make-AD-SIGNEDPATH-optional-with-krb5-DAL-8.patch
+Patch0015:      0015-CVE-2023-5455.patch
+Patch0016:      0016-ipa-kdb-Detect-and-block-Bronze-Bit-attacks.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
 Patch1003:      1003-webui-IdP-Remove-arrow-notation-due-to-uglify-js-lim.patch
@@ -231,8 +238,8 @@ Patch1004:      1004-Revert-DNSResolver-Fix-use-of-nameservers-with-ports.patch
 %endif
 # RHEL spec file only: END
 
-## For the timestamp trick in patch application
-#BuildRequires:  diffstat
+# For the timestamp trick in patch application
+BuildRequires:  diffstat
 
 BuildRequires:  openldap-devel
 # For KDB DAL version, make explicit dependency so that increase of version
@@ -675,6 +682,7 @@ Requires: jansson
 %endif
 Requires: sssd-ipa >= %{sssd_version}
 Requires: sssd-idp >= %{sssd_version}
+Requires: sssd-krb5 >= %{sssd_version}
 Requires: certmonger >= %{certmonger_version}
 Requires: nss-tools >= %{nss_version}
 Requires: bind-utils
@@ -954,8 +962,22 @@ Custom SELinux policy module for FreeIPA
 
 
 %prep
+# Update timestamps on the files touched by a patch, to avoid non-equal
+# .pyc/.pyo files across the multilib peers within a build, where "Level"
+# is the patch prefix option (e.g. -p1)
+# Taken from specfile for sssd and python-simplejson
+UpdateTimestamps() {
+  Level=$1
+  PatchFile=$2
 
-%autosetup -n freeipa-%{version}%{?rc_version} -N -p1
+  # Locate the affected files:
+  for f in $(diffstat $Level -l $PatchFile); do
+    # Set the files to have the same timestamp as that of the patch:
+    touch -c -r $PatchFile $f
+  done
+}
+
+%setup -n freeipa-%{version}%{?rc_version} -q
 
 # To allow proper application patches to the stripped po files, strip originals
 pushd po
@@ -965,8 +987,10 @@ for i in *.po ; do
 done
 popd
 
-%autopatch -p1
-
+for p in %patches ; do
+    %__patch -p1 -i $p
+    UpdateTimestamps -p1 $p
+done
 
 %build
 # PATH is workaround for https://bugzilla.redhat.com/show_bug.cgi?id=1005235
@@ -1219,10 +1243,8 @@ if [ $1 -gt 1 ] ; then
     test -f '/var/lib/ipa-client/sysrestore/sysrestore.index' && restore=$(wc -l '/var/lib/ipa-client/sysrestore/sysrestore.index' | awk '{print $1}')
 
     if [ -f '/etc/sssd/sssd.conf' -a $restore -ge 2 ]; then
-        if ! grep -E -q '/var/lib/sss/pubconf/krb5.include.d/' /etc/krb5.conf  2>/dev/null ; then
-            echo "includedir /var/lib/sss/pubconf/krb5.include.d/" > /etc/krb5.conf.ipanew
-            cat /etc/krb5.conf >> /etc/krb5.conf.ipanew
-            mv -Z /etc/krb5.conf.ipanew /etc/krb5.conf
+        if grep -E -q '/var/lib/sss/pubconf/krb5.include.d/' /etc/krb5.conf  2>/dev/null ; then
+            sed -i '\;includedir /var/lib/sss/pubconf/krb5.include.d;d' /etc/krb5.conf
         fi
     fi
 
@@ -1717,29 +1739,73 @@ fi
 %endif
 
 %changelog
-* Wed Aug 09 2023 Julien Rische <jrische@redhat.com> - 4.9.11-7
-- Interrupt request processing in ipadb_fill_info3() if connection to 389ds is lost
-  Resolves: rhbz#2230073
+* Fri Dec 01 2023 Julien Rische <jrische@redhat.com> - 4.9.12-11
+- Generate Kerberos PAC as soon as server installation completed
+  Resolves: RHEL-16532
 
-* Thu Jun 01 2023 Julien Rische <jrische@redhat.com> - 4.9.11-6
-- Add support for PAC extended KDC signature
-  Resolves: rhbz#2211387
+* Thu Nov 16 2023 Julien Rische <jrische@redhat.com> - 4.9.12-10
+- ipa-kdb: Detect and block Bronze-Bit attacks
+  Resolves: RHEL-16532
+- Fix for CVE-2023-5455
+  Resolves: RHEL-12577
 
-* Fri Feb 10 2023 Rafael Jeffman <rjeffman@redhat.com> - 4.9.11-5
-- Wipe the ipa-ca DNS record when updating system records
-  Resolves: RHBZ#2158775
+* Wed Oct 04 2023 Julien Rische <jrische@redhat.com> - 4.9.12-9
+- ipa-kdb: Make AD-SIGNEDPATH optional with krb5 DAL 8 and older
+  Resolves: RHEL-12198
 
-* Thu Feb 09 2023 Rafael Jeffman <rjeffman@redhat.com> - 4.9.11-4
-- trust-add: handle missinf msSFU30MaxGidNumber
-  Resolves: RHBZ#2162355
-- Backport latest test fixes for python3-ipatests
-  Resolves: RHBZ#2166929
-- server install: remove error log about missing bkup file
-  Resolves: RHBZ#2160389
-- automember-rebuild: add a notice about high CPU usage
-  Resolves: RHBZ#2018198
-- ipa-kdb: PAC consistency checker needs to handle child domains as well
-  Resolves: RHBZ#2166324
+* Thu Aug 31 2023 Rafael Jeffman <rjeffman@redhat.com> - 4.9.12-8
+- Require krb5 release 1.18.2-25 or later
+  Resolves: RHBZ#2234711
+
+* Wed Aug 16 2023 Rafael Jeffman <rjeffman@redhat.com> - 4.9.12-7
+- ipatests: fix test_topology
+  Resolves: RHBZ#2232351
+- Installer: activate nss and pam services in sssd.conf
+  Resolves: RHBZ#2216532
+
+* Thu Aug 10 2023 Rafael Jeffman <rjeffman@redhat.com> - 4.9.12-6
+- ipa-kdb: fix error handling of is_master_host()
+  Resolves: RHBZ#2214638
+- ipatests: enable firewall rule for http service on acme client
+  Resolves: RHBZ#2230256
+- User plugin: improve error related to non existing idp
+  Resolves: RHBZ#2224572
+- Prevent admin user from being deleted
+  Resolves: RHBZ#1821181
+- Fix memory leak in the OTP last token plugin
+  Resolves: RHBZ#2227783
+
+* Mon Jul 17 2023 Rafael Jeffman <rjeffman@redhat.com> - 4.9.12-5
+- Upgrade: fix replica agreement, fix backported patch
+  Related: RHBZ#2216551
+
+* Fri Jun 30 2023 Rafael Jeffman <rjeffman@redhat.com> - 4.9.12-4
+- kdb: Use-krb5_pac_full_sign_compat() when available
+  Resolves: RHBZ#2176406
+- OTP: fix-data-type-to-avoid-endianness-issue
+  Resolves: RHBZ#2218293
+- Upgrade: fix replica agreement
+  Resolves: RHBZ#2216551
+- Upgrade: add PKI drop-in file if missing
+  Resolves: RHBZ#2215336
+- Use the python-cryptography parser directly in cert-find
+  Resolves: RHBZ#2164349
+- Backport test updates
+  Resolves: RHBZ#221884
+
+* Wed Jun 21 2023 Julien Rische <jrische@redhat.com> - 4.9.12-3
+- Rely on sssd-krb5 to include SSSD-generated krb5 configuration
+  Resolves: RHBZ#2214563
+
+* Thu May 25 2023 Rafael Jeffman <rjeffman@redhat.com> - 4.9.12-2
+- Use the OpenSSL certificate parser in cert-find
+  Resolves: RHBZ#2209947 
+
+* Wed May 24 2023 Rafael Jeffman <rjeffman@redhat.com> - 4.9.12-1
+- Rebase ipa to 4.9.12
+  Resolves: RHBZ#2196425
+- user or group name: explain the supported format
+  Resolves: RHBZ#2150217
 
 * Mon Dec 19 2022 Rafael Jeffman <rjeffman@redhat.com> - 4.9.11-3
 - Revert DNSResolver Fix use of nameservers with ports.
