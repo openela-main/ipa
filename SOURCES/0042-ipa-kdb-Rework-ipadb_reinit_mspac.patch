@@ -1,0 +1,707 @@
+From 7b7f5c3f806e53ff883865c7b7f4d17453d63ce6 Mon Sep 17 00:00:00 2001
+From: Julien Rische <jrische@redhat.com>
+Date: Wed, 14 Feb 2024 17:47:00 +0100
+Subject: [PATCH] ipa-kdb: Rework ipadb_reinit_mspac()
+
+Modify ipadb_reinit_mspac() to allocate and initialize ipactx->mspac
+only if all its attributes can be set. If not, ipactx->mspac is set to
+NULL. This makes easier to determine if the KDC is able to generate PACs
+or not.
+
+Also ipadb_reinit_mspac() is now able to return a status message
+explaining why initialization of the PAC generator failed. This message
+is printed in KDC logs.
+
+Fixes: https://pagure.io/freeipa/issue/9535
+
+Signed-off-by: Julien Rische <jrische@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ daemons/ipa-kdb/ipa_kdb.c               |  14 +-
+ daemons/ipa-kdb/ipa_kdb.h               |   4 +-
+ daemons/ipa-kdb/ipa_kdb_mspac.c         | 342 +++++++++++++-----------
+ daemons/ipa-kdb/ipa_kdb_mspac_private.h |   2 +-
+ daemons/ipa-kdb/ipa_kdb_mspac_v6.c      |   5 +-
+ daemons/ipa-kdb/ipa_kdb_mspac_v9.c      |  16 +-
+ daemons/ipa-kdb/ipa_kdb_principals.c    |   6 +-
+ 7 files changed, 219 insertions(+), 170 deletions(-)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb.c b/daemons/ipa-kdb/ipa_kdb.c
+index a60f16c7496dc98d0c262a497d0e3df1e2d2c68a..f17cb114cd326cc0475ebe6e244bda166601fdba 100644
+--- a/daemons/ipa-kdb/ipa_kdb.c
++++ b/daemons/ipa-kdb/ipa_kdb.c
+@@ -448,6 +448,7 @@ int ipadb_get_connection(struct ipadb_context *ipactx)
+     struct timeval tv = { 5, 0 };
+     LDAPMessage *res = NULL;
+     LDAPMessage *first;
++    const char *stmsg;
+     int ret;
+     int v3;
+ 
+@@ -527,16 +528,9 @@ int ipadb_get_connection(struct ipadb_context *ipactx)
+     }
+ 
+     /* get adtrust options using default refresh interval */
+-    ret = ipadb_reinit_mspac(ipactx, false);
+-    if (ret && ret != ENOENT) {
+-        /* TODO: log that there is an issue with adtrust settings */
+-        if (ipactx->lcontext == NULL) {
+-            /* for some reason ldap connection was reset in ipadb_reinit_mspac
+-             * and is no longer established => failure of ipadb_get_connection
+-             */
+-            goto done;
+-        }
+-    }
++    ret = ipadb_reinit_mspac(ipactx, false, &stmsg);
++    if (ret && stmsg)
++        krb5_klog_syslog(LOG_WARNING, "MS-PAC generator: %s", stmsg);
+ 
+     ret = 0;
+ 
+diff --git a/daemons/ipa-kdb/ipa_kdb.h b/daemons/ipa-kdb/ipa_kdb.h
+index 7b7c03b355d2fd5a05047a0b85c5a0ff2111041e..3647ecd49d9de4fe42b1f45190ba72ffc661b7bd 100644
+--- a/daemons/ipa-kdb/ipa_kdb.h
++++ b/daemons/ipa-kdb/ipa_kdb.h
+@@ -369,7 +369,9 @@ krb5_error_code ipadb_v9_issue_pac(krb5_context context, unsigned int flags,
+                                    krb5_data ***auth_indicators);
+ #endif
+ 
+-krb5_error_code ipadb_reinit_mspac(struct ipadb_context *ipactx, bool force_reinit);
++krb5_error_code ipadb_reinit_mspac(struct ipadb_context *ipactx,
++                                   bool force_reinit,
++                                   const char **stmsg);
+ 
+ void ipadb_mspac_struct_free(struct ipadb_mspac **mspac);
+ krb5_error_code ipadb_check_transited_realms(krb5_context kcontext,
+diff --git a/daemons/ipa-kdb/ipa_kdb_mspac.c b/daemons/ipa-kdb/ipa_kdb_mspac.c
+index 16374a59468975ebaea5ce18ac6445ec577e5e6a..b0eb3324bf4b7d8eeb7b332c39de4023784f6337 100644
+--- a/daemons/ipa-kdb/ipa_kdb_mspac.c
++++ b/daemons/ipa-kdb/ipa_kdb_mspac.c
+@@ -793,16 +793,16 @@ static krb5_error_code ipadb_fill_info3(struct ipadb_context *ipactx,
+         return ret;
+     }
+ 
++    if (!ipactx->mspac) {
++        /* can't give a PAC without server NetBIOS name or primary group RID */
++        return ENOENT;
++    }
++
+     if (info3->base.primary_gid == 0) {
+         if (is_host || is_service) {
+             info3->base.primary_gid = 515;  /* Well known RID for domain computers group */
+         } else {
+-            if (ipactx->mspac->fallback_rid) {
+-                info3->base.primary_gid = ipactx->mspac->fallback_rid;
+-            } else {
+-                /* can't give a pack without a primary group rid */
+-                return ENOENT;
+-            }
++            info3->base.primary_gid = ipactx->mspac->fallback_rid;
+         }
+     }
+ 
+@@ -812,26 +812,16 @@ static krb5_error_code ipadb_fill_info3(struct ipadb_context *ipactx,
+     /* always zero out, not used for Krb, only NTLM */
+     memset(&info3->base.key, '\0', sizeof(info3->base.key));
+ 
+-    if (ipactx->mspac->flat_server_name) {
+-        info3->base.logon_server.string =
+-                    talloc_strdup(memctx, ipactx->mspac->flat_server_name);
+-        if (!info3->base.logon_server.string) {
+-            return ENOMEM;
+-        }
+-    } else {
+-        /* can't give a pack without Server NetBIOS Name :-| */
+-        return ENOENT;
++    info3->base.logon_server.string =
++        talloc_strdup(memctx, ipactx->mspac->flat_server_name);
++    if (!info3->base.logon_server.string) {
++        return ENOMEM;
+     }
+ 
+-    if (ipactx->mspac->flat_domain_name) {
+-        info3->base.logon_domain.string =
+-                    talloc_strdup(memctx, ipactx->mspac->flat_domain_name);
+-        if (!info3->base.logon_domain.string) {
+-            return ENOMEM;
+-        }
+-    } else {
+-        /* can't give a pack without Domain NetBIOS Name :-| */
+-        return ENOENT;
++    info3->base.logon_domain.string =
++        talloc_strdup(memctx, ipactx->mspac->flat_domain_name);
++    if (!info3->base.logon_domain.string) {
++        return ENOMEM;
+     }
+ 
+     if (is_host || is_service) {
+@@ -1044,6 +1034,11 @@ krb5_error_code ipadb_get_pac(krb5_context kcontext,
+         return KRB5_KDB_DBNOTINITED;
+     }
+ 
++    /* Check if PAC generator is initialized */
++    if (!ipactx->mspac) {
++        return ENOENT;
++    }
++
+     ied = (struct ipadb_e_data *)client->e_data;
+     if (ied->magic != IPA_E_DATA_MAGIC) {
+         return EINVAL;
+@@ -1626,14 +1621,14 @@ static struct ipadb_adtrusts *get_domain_from_realm(krb5_context context,
+ {
+     struct ipadb_context *ipactx;
+     struct ipadb_adtrusts *domain;
+-    int i;
++    size_t i;
+ 
+     ipactx = ipadb_get_context(context);
+     if (!ipactx) {
+         return NULL;
+     }
+ 
+-    if (ipactx->mspac == NULL) {
++    if (!ipactx->mspac) {
+         return NULL;
+     }
+ 
+@@ -1655,6 +1650,7 @@ static struct ipadb_adtrusts *get_domain_from_realm_update(krb5_context context,
+ {
+     struct ipadb_context *ipactx;
+     struct ipadb_adtrusts *domain;
++    const char *stmsg = NULL;
+     krb5_error_code kerr;
+ 
+     ipactx = ipadb_get_context(context);
+@@ -1663,8 +1659,10 @@ static struct ipadb_adtrusts *get_domain_from_realm_update(krb5_context context,
+     }
+ 
+     /* re-init MS-PAC info using default update interval */
+-    kerr = ipadb_reinit_mspac(ipactx, false);
++    kerr = ipadb_reinit_mspac(ipactx, false, &stmsg);
+     if (kerr != 0) {
++        if (stmsg)
++            krb5_klog_syslog(LOG_WARNING, "MS-PAC generator: %s", stmsg);
+         return NULL;
+     }
+     domain = get_domain_from_realm(context, realm);
+@@ -1717,6 +1715,7 @@ static krb5_error_code check_logon_info_consistent(krb5_context context,
+     struct ipadb_e_data *ied = NULL;
+     int flags = 0;
+     struct dom_sid client_sid;
++    const char *stmsg = NULL;
+ #ifdef KRB5_KDB_FLAG_ALIAS_OK
+     flags = KRB5_KDB_FLAG_ALIAS_OK;
+ #endif
+@@ -1730,10 +1729,14 @@ static krb5_error_code check_logon_info_consistent(krb5_context context,
+      * check that our own view on the PAC details is up to date */
+     if (ipactx->mspac->domsid.num_auths == 0) {
+         /* Force re-init of KDB's view on our domain */
+-        kerr = ipadb_reinit_mspac(ipactx, true);
++        kerr = ipadb_reinit_mspac(ipactx, true, &stmsg);
+         if (kerr != 0) {
+-            krb5_klog_syslog(LOG_ERR,
+-                             "PAC issue: unable to update realm's view on PAC info");
++            if (stmsg) {
++                krb5_klog_syslog(LOG_ERR, "MS-PAC generator: %s", stmsg);
++            } else {
++                krb5_klog_syslog(LOG_ERR, "PAC issue: unable to update " \
++                                 "realm's view on PAC info");
++            }
+             return KRB5KDC_ERR_POLICY;
+         }
+     }
+@@ -1746,7 +1749,7 @@ static krb5_error_code check_logon_info_consistent(krb5_context context,
+         if (is_s4u && (ipactx->mspac->trusts != NULL)) {
+             /* Iterate through list of trusts and check if this SID belongs to
+              * one of the domains we trust */
+-            for(int i = 0 ; i < ipactx->mspac->num_trusts ; i++) {
++            for(size_t i = 0 ; i < ipactx->mspac->num_trusts ; i++) {
+                 result = dom_sid_check(&ipactx->mspac->trusts[i].domsid,
+                                        info->info->info3.base.domain_sid, true);
+                 if (result) {
+@@ -1858,11 +1861,11 @@ krb5_error_code filter_logon_info(krb5_context context,
+         struct ipadb_mspac *mspac_ctx = ipactx->mspac;
+         result = FALSE;
+         /* Didn't match but perhaps the original PAC was issued by a child domain's DC? */
+-        for (k = 0; k < mspac_ctx->num_trusts; k++) {
+-            result = dom_sid_check(&mspac_ctx->trusts[k].domsid,
++        for (size_t m = 0; m < mspac_ctx->num_trusts; m++) {
++            result = dom_sid_check(&mspac_ctx->trusts[m].domsid,
+                              info->info->info3.base.domain_sid, true);
+             if (result) {
+-                domain = &mspac_ctx->trusts[k];
++                domain = &mspac_ctx->trusts[m];
+                 break;
+             }
+         }
+@@ -2091,10 +2094,10 @@ static krb5_error_code ipadb_check_logon_info(krb5_context context,
+                 return KRB5_KDB_DBNOTINITED;
+             }
+             /* In S4U case we might be dealing with the PAC issued by the trusted domain */
+-            if ((ipactx->mspac->trusts != NULL)) {
++            if (ipactx->mspac->trusts) {
+                 /* Iterate through list of trusts and check if this SID belongs to
+                 * one of the domains we trust */
+-                for(int i = 0 ; i < ipactx->mspac->num_trusts ; i++) {
++                for(size_t i = 0 ; i < ipactx->mspac->num_trusts ; i++) {
+                     result = dom_sid_check(&ipactx->mspac->trusts[i].domsid,
+                                            &client_sid, false);
+                     if (result) {
+@@ -2634,7 +2637,7 @@ static char *get_server_netbios_name(struct ipadb_context *ipactx)
+ 
+ void ipadb_mspac_struct_free(struct ipadb_mspac **mspac)
+ {
+-    int i, j;
++    size_t i, j;
+ 
+     if (!*mspac) return;
+ 
+@@ -2789,7 +2792,8 @@ ipadb_mspac_get_trusted_domains(struct ipadb_context *ipactx)
+     LDAPDN dn = NULL;
+     char **sid_blocklist_incoming = NULL;
+     char **sid_blocklist_outgoing = NULL;
+-    int ret, n, i;
++    size_t i, n;
++    int ret;
+ 
+     ret = asprintf(&base, "cn=ad,cn=trusts,%s", ipactx->base);
+     if (ret == -1) {
+@@ -2874,7 +2878,7 @@ ipadb_mspac_get_trusted_domains(struct ipadb_context *ipactx)
+ 
+         t[n].upn_suffixes_len = NULL;
+         if (t[n].upn_suffixes != NULL) {
+-            int len = 0;
++            size_t len = 0;
+ 
+             for (; t[n].upn_suffixes[len] != NULL; len++);
+ 
+@@ -2989,108 +2993,114 @@ done:
+     return ret;
+ }
+ 
+-krb5_error_code ipadb_reinit_mspac(struct ipadb_context *ipactx, bool force_reinit)
++krb5_error_code
++ipadb_reinit_mspac(struct ipadb_context *ipactx, bool force_reinit,
++                   const char **stmsg)
+ {
+     char *dom_attrs[] = { "ipaNTFlatName",
+                           "ipaNTFallbackPrimaryGroup",
+                           "ipaNTSecurityIdentifier",
+                           NULL };
+     char *grp_attrs[] = { "ipaNTSecurityIdentifier", NULL };
+-    krb5_error_code kerr;
+     LDAPMessage *result = NULL;
+     LDAPMessage *lentry;
+-    struct dom_sid gsid;
+-    char *resstr;
+-    int ret;
++    struct dom_sid gsid, domsid;
++    char *resstr = NULL;
++    char *flat_domain_name = NULL;
++    char *flat_server_name = NULL;
++    char *fallback_group = NULL;
++    uint32_t fallback_rid;
+     time_t now;
++    const char *in_stmsg = NULL;
++    int err;
++    krb5_error_code trust_kerr = 0;
++
+ 
+     /* Do not update the mspac struct more than once a minute. This would
+      * avoid heavy load on the directory server if there are lots of requests
+      * from domains which we do not trust. */
+     now = time(NULL);
+ 
+-    if (ipactx->mspac != NULL &&
+-        (force_reinit == false) &&
+-        (now > ipactx->mspac->last_update) &&
+-        (now - ipactx->mspac->last_update) < 60) {
+-        return 0;
+-    }
+-
+-    if (ipactx->mspac && ipactx->mspac->num_trusts == 0) {
+-        /* Check if there is any trust configured. If not, just return
+-         * and do not re-initialize the MS-PAC structure. */
+-        kerr = ipadb_mspac_check_trusted_domains(ipactx);
+-        if (kerr == KRB5_KDB_NOENTRY) {
+-            kerr = 0;
+-            goto done;
+-        } else if (kerr != 0) {
+-            goto done;
++    if (ipactx->mspac) {
++        if (!force_reinit &&
++            (now > ipactx->mspac->last_update) &&
++            (now - ipactx->mspac->last_update) < 60) {
++            /* SKIP */
++            err = 0;
++            goto end;
++        }
++
++        if (ipactx->mspac->num_trusts == 0) {
++            /* Check if there is any trust configured. If not, just return
++             * and do not re-initialize the MS-PAC structure. */
++            err = ipadb_mspac_check_trusted_domains(ipactx);
++            if (err) {
++                if (err == KRB5_KDB_NOENTRY) {
++                    /* SKIP */
++                    err = 0;
++                } else {
++                    in_stmsg = "Failed to fetch trusted domains information";
++                }
++                goto end;
++            }
+         }
+     }
+ 
+-    /* clean up in case we had old values around */
+-    ipadb_mspac_struct_free(&ipactx->mspac);
+-
+-    ipactx->mspac = calloc(1, sizeof(struct ipadb_mspac));
+-    if (!ipactx->mspac) {
+-        kerr = ENOMEM;
+-        goto done;
+-    }
+-
+-    ipactx->mspac->last_update = now;
+-
+-    kerr = ipadb_simple_search(ipactx, ipactx->base, LDAP_SCOPE_SUBTREE,
+-                               "(objectclass=ipaNTDomainAttrs)", dom_attrs,
+-                                &result);
+-    if (kerr == KRB5_KDB_NOENTRY) {
+-        return ENOENT;
+-    } else if (kerr != 0) {
+-        return EIO;
++    err = ipadb_simple_search(ipactx, ipactx->base, LDAP_SCOPE_SUBTREE,
++                              "(objectclass=ipaNTDomainAttrs)", dom_attrs,
++                              &result);
++    if (err == KRB5_KDB_NOENTRY) {
++        err = ENOENT;
++        in_stmsg = "Local domain NT attributes not configured";
++        goto end;
++    } else if (err) {
++        err = EIO;
++        in_stmsg = "Failed to fetch local domain NT attributes";
++        goto end;
+     }
+ 
+     lentry = ldap_first_entry(ipactx->lcontext, result);
+     if (!lentry) {
+-        kerr = ENOENT;
+-        goto done;
++        err = ENOENT;
++        in_stmsg = "Local domain NT attributes not configured";
++        goto end;
+     }
+ 
+-    ret = ipadb_ldap_attr_to_str(ipactx->lcontext, lentry,
+-                                 "ipaNTFlatName",
+-                                 &ipactx->mspac->flat_domain_name);
+-    if (ret) {
+-        kerr = ret;
+-        goto done;
++    err = ipadb_ldap_attr_to_str(ipactx->lcontext, lentry, "ipaNTFlatName",
++                                 &flat_domain_name);
++    if (err) {
++        in_stmsg = "Local domain NT flat name not configured";
++        goto end;
+     }
+ 
+-    ret = ipadb_ldap_attr_to_str(ipactx->lcontext, lentry,
+-                                 "ipaNTSecurityIdentifier",
+-                                 &resstr);
+-    if (ret) {
+-        kerr = ret;
+-        goto done;
++    err = ipadb_ldap_attr_to_str(ipactx->lcontext, lentry,
++                                 "ipaNTSecurityIdentifier", &resstr);
++    if (err) {
++        in_stmsg = "Local domain SID not configured";
++        goto end;
+     }
+ 
+-    ret = ipadb_string_to_sid(resstr, &ipactx->mspac->domsid);
+-    if (ret) {
+-        kerr = ret;
+-        free(resstr);
+-        goto done;
++    err = ipadb_string_to_sid(resstr, &domsid);
++    if (err) {
++        in_stmsg = "Malformed local domain SID";
++        goto end;
+     }
++
+     free(resstr);
+ 
+-    free(ipactx->mspac->flat_server_name);
+-    ipactx->mspac->flat_server_name = get_server_netbios_name(ipactx);
+-    if (!ipactx->mspac->flat_server_name) {
+-        kerr = ENOMEM;
+-        goto done;
++    flat_server_name = get_server_netbios_name(ipactx);
++    if (!flat_server_name) {
++        err = ENOMEM;
++        goto end;
+     }
+ 
+-    ret = ipadb_ldap_attr_to_str(ipactx->lcontext, lentry,
+-                                 "ipaNTFallbackPrimaryGroup",
+-                                 &ipactx->mspac->fallback_group);
+-    if (ret && ret != ENOENT) {
+-        kerr = ret;
+-        goto done;
++    err = ipadb_ldap_attr_to_str(ipactx->lcontext, lentry,
++                                 "ipaNTFallbackPrimaryGroup", &fallback_group);
++    if (err) {
++        in_stmsg = (err == ENOENT)
++          ? "Local fallback primary group not configured"
++          : "Failed to fetch local fallback primary group";
++        goto end;
+     }
+ 
+     /* result and lentry not valid any more from here on */
+@@ -3098,53 +3108,81 @@ krb5_error_code ipadb_reinit_mspac(struct ipadb_context *ipactx, bool force_rein
+     result = NULL;
+     lentry = NULL;
+ 
+-    if (ret != ENOENT) {
+-        kerr = ipadb_simple_search(ipactx, ipactx->mspac->fallback_group,
+-                                   LDAP_SCOPE_BASE,
+-                                   "(objectclass=posixGroup)",
+-                                   grp_attrs, &result);
+-        if (kerr && kerr != KRB5_KDB_NOENTRY) {
+-            kerr = ret;
+-            goto done;
+-        }
++    err = ipadb_simple_search(ipactx, fallback_group, LDAP_SCOPE_BASE,
++                              "(objectclass=posixGroup)", grp_attrs, &result);
++    if (err) {
++        in_stmsg = (err == KRB5_KDB_NOENTRY)
++          ? "Local fallback primary group has no POSIX definition"
++          : "Failed to fetch SID of POSIX group mapped as local fallback " \
++            "primary group";
++        goto end;
++    }
+ 
+-        lentry = ldap_first_entry(ipactx->lcontext, result);
+-        if (!lentry) {
+-            kerr = ENOENT;
+-            goto done;
+-        }
++    lentry = ldap_first_entry(ipactx->lcontext, result);
++    if (!lentry) {
++        err = ENOENT;
++        goto end;
++    }
+ 
+-        if (kerr == 0) {
+-            ret = ipadb_ldap_attr_to_str(ipactx->lcontext, lentry,
+-                                         "ipaNTSecurityIdentifier",
+-                                         &resstr);
+-            if (ret && ret != ENOENT) {
+-                kerr = ret;
+-                goto done;
+-            }
+-            if (ret == 0) {
+-                ret = ipadb_string_to_sid(resstr, &gsid);
+-                if (ret) {
+-                    free(resstr);
+-                    kerr = ret;
+-                    goto done;
+-                }
+-                ret = sid_split_rid(&gsid, &ipactx->mspac->fallback_rid);
+-                if (ret) {
+-                    free(resstr);
+-                    kerr = ret;
+-                    goto done;
+-                }
+-                free(resstr);
+-            }
+-        }
++    err = ipadb_ldap_attr_to_str(ipactx->lcontext, lentry,
++                                 "ipaNTSecurityIdentifier", &resstr);
++    if (err) {
++        in_stmsg = (err == ENOENT)
++          ? "The POSIX group set as fallback primary group has no SID " \
++            "configured"
++          : "Failed to fetch SID of POSIX group set as local fallback " \
++            "primary group";
++        goto end;
+     }
+ 
+-    kerr = ipadb_mspac_get_trusted_domains(ipactx);
++    err = ipadb_string_to_sid(resstr, &gsid);
++    if (err) {
++        in_stmsg = "Malformed SID of POSIX group set as local fallback " \
++                   "primary group";
++        goto end;
++    }
+ 
+-done:
++    err = sid_split_rid(&gsid, &fallback_rid);
++    if (err) {
++        in_stmsg = "Malformed SID of POSIX group mapped as local fallback " \
++                   "primary group";
++        goto end;
++    }
++
++    /* clean up in case we had old values around */
++    ipadb_mspac_struct_free(&ipactx->mspac);
++
++    ipactx->mspac = calloc(1, sizeof(struct ipadb_mspac));
++    if (!ipactx->mspac) {
++        err = ENOMEM;
++        goto end;
++    }
++
++    ipactx->mspac->last_update      = now;
++    ipactx->mspac->flat_domain_name = flat_domain_name;
++    ipactx->mspac->flat_server_name = flat_server_name;
++    ipactx->mspac->domsid           = domsid;
++    ipactx->mspac->fallback_group   = fallback_group;
++    ipactx->mspac->fallback_rid     = fallback_rid;
++
++    trust_kerr = ipadb_mspac_get_trusted_domains(ipactx);
++    if (trust_kerr)
++        in_stmsg = "Failed to assemble trusted domains information";
++
++end:
++    if (stmsg)
++        *stmsg = in_stmsg;
++
++    if (resstr) free(resstr);
+     ldap_msgfree(result);
+-    return kerr;
++
++    if (err) {
++        if (flat_domain_name) free(flat_domain_name);
++        if (flat_server_name) free(flat_server_name);
++        if (fallback_group)   free(fallback_group);
++    }
++
++    return err ? (krb5_error_code)err : trust_kerr;
+ }
+ 
+ krb5_error_code ipadb_check_transited_realms(krb5_context kcontext,
+@@ -3154,11 +3192,11 @@ krb5_error_code ipadb_check_transited_realms(krb5_context kcontext,
+ {
+ 	struct ipadb_context *ipactx;
+ 	bool has_transited_contents, has_client_realm, has_server_realm;
+-        int i;
++        size_t i;
+         krb5_error_code ret;
+ 
+         ipactx = ipadb_get_context(kcontext);
+-        if (!ipactx || !ipactx->mspac) {
++        if (!ipactx) {
+             return KRB5_KDB_DBNOTINITED;
+         }
+ 
+@@ -3220,7 +3258,7 @@ krb5_error_code ipadb_is_princ_from_trusted_realm(krb5_context kcontext,
+ 						  char **trusted_realm)
+ {
+ 	struct ipadb_context *ipactx;
+-	int i, j, length;
++	size_t i, j, length;
+ 	const char *name;
+ 	bool result = false;
+ 
+diff --git a/daemons/ipa-kdb/ipa_kdb_mspac_private.h b/daemons/ipa-kdb/ipa_kdb_mspac_private.h
+index 7f0ca7a7966ff159828f81283f8d067476abc594..e650cfa73c558c53b28f75de26d83132e8c4b234 100644
+--- a/daemons/ipa-kdb/ipa_kdb_mspac_private.h
++++ b/daemons/ipa-kdb/ipa_kdb_mspac_private.h
+@@ -31,7 +31,7 @@ struct ipadb_mspac {
+     char *fallback_group;
+     uint32_t fallback_rid;
+ 
+-    int num_trusts;
++    size_t num_trusts;
+     struct ipadb_adtrusts *trusts;
+     time_t last_update;
+ };
+diff --git a/daemons/ipa-kdb/ipa_kdb_mspac_v6.c b/daemons/ipa-kdb/ipa_kdb_mspac_v6.c
+index faf47ad1b9b979a9acb8020eff5d663124b250ac..96cd50e4c8afe141880dd7e2e9472623cef667d8 100644
+--- a/daemons/ipa-kdb/ipa_kdb_mspac_v6.c
++++ b/daemons/ipa-kdb/ipa_kdb_mspac_v6.c
+@@ -233,6 +233,7 @@ krb5_error_code ipadb_sign_authdata(krb5_context context,
+     krb5_db_entry *client_entry = NULL;
+     krb5_boolean is_equal;
+     bool force_reinit_mspac = false;
++    const char *stmsg = NULL;
+ 
+ 
+     is_as_req = ((flags & KRB5_KDB_FLAG_CLIENT_REFERRALS_ONLY) != 0);
+@@ -309,7 +310,9 @@ krb5_error_code ipadb_sign_authdata(krb5_context context,
+             force_reinit_mspac = true;
+         }
+ 
+-        (void)ipadb_reinit_mspac(ipactx, force_reinit_mspac);
++        kerr = ipadb_reinit_mspac(ipactx, force_reinit_mspac, &stmsg);
++        if (kerr && stmsg)
++            krb5_klog_syslog(LOG_WARNING, "MS-PAC generator: %s", stmsg);
+ 
+         kerr = ipadb_get_pac(context, flags, client, server, NULL, authtime, &pac);
+         if (kerr != 0 && kerr != ENOENT) {
+diff --git a/daemons/ipa-kdb/ipa_kdb_mspac_v9.c b/daemons/ipa-kdb/ipa_kdb_mspac_v9.c
+index 3badd5b088b3f017546d5df3cecbf7427fedd59d..60db048e1f328c3a31b58d2a3b17d9cac615467c 100644
+--- a/daemons/ipa-kdb/ipa_kdb_mspac_v9.c
++++ b/daemons/ipa-kdb/ipa_kdb_mspac_v9.c
+@@ -46,6 +46,7 @@ ipadb_v9_issue_pac(krb5_context context, unsigned int flags,
+     bool with_pad;
+     krb5_error_code kerr = 0;
+     bool is_as_req = flags & CLIENT_REFERRALS_FLAGS;
++    const char *stmsg = NULL;
+ 
+     if (is_as_req) {
+         get_authz_data_types(context, client, &with_pac, &with_pad);
+@@ -110,12 +111,19 @@ ipadb_v9_issue_pac(krb5_context context, unsigned int flags,
+                     force_reinit_mspac = TRUE;
+                 }
+             }
+-            (void)ipadb_reinit_mspac(ipactx, force_reinit_mspac);
+ 
+-            /* MS-PAC needs proper configuration and if it is missing, we simply skip issuing one */
+-            if (ipactx->mspac->flat_server_name == NULL) {
++            /* MS-PAC generator has to be initalized */
++            kerr = ipadb_reinit_mspac(ipactx, force_reinit_mspac, &stmsg);
++            if (kerr && stmsg)
++                krb5_klog_syslog(LOG_ERR, "MS-PAC generator: %s", stmsg);
++
++            /* Continue even if initilization of PAC generator failed.
++             * It may caused by the trust objects part only. */
++
++            /* At least the core part of the PAC generator is required. */
++            if (!ipactx->mspac)
+                 return KRB5_PLUGIN_OP_NOTSUPP;
+-            }
++
+             kerr = ipadb_get_pac(context, flags,
+                                  client, server, replaced_reply_key,
+                                  authtime, &new_pac);
+diff --git a/daemons/ipa-kdb/ipa_kdb_principals.c b/daemons/ipa-kdb/ipa_kdb_principals.c
+index 00387d43bc83f30a3bee7f26892e9a1b70e677dc..ffc0fd8f28beeba5fd468b4723dd1aa1b382ada6 100644
+--- a/daemons/ipa-kdb/ipa_kdb_principals.c
++++ b/daemons/ipa-kdb/ipa_kdb_principals.c
+@@ -1567,6 +1567,7 @@ static krb5_error_code dbget_alias(krb5_context kcontext,
+         -1,
+     };
+     size_t i = 0;
++    const char *stmsg = NULL;
+ 
+     /* For TGS-REQ server principal lookup, KDC asks with KRB5_KDB_FLAG_REFERRAL_OK
+      * and client usually asks for an KRB5_NT_PRINCIPAL type principal. */
+@@ -1654,8 +1655,11 @@ static krb5_error_code dbget_alias(krb5_context kcontext,
+     if (kerr == KRB5_KDB_NOENTRY) {
+         /* If no trusted realm found, refresh trusted domain data and try again
+          * because it might be a freshly added trust to AD */
+-        kerr = ipadb_reinit_mspac(ipactx, false);
++        kerr = ipadb_reinit_mspac(ipactx, false, &stmsg);
+         if (kerr != 0) {
++            if (stmsg)
++                krb5_klog_syslog(LOG_WARNING, "MS-PAC generator: %s",
++                                 stmsg);
+             kerr = KRB5_KDB_NOENTRY;
+             goto done;
+         }
+-- 
+2.43.0
+

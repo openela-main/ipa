@@ -1,0 +1,83 @@
+From d4008aece36569131b6e81192cc7d7dfa9f9af2b Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Tue, 23 Jan 2024 14:47:50 +0200
+Subject: [PATCH] sidgen: ignore staged users when generating SIDs
+
+Staged users have
+
+  uidNumber: -1
+  gidNumber: -1
+  ipaUniqueID: autogenerate
+
+We cannot generate ipaSecurityIdentifier based on those UID/GID numbers.
+However, '-1' value will trigger an error
+
+ find_sid_for_ldap_entry - [file ipa_sidgen_common.c, line 483]: ID value too large.
+
+And that, in turn, will cause stopping SID generation for all users.
+
+Detect 'ipaUniqueID: autogenerate' situation and ignore these entries.
+
+Fixes: https://pagure.io/freeipa/issue/9517
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Thierry Bordaz <tbordaz@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h    |  2 ++
+ .../ipa-slapi-plugins/ipa-sidgen/ipa_sidgen_common.c | 12 ++++++++++++
+ 2 files changed, 14 insertions(+)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h
+index 0feff7eec9999a76bf950b8b9fc9fa25b3a2fa88..bd46982d06b3272874f256a8b0c2293fa4829f5b 100644
+--- a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h
++++ b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h
+@@ -45,6 +45,8 @@
+ #define UID_NUMBER "uidnumber"
+ #define GID_NUMBER "gidnumber"
+ #define IPA_SID "ipantsecurityidentifier"
++#define IPA_UNIQUEID "ipauniqueid"
++#define IPA_UNIQUEID_AUTOGENERATE "autogenerate"
+ #define DOM_ATTRS_FILTER OBJECTCLASS"=ipantdomainattrs"
+ #define DOMAIN_ID_RANGE_FILTER OBJECTCLASS"=ipadomainidrange"
+ #define POSIX_ACCOUNT "posixaccount"
+diff --git a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen_common.c b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen_common.c
+index 6f784804cd39acdf88ceceb0e21b272a04fa13fc..cb763ebf8c733e50483c23856a248eb536c796f1 100644
+--- a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen_common.c
++++ b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen_common.c
+@@ -454,6 +454,7 @@ int find_sid_for_ldap_entry(struct slapi_entry *entry,
+     uint32_t id;
+     char *sid = NULL;
+     char **objectclasses = NULL;
++    char *uniqueid = NULL;
+     Slapi_PBlock *mod_pb = NULL;
+     Slapi_Mods *smods = NULL;
+     int result;
+@@ -479,6 +480,16 @@ int find_sid_for_ldap_entry(struct slapi_entry *entry,
+         goto done;
+     }
+ 
++    uniqueid = slapi_entry_attr_get_charptr(entry, IPA_UNIQUEID);
++    if (uniqueid != NULL &&
++        strncmp(IPA_UNIQUEID_AUTOGENERATE, uniqueid,
++                sizeof(IPA_UNIQUEID_AUTOGENERATE)) == 0) {
++        LOG("Staged entry [%s] does not have Posix IDs, nothing to do.\n",
++            dn_str);
++        ret = 0;
++        goto done;
++    }
++
+     if (uid_number >= UINT32_MAX || gid_number >= UINT32_MAX) {
+         LOG_FATAL("ID value too large.\n");
+         ret = LDAP_CONSTRAINT_VIOLATION;
+@@ -554,6 +565,7 @@ int find_sid_for_ldap_entry(struct slapi_entry *entry,
+     }
+ 
+ done:
++    slapi_ch_free_string(&uniqueid);
+     slapi_ch_free_string(&sid);
+     slapi_pblock_destroy(mod_pb);
+     slapi_mods_free(&smods);
+-- 
+2.43.0
+

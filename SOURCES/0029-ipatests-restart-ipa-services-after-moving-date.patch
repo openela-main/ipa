@@ -1,0 +1,35 @@
+From 2bbfd1454fc69c5975826d1a3f39b301d135abb5 Mon Sep 17 00:00:00 2001
+From: Mohammad Rizwan <myusuf@redhat.com>
+Date: Fri, 15 Sep 2023 12:16:06 +0530
+Subject: [PATCH] ipatests: restart ipa services after moving date
+
+When system date is moved into future, it have unprecedented
+behavior i.e CA becomes irresponsive or unexpected certificcate
+state. Hence restart the ipa service after moving the date to
+gracefully serve the request.
+
+Fixes: https://pagure.io/freeipa/issue/9379
+
+Signed-off-by: Mohammad Rizwan <myusuf@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ ipatests/test_integration/test_ipa_cert_fix.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/ipatests/test_integration/test_ipa_cert_fix.py b/ipatests/test_integration/test_ipa_cert_fix.py
+index 77076e78ee3736add0cbeca17288c2661a5e4a6f..ec9456e516e741de19da13fa8921f3370cd5da12 100644
+--- a/ipatests/test_integration/test_ipa_cert_fix.py
++++ b/ipatests/test_integration/test_ipa_cert_fix.py
+@@ -408,6 +408,9 @@ class TestCertFixReplica(IntegrationTest):
+         # move system date to expire certs
+         for host in self.master, self.replicas[0]:
+             tasks.move_date(host, 'stop', '+3years+1days')
++            host.run_command(
++                ['ipactl', 'restart', '--ignore-service-failures']
++            )
+ 
+         yield
+ 
+-- 
+2.43.0
+

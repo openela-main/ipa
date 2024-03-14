@@ -223,7 +223,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        5%{?rc_version:.%rc_version}%{?dist}
+Release:        8%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -275,6 +275,21 @@ Patch0025:      0025-Installer-activate-nss-and-pam-services-in-sssd.conf.patch
 Patch0026:      0026-updates-add-ACIs-for-RBCD-self-management.patch
 Patch0027:      0027-Check-the-HTTP-Referer-header-on-all-requests.patch
 Patch0028:      0028-Integration-tests-for-verifying-Referer-header-in-th.patch
+Patch0029:      0029-ipatests-restart-ipa-services-after-moving-date.patch
+Patch0030:      0030-ipatests-ignore-nsslapd-accesslog-logbuffering-WARN-.patch
+Patch0031:      0031-ipatests-Skip-ds_encryption-tests-on-RHEL9-SUT.patch
+Patch0032:      0032-adtrustinstance-make-sure-NetBIOS-name-defaults-are-.patch
+Patch0033:      0033-ipatests-wait-for-replica-update-in-test_dns_locatio.patch
+Patch0034:      0034-ipapython-Clean-up-krb5_error.patch
+Patch0035:      0035-ipapython-Correct-return-type-of-krb5_free_cred_cont.patch
+Patch0036:      0036-ipapython-Propagate-KRB5Error-exceptions-on-iteratin.patch
+Patch0037:      0037-ipa-kdb-Fix-memory-leak-during-PAC-verification.patch
+Patch0038:      0038-sidgen-ignore-staged-users-when-generating-SIDs.patch
+Patch0039:      0039-sidgen-fix-missing-prototypes.patch
+Patch0040:      0040-kdb-PAC-generator-do-not-fail-if-canonical-principal.patch
+Patch0041:      0041-ipatests-fix-tasks.wait_for_replication-method.patch
+Patch0042:      0042-ipa-kdb-Rework-ipadb_reinit_mspac.patch
+Patch0043:      0043-ipa-kdb-Fix-double-free-in-ipadb_reinit_mspac.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -1766,6 +1781,22 @@ fi
 %endif
 
 %changelog
+* Tue Feb 20 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-8
+- Resolves: RHEL-25741 ipa-kdb: Cannot determine if PAC generator is available
+
+* Fri Feb 16 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-7
+- Resolves: RHEL-25741 ipa-kdb: Cannot determine if PAC generator is available
+- Resolves: RHEL-25707 tier-1-upstream-dns-locations failed on RHEL8.8 gating
+
+* Tue Feb 06 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-6
+- Resolves: RHEL-24360 IPA stops working if HTTP/... service principal was created before FreeIPA 4.4.0 and never modified
+- Resolves: RHEL-24363 Pagure #9517: sidgen plugin does not ignore staged users
+- Resolves: RHEL-24366 Memory leak in IdM's KDC
+- Resolves: RHEL-24370 session cookie can't be read
+- Resolves: RHEL-24373 Gating-DL1 test failure in test_integration/test_dns_locations.py::TestDNSLocations::()::test_ipa_ca_records
+- Resolves: RHEL-24376 Make sure a default NetBIOS name is set if not passed in by ADTrust instance constructor
+- Resolves: RHEL-24464 healthcheck reports nsslapd-accesslog-logbuffering is set to 'off'
+
 * Fri Nov 24 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-5
 - Resolves: RHEL-12588 ipa: Invalid CSRF protection
 

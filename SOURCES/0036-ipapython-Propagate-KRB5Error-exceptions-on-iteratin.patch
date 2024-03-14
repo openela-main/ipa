@@ -1,0 +1,53 @@
+From e69d98add55f25641459fc1dfb973260e85f9b95 Mon Sep 17 00:00:00 2001
+From: Stanislav Levin <slev@altlinux.org>
+Date: Tue, 23 Jan 2024 19:52:34 +0300
+Subject: [PATCH] ipapython: Propagate KRB5Error exceptions on iterating ccache
+
+`ipapython.session_storage.get_data` iterates over
+credentials in a credential cache till `krb5_cc_next_cred` returns
+an error. This function doesn't expect any error on calling
+other kerberos foreign functions during iteration. But that can
+actually happen and KRB5Error exceptions stop an iteration while
+they should be propagated.
+
+With this change iteration will exactly stop on `krb5_cc_next_cred`
+error as it was supposed to be.
+
+Fixes: https://pagure.io/freeipa/issue/9519
+Signed-off-by: Stanislav Levin <slev@altlinux.org>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ ipapython/session_storage.py | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/ipapython/session_storage.py b/ipapython/session_storage.py
+index dc36f54939a838bcb933dfb0089410d9b00f9e4d..e890dc9b11475cc26d212ccbe040df3cfbfba6e8 100644
+--- a/ipapython/session_storage.py
++++ b/ipapython/session_storage.py
+@@ -312,8 +312,12 @@ def get_data(princ_name, key):
+                 checkcreds = krb5_creds()
+                 # the next function will throw an error and break out of the
+                 # while loop when we try to access past the last cred
+-                krb5_cc_next_cred(context, ccache, ctypes.byref(cursor),
+-                                  ctypes.byref(checkcreds))
++                try:
++                    krb5_cc_next_cred(context, ccache, ctypes.byref(cursor),
++                                      ctypes.byref(checkcreds))
++                except KRB5Error:
++                    break
++
+                 if (krb5_principal_compare(context, principal,
+                                           checkcreds.client) == 1 and
+                     krb5_principal_compare(context, srv_princ,
+@@ -328,8 +332,6 @@ def get_data(princ_name, key):
+                 else:
+                     krb5_free_cred_contents(context,
+                                             ctypes.byref(checkcreds))
+-        except KRB5Error:
+-            pass
+         finally:
+             krb5_cc_end_seq_get(context, ccache, ctypes.byref(cursor))
+ 
+-- 
+2.43.0
+

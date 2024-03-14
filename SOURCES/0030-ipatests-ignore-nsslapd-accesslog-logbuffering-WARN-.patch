@@ -1,0 +1,132 @@
+From 9bc582a2d78fd3ff9e70fa927b87ab06dcb7c9ae Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Mon, 13 Nov 2023 09:48:09 -0500
+Subject: [PATCH] ipatests: ignore nsslapd-accesslog-logbuffering WARN in
+ healthcheck
+
+Log buffering is disabled in the integration tests so we can have all
+the logs at the end. This is causing a warning to show in the 389-ds
+checks and causing tests to fail that expect all SUCCESS.
+
+Add an exclude for this specific key so tests will pass again.
+
+We may eventually want a more sophisiticated mechanism to handle
+excludes, or updating the config in general, but this is fine for now.
+
+Fixes: https://pagure.io/freeipa/issue/9400
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+Reviewed-By: Michal Polovka <mpolovka@redhat.com>
+---
+ .../test_integration/test_ipahealthcheck.py   | 28 +++++++++++++++++++
+ .../test_replica_promotion.py                 |  5 +++-
+ 2 files changed, 32 insertions(+), 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index 5d79f2b529e819a291228776c4cc278463f02e59..278f75abdd772a59178a61e2ab63e3178fef2518 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -10,6 +10,7 @@ from __future__ import absolute_import
+
+ from configparser import RawConfigParser, NoOptionError
+ from datetime import datetime, timedelta
++import io
+ import json
+ import os
+ import re
+@@ -209,6 +210,28 @@ def run_healthcheck(host, source=None, check=None, output_type="json",
+     return result.returncode, data
+ 
+ 
++def set_excludes(host, option, value,
++                 config_file='/etc/ipahealthcheck/ipahealthcheck.conf'):
++    """Mark checks that should be excluded from the results
++
++       This will set in the [excludes] section on host:
++           option=value
++    """
++    EXCLUDES = "excludes"
++
++    conf = host.get_file_contents(config_file, encoding='utf-8')
++    cfg = RawConfigParser()
++    cfg.read_string(conf)
++    if not cfg.has_section(EXCLUDES):
++        cfg.add_section(EXCLUDES)
++    if not cfg.has_option(EXCLUDES, option):
++        cfg.set(EXCLUDES, option, value)
++    out = io.StringIO()
++    cfg.write(out)
++    out.seek(0)
++    host.put_file_contents(config_file, out.read())
++
++
+ @pytest.fixture
+ def restart_service():
+     """Shut down and restart a service as a fixture"""
+@@ -266,6 +289,7 @@ class TestIpaHealthCheck(IntegrationTest):
+             setup_dns=True,
+             extra_args=['--no-dnssec-validation']
+         )
++        set_excludes(cls.master, "key", "DSCLE0004")
+ 
+     def test_ipa_healthcheck_install_on_master(self):
+         """
+@@ -558,6 +582,7 @@ class TestIpaHealthCheck(IntegrationTest):
+                               setup_dns=True,
+                               extra_args=['--no-dnssec-validation']
+                               )
++        set_excludes(self.replicas[0], "key", "DSCLE0004")
+ 
+         # Init a user on replica to assign a DNA range
+         tasks.kinit_admin(self.replicas[0])
+@@ -698,6 +723,7 @@ class TestIpaHealthCheck(IntegrationTest):
+                 'output_type=human'
+             ])
+         )
++        set_excludes(self.master, "key", "DSCLE0004", config_file)
+         returncode, output = run_healthcheck(
+             self.master, failures_only=True, config=config_file
+         )
+@@ -713,6 +739,7 @@ class TestIpaHealthCheck(IntegrationTest):
+                 'output_file=%s' % HC_LOG,
+             ])
+         )
++        set_excludes(self.master, "key", "DSCLE0004")
+         returncode, _unused = run_healthcheck(
+             self.master, config=config_file
+         )
+@@ -2408,6 +2435,7 @@ class TestIpaHealthCLI(IntegrationTest):
+             cls.master, setup_dns=True, extra_args=['--no-dnssec-validation']
+         )
+         tasks.install_packages(cls.master, HEALTHCHECK_PKG)
++        set_excludes(cls.master, "key", "DSCLE0004")
+ 
+     def test_indent(self):
+         """
+diff --git a/ipatests/test_integration/test_replica_promotion.py b/ipatests/test_integration/test_replica_promotion.py
+index d477c3a20df80f16d47a55c9359ce165049dd907..b71f2d5d7e1517ab73d79b62477a3377839b0b7a 100644
+--- a/ipatests/test_integration/test_replica_promotion.py
++++ b/ipatests/test_integration/test_replica_promotion.py
+@@ -13,7 +13,7 @@ import pytest
+ 
+ from ipatests.test_integration.base import IntegrationTest
+ from ipatests.test_integration.test_ipahealthcheck import (
+-    run_healthcheck, HEALTHCHECK_PKG
++    run_healthcheck, set_excludes, HEALTHCHECK_PKG
+ )
+ from ipatests.pytest_ipa.integration import tasks
+ from ipatests.pytest_ipa.integration.tasks import (
+@@ -983,6 +983,9 @@ class TestHiddenReplicaPromotion(IntegrationTest):
+         # manually install KRA to verify that hidden state is synced
+         tasks.install_kra(cls.replicas[0])
+ 
++        set_excludes(cls.master, "key", "DSCLE0004")
++        set_excludes(cls.replicas[0], "key", "DSCLE0004")
++
+     def _check_dnsrecords(self, hosts_expected, hosts_unexpected=()):
+         domain = DNSName(self.master.domain.name).make_absolute()
+         rset = [
+-- 
+2.43.0
+
