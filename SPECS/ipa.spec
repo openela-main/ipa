@@ -189,7 +189,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        11%{?rc_version:.%rc_version}%{?dist}
+Release:        14%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPLv3+
@@ -225,6 +225,20 @@ Patch0013:      0013-Installer-activate-nss-and-pam-services-in-sssd.conf_rhbz#2
 Patch0014:      0014-ipa-kdb-Make-AD-SIGNEDPATH-optional-with-krb5-DAL-8.patch
 Patch0015:      0015-CVE-2023-5455.patch
 Patch0016:      0016-ipa-kdb-Detect-and-block-Bronze-Bit-attacks.patch
+Patch0017:      0017-adtrustinstance-make-sure-NetBIOS-name-defaults-are-.patch
+Patch0018:      0018-ipatests-wait-for-replica-update-in-test_dns_locatio.patch
+Patch0019:      0019-ipa-kdb-Disable-Bronze-Bit-check-if-PAC-not-availabl.patch
+Patch0020:      0020-ipapython-Clean-up-krb5_error.patch
+Patch0021:      0021-ipapython-Correct-return-type-of-krb5_free_cred_cont.patch
+Patch0022:      0022-ipapython-Propagate-KRB5Error-exceptions-on-iteratin.patch
+Patch0023:      0023-ipa-kdb-Fix-memory-leak-during-PAC-verification.patch
+Patch0024:      0024-sidgen-ignore-staged-users-when-generating-SIDs.patch
+Patch0025:      0025-sidgen-fix-missing-prototypes.patch
+Patch0026:      0026-kdb-PAC-generator-do-not-fail-if-canonical-principal.patch
+Patch0027:      0027-ipd-kdb-Fix-some-mistakes-in-ipadb_check_for_bronze_.patch
+Patch0028:      0028-ipa-kdb-Rework-ipadb_reinit_mspac.patch
+Patch0029:      0029-ipatests-fix-tasks.wait_for_replication-method.patch
+Patch0030:      0030-ipa-kdb-Fix-double-free-in-ipadb_reinit_mspac.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
 Patch1003:      1003-webui-IdP-Remove-arrow-notation-due-to-uglify-js-lim.patch
@@ -1739,6 +1753,38 @@ fi
 %endif
 
 %changelog
+* Tue Feb 20 2024 Julien Rische <jrische@redhat.com> - 4.9.12-14
+- ipa-kdb: Fix double free in ipadb_reinit_mspac()
+  Resolves: RHEL-25745
+
+* Fri Feb 16 2024 Julien Rische <jrische@redhat.com> - 4.9.12-13
+- ipatests: fix tasks.wait_for_replication method
+  Resolves: RHEL-25711
+
+* Thu Feb 15 2024 Julien Rische <jrische@redhat.com> - 4.9.12-12
+- ipa-kdb: Rework ipadb_reinit_mspac()
+  Resolves: RHEL-25745
+- kdb: PAC generator: do not fail if canonical principal is missing
+  Resolves: RHEL-24356
+- sidgen: fix missing prototypes
+  Resolves: RHEL-24380
+- sidgen: ignore staged users when generating SIDs
+  Resolves: RHEL-24380
+- ipa-kdb: Fix memory leak during PAC verification
+  Resolves: RHEL-24384
+- ipapython: Propagate KRB5Error exceptions on iterating ccache
+  Resolves: RHEL-24387
+- ipapython: Correct return type of krb5_free_cred_contents
+  Resolves: RHEL-24387
+- ipapython: Clean up krb5_error
+  Resolves: RHEL-24387
+- ipa-kdb: Disable Bronze-Bit check if PAC not available
+  Resolves: RHEL-24390
+- ipatests: wait for replica update in test_dns_locations
+  Resolves: RHEL-24395
+- adtrustinstance: make sure NetBIOS name defaults are set properly
+  Resolves: RHEL-24399
+
 * Fri Dec 01 2023 Julien Rische <jrische@redhat.com> - 4.9.12-11
 - Generate Kerberos PAC as soon as server installation completed
   Resolves: RHEL-16532

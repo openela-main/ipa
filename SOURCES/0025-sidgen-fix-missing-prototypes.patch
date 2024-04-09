@@ -1,0 +1,27 @@
+From d9e2fad373f4eb20ca9fc8e3a69ad486c3aa963c Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Tue, 23 Jan 2024 14:53:39 +0200
+Subject: [PATCH] sidgen: fix missing prototypes
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Thierry Bordaz <tbordaz@redhat.com>
+(cherry picked from commit 07150b71537744f491d022c737ef04775c72a10a)
+---
+ daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h
+index bd46982d0..aec862796 100644
+--- a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h
++++ b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h
+@@ -106,3 +106,6 @@ int find_sid_for_ldap_entry(struct slapi_entry *entry,
+                             const char *base_dn,
+                             const char *dom_sid,
+                             struct range_info **ranges);
++
++int sidgen_task_init(Slapi_PBlock *pb);
++int ipa_sidgen_init(Slapi_PBlock *pb);
+-- 
+2.41.0
+
