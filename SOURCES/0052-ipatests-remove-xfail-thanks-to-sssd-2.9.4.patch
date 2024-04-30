@@ -1,0 +1,42 @@
+From b00fd308831428400b96442290ec7bc90bde348f Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Tue, 30 Jan 2024 10:43:00 +0100
+Subject: [PATCH] ipatests: remove xfail thanks to sssd 2.9.4
+
+SSSD 2.9.4 fixes some issues related to auto-private-group
+
+Related: https://pagure.io/freeipa/issue/9295
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Anuja More <amore@redhat.com>
+---
+ ipatests/test_integration/test_trust.py | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/ipatests/test_integration/test_trust.py b/ipatests/test_integration/test_trust.py
+index 12f000c1ad1cbce2710900b0e364a501ed6b8e52..3b9f0fbd51f11ff2c97fed50f7bb61a67326b183 100644
+--- a/ipatests/test_integration/test_trust.py
++++ b/ipatests/test_integration/test_trust.py
+@@ -1155,7 +1155,8 @@ class TestNonPosixAutoPrivateGroup(BaseTestTrust):
+                                      ):
+             self.mod_idrange_auto_private_group(type)
+             sssd_version = tasks.get_sssd_version(self.clients[0])
+-            bad_version = sssd_version >= tasks.parse_version("2.8.2")
++            bad_version = (tasks.parse_version("2.8.2") <= sssd_version
++                           < tasks.parse_version("2.9.4"))
+             cond = (type == 'hybrid') and bad_version
+             with xfail_context(condition=cond,
+                                reason="https://pagure.io/freeipa/issue/9295"):
+@@ -1237,7 +1238,9 @@ class TestPosixAutoPrivateGroup(BaseTestTrust):
+         self.mod_idrange_auto_private_group(type)
+         if type == "true":
+             sssd_version = tasks.get_sssd_version(self.clients[0])
+-            with xfail_context(sssd_version >= tasks.parse_version("2.8.2"),
++            bad_version = (tasks.parse_version("2.8.2") <= sssd_version
++                           < tasks.parse_version("2.9.4"))
++            with xfail_context(bad_version,
+                  "https://pagure.io/freeipa/issue/9295"):
+                 (uid, gid) = self.get_user_id(self.clients[0], posixuser)
+                 assert uid == gid
+-- 
+2.43.0
+

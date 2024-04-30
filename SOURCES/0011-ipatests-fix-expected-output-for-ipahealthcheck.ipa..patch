@@ -1,0 +1,45 @@
+From faf8be455a6ab4f5b1bed00a611e655535ed31e7 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Tue, 14 Nov 2023 13:21:30 -0500
+Subject: [PATCH] ipatests: fix expected output for ipahealthcheck.ipa.host
+
+ipa-healthcheck commit e69589d5 changed the output when a service
+keytab is missing to not report the GSSAPI error but to report
+that the keytab doesn't exist at all. This distinguishes from real
+Kerberos issues like kvno.
+
+Fixes: https://pagure.io/freeipa/issue/9482
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+Reviewed-By: Michal Polovka <mpolovka@redhat.com>
+---
+ ipatests/test_integration/test_ipahealthcheck.py | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index 278f75abdd772a59178a61e2ab63e3178fef2518..785e9abbae3b807f100a3d875e0c0b23f868be83 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -635,9 +635,15 @@ class TestIpaHealthCheck(IntegrationTest):
+         ipahealthcheck.ipa.host when GSSAPI credentials cannot be obtained
+         from host's keytab.
+         """
+-        msg = (
+-            "Minor (2529639107): No credentials cache found"
+-        )
++        version = tasks.get_healthcheck_version(self.master)
++        if parse_version(version) >= parse_version("0.15"):
++            msg = (
++                "Service {service} keytab {path} does not exist."
++            )
++        else:
++            msg = (
++                "Minor (2529639107): No credentials cache found"
++            )
+ 
+         with tasks.FileBackup(self.master, paths.KRB5_KEYTAB):
+             self.master.run_command(["rm", "-f", paths.KRB5_KEYTAB])
+-- 
+2.41.0
+

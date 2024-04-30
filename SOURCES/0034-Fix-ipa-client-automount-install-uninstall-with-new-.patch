@@ -1,0 +1,125 @@
+From 6340e88341b09b06391b35e50e8c4d7619b12dab Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Fri, 1 Dec 2023 08:51:05 -0500
+Subject: [PATCH] Fix ipa-client-automount install/uninstall with new install
+ states
+
+Issue 8384 introduced a new installation state for the statestore
+to identify when client/server installation is completely finished
+rather than relying on has_files().
+
+The problem is that ipa-client-automount may be called during
+ipa-client-install and since installation is not complete at that
+point the automount install was failing with "IPA client not
+configured".
+
+Add a new state, 'automount', to designate that automount installation
+is in process. If check_client_configuration() fails it checks to
+see if [installation] automount is True. If so it continues with the
+installation.
+
+This also addresses an issue where the filestore and statestore are
+shared between the client and automount installers but the client
+wasn't refreshing state after automount completed. This resulted in
+an incomplete state and index file of backed-up files which caused
+files to not be restored on uninstall and the state file to be
+orphaned.
+
+Fixes: https://pagure.io/freeipa/issue/9487
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Christian Heimes <cheimes@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+---
+ ipaclient/install/client.py               | 14 ++++++++++++--
+ ipaclient/install/ipa_client_automount.py | 14 ++++++++------
+ 2 files changed, 20 insertions(+), 8 deletions(-)
+
+diff --git a/ipaclient/install/client.py b/ipaclient/install/client.py
+index 7e3adee351ae31ed9fcbba422fcc03a1f904e1f9..976d3821dd6d66b5b7653298c628a2bc267fa8c6 100644
+--- a/ipaclient/install/client.py
++++ b/ipaclient/install/client.py
+@@ -1273,7 +1273,7 @@ def create_sshd_ipa_config(options):
+     logger.info('Configured %s', paths.SSHD_IPA_CONFIG)
+ 
+ 
+-def configure_automount(options):
++def configure_automount(options, statestore):
+     logger.info('\nConfiguring automount:')
+ 
+     args = [
+@@ -1286,12 +1286,15 @@ def configure_automount(options):
+     if not options.sssd:
+         args.append('--no-sssd')
+ 
++    statestore.backup_state('installation', 'automount', True)
+     try:
+         result = run(args)
+     except Exception as e:
+         logger.error('Automount configuration failed: %s', str(e))
+     else:
+         logger.info('%s', result.output_log)
++    finally:
++        statestore.delete_state('installation', 'automount')
+ 
+ 
+ def configure_nisdomain(options, domain, statestore):
+@@ -3305,7 +3308,11 @@ def _install(options, tdict):
+         configure_sshd_config(fstore, options)
+ 
+     if options.location:
+-        configure_automount(options)
++        configure_automount(options, statestore)
++
++        # Reload the state as automount install may have modified it
++        fstore._load()
++        statestore._load()
+ 
+     if options.configure_firefox:
+         configure_firefox(options, statestore, cli_domain)
+@@ -3368,12 +3375,15 @@ def uninstall(options):
+     fstore = sysrestore.FileStore(paths.IPA_CLIENT_SYSRESTORE)
+     statestore = sysrestore.StateFile(paths.IPA_CLIENT_SYSRESTORE)
+ 
++    statestore.backup_state('installation', 'automount', True)
+     try:
+         run([paths.IPA_CLIENT_AUTOMOUNT, "--uninstall", "--debug"])
+     except CalledProcessError as e:
+         if e.returncode != CLIENT_NOT_CONFIGURED:
+             logger.error(
+                 "Unconfigured automount client failed: %s", str(e))
++    finally:
++        statestore.delete_state('installation', 'automount')
+ 
+     # Reload the state as automount unconfigure may have modified it
+     fstore._load()
+diff --git a/ipaclient/install/ipa_client_automount.py b/ipaclient/install/ipa_client_automount.py
+index b4b3387530afa9e80d13dd69e9d80080702f9e07..ee27872868b9ceaffdc58a9cf3fa89938e045526 100644
+--- a/ipaclient/install/ipa_client_automount.py
++++ b/ipaclient/install/ipa_client_automount.py
+@@ -340,14 +340,16 @@ def configure_nfs(fstore, statestore, options):
+ 
+ 
+ def configure_automount():
+-    try:
+-        check_client_configuration()
+-    except ScriptError as e:
+-        print(e.msg)
+-        sys.exit(e.rval)
++    statestore = sysrestore.StateFile(paths.IPA_CLIENT_SYSRESTORE)
++    if not statestore.get_state('installation', 'automount'):
++        # not called from ipa-client-install
++        try:
++            check_client_configuration()
++        except ScriptError as e:
++            print(e.msg)
++            sys.exit(e.rval)
+ 
+     fstore = sysrestore.FileStore(paths.IPA_CLIENT_SYSRESTORE)
+-    statestore = sysrestore.StateFile(paths.IPA_CLIENT_SYSRESTORE)
+ 
+     options, _args = parse_options()
+ 
+-- 
+2.43.0
+

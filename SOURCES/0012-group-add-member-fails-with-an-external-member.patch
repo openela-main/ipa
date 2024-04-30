@@ -1,0 +1,38 @@
+From bc69177ef80d1873026ad91a6e449b9cf20028b9 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Thu, 19 Oct 2023 12:47:03 +0200
+Subject: [PATCH] group-add-member fails with an external member
+
+The command ipa group-add-member --external aduser@addomain.test
+fails with an internal error when used with samba 4.19.
+
+The command internally calls samba.security.dom_sid(sid) which
+used to raise a TypeError but now raises a ValueError
+(commit 9abdd67 on https://github.com/samba-team/samba).
+
+IPA source code needs to handle properly both exception types.
+
+Fixes: https://pagure.io/freeipa/issue/9466
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipaserver/dcerpc.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ipaserver/dcerpc.py b/ipaserver/dcerpc.py
+index 741f0608f93449f5a3959a47734f965ab484a1e5..7e585c87639db093222fe2cebca5c9094a22d7ce 100644
+--- a/ipaserver/dcerpc.py
++++ b/ipaserver/dcerpc.py
+@@ -303,7 +303,7 @@ class DomainValidator:
+         # Parse sid string to see if it is really in a SID format
+         try:
+             test_sid = security.dom_sid(sid)
+-        except TypeError:
++        except (TypeError, ValueError):
+             raise errors.ValidationError(name='sid',
+                                          error=_('SID is not valid'))
+ 
+-- 
+2.43.0
+

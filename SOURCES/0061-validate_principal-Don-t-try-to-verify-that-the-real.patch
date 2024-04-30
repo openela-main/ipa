@@ -1,0 +1,89 @@
+From 5781369e78fd83cee64a4d306198423c7a126ba0 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Thu, 22 Feb 2024 08:29:31 -0500
+Subject: [PATCH] validate_principal: Don't try to verify that the realm is
+ known
+
+The actual value is less important than whether it matches the
+regular expression. A number of legal but difficult to know in
+context realms could be passed in here (trust for example).
+
+This fixes CVE-2024-1481
+
+Fixes: https://pagure.io/freeipa/issue/9541
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+---
+ ipalib/install/kinit.py                    | 12 ++++--------
+ ipatests/test_ipalib_install/test_kinit.py |  9 ++++++---
+ 2 files changed, 10 insertions(+), 11 deletions(-)
+
+diff --git a/ipalib/install/kinit.py b/ipalib/install/kinit.py
+index 4ad4eaa1c30f2fb0ab02be411917e304eb527d32..d5fb56bf041c6f61515fc3ce4cc1ca1cfbcdbab7 100644
+--- a/ipalib/install/kinit.py
++++ b/ipalib/install/kinit.py
+@@ -15,7 +15,6 @@ from ipaplatform.paths import paths
+ from ipapython.ipautil import run
+ from ipalib.constants import PATTERN_GROUPUSER_NAME
+ from ipalib.util import validate_hostname
+-from ipalib import api
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -39,7 +38,9 @@ def validate_principal(principal):
+     if ('/' in principal) and (' ' in principal):
+         raise RuntimeError('Invalid principal: bad spacing')
+     else:
+-        realm = None
++        # For a user match in the regex
++        # username = match[1]
++        # realm = match[2]
+         match = user_pattern.match(principal)
+         if match is None:
+             match = service_pattern.match(principal)
+@@ -48,16 +49,11 @@ def validate_principal(principal):
+             else:
+                 # service = match[1]
+                 hostname = match[2]
+-                realm = match[3]
++                # realm = match[3]
+                 try:
+                     validate_hostname(hostname)
+                 except ValueError as e:
+                     raise RuntimeError(str(e))
+-        else:  # user match, validate realm
+-            # username = match[1]
+-            realm = match[2]
+-        if realm and 'realm' in api.env and realm != api.env.realm:
+-            raise RuntimeError('Invalid principal: realm mismatch')
+ 
+ 
+ def kinit_keytab(principal, keytab, ccache_name, config=None, attempts=1):
+diff --git a/ipatests/test_ipalib_install/test_kinit.py b/ipatests/test_ipalib_install/test_kinit.py
+index f89ea17d7874c28bad2524ebf456d2caeafddd1f..8289c4b75c9de3b17748a6abffe0538d08f2698f 100644
+--- a/ipatests/test_ipalib_install/test_kinit.py
++++ b/ipatests/test_ipalib_install/test_kinit.py
+@@ -17,13 +17,16 @@ from ipalib.install.kinit import validate_principal
+     ('test/ipa.example.test@EXAMPLE.TEST', None),
+     ('test/ipa@EXAMPLE.TEST', RuntimeError),
+     ('test/-ipa.example.test@EXAMPLE.TEST', RuntimeError),
+-    ('test/ipa.1example.test@EXAMPLE.TEST', RuntimeError),
++    ('test/ipa.1example.test@EXAMPLE.TEST', None),
+     ('test /ipa.example,test', RuntimeError),
+-    ('testuser@OTHER.TEST', RuntimeError),
+-    ('test/ipa.example.test@OTHER.TEST', RuntimeError),
++    ('testuser@OTHER.TEST', None),
++    ('test/ipa.example.test@OTHER.TEST', None)
+ ])
+ def test_validate_principal(principal, exception):
+     try:
+         validate_principal(principal)
+     except Exception as e:
+         assert e.__class__ == exception
++    else:
++        if exception is not None:
++            raise RuntimeError('Test should have failed')
+-- 
+2.44.0
+

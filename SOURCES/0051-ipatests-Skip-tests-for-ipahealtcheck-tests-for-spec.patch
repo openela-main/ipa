@@ -1,0 +1,65 @@
+From 8c1f56dbab5de1c06fc424f3c58d366274d70688 Mon Sep 17 00:00:00 2001
+From: Sudhir Menon <sumenon@redhat.com>
+Date: Mon, 29 Jan 2024 22:07:43 +0530
+Subject: [PATCH] ipatests: Skip tests for ipahealtcheck tests for specific pki
+ version
+
+CADogtagCertsConfigCheck is no more available on RHEL9, hence the
+respective tests are skipped.
+
+Check 'CADogtagCertsConfigCheck' not found in Source 'pki.server.healthcheck.meta.csconfig'
+
+Ref: https://issues.redhat.com/browse/RHEL-21367
+
+Signed-off-by: Sudhir Menon <sumenon@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ .../test_integration/test_ipahealthcheck.py   | 23 +++++++++++++++----
+ 1 file changed, 18 insertions(+), 5 deletions(-)
+
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index 28200e0961a23996935c7b1c2b76f2b4b127e066..7323b073273bd95d7b62d19fd5afe03edb2a21da 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -507,6 +507,11 @@ class TestIpaHealthCheck(IntegrationTest):
+         Testcase checks behaviour of check DogtagCertsConfigCheck in
+         ipahealthcheck.dogtag.ca when tomcat config file is removed
+         """
++        version = tasks.get_pki_version(self.master)
++        if version >= parse_version("11.5"):
++            pytest.skip("Skipping test for 11.5 pki version, since the "
++                        "check CADogtagCertsConfigCheck itself is skipped "
++                        "See ipa-healthcheck ticket 317")
+         returncode, data = run_healthcheck(
+             self.master,
+             "ipahealthcheck.dogtag.ca",
+@@ -1453,13 +1458,21 @@ class TestIpaHealthCheck(IntegrationTest):
+         This testcase checks that CADogtagCertsConfigCheck can handle
+         cert renewal, when there can be two certs with the same nickname
+         """
+-        if (tasks.get_pki_version(self.master) < tasks.parse_version('11.4.0')):
++        if (tasks.get_pki_version(
++                self.master) < tasks.parse_version('11.4.0')):
+             raise pytest.skip("PKI known issue #2022561")
+-        self.master.run_command(['ipa-cacert-manage', 'renew', '--self-signed'])
++        elif (tasks.get_pki_version(
++                self.master) >= tasks.parse_version('11.5.0')):
++            raise pytest.skip("Skipping test for 11.5 pki version, since "
++                              "check CADogtagCertsConfigCheck is "
++                              "not present in source "
++                              "pki.server.healthcheck.meta.csconfig")
++        self.master.run_command(
++            ['ipa-cacert-manage', 'renew', '--self-signed']
++        )
+         returncode, data = run_healthcheck(
+-            self.master,
+-            "pki.server.healthcheck.meta.csconfig",
+-            "CADogtagCertsConfigCheck",
++            self.master, "pki.server.healthcheck.meta.csconfig",
++            "CADogtagCertsConfigCheck"
+         )
+         assert returncode == 0
+         for check in data:
+-- 
+2.43.0
+

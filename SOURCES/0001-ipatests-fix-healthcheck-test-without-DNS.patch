@@ -1,0 +1,44 @@
+From 4c8512168f6a9f224277a4db055f5432af37a552 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Thu, 28 Sep 2023 17:39:32 +0200
+Subject: [PATCH] ipatests: fix healthcheck test without DNS
+
+ipa-healthcheck has added a new check for ipa-ca record
+missing. The test needs to be adapted to handle the new check.
+
+Fixes: https://pagure.io/freeipa/issue/9459
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipatests/test_integration/test_ipahealthcheck.py | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index 6e01642f36a3d39ac7b3c2721664b21356bf424b..822f550d2ee241a9dd14c99d75199e6207b78e9c 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -1640,13 +1640,19 @@ class TestIpaHealthCheckWithoutDNS(IntegrationTest):
+                 "Got {count} ipa-ca AAAA records, expected {expected}",
+                 "Expected URI record missing",
+             }
+-        else:
++        elif (parse_version(version) < parse_version('0.13')):
+             expected_msgs = {
+                 "Expected SRV record missing",
+                 "Unexpected ipa-ca address {ipaddr}",
+                 "expected ipa-ca to contain {ipaddr} for {server}",
+                 "Expected URI record missing",
+             }
++        else:
++            expected_msgs = {
++                "Expected SRV record missing",
++                "Expected URI record missing",
++                "missing IP address for ipa-ca server {server}",
++            }
+ 
+         tasks.install_packages(self.master, HEALTHCHECK_PKG)
+         returncode, data = run_healthcheck(
+-- 
+2.41.0
+

@@ -1,0 +1,73 @@
+From 18764964b72ba237eba5f7b1078185b2f0393d72 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Fri, 1 Dec 2023 10:47:24 -0500
+Subject: [PATCH] ipatests: Test client install/uninstall with automount
+ enabled
+
+The automount installation was failing. Confirm that it is fixed.
+
+The uninstall was not restoring all files/configuration. Verify
+that the index and state files are gone which means that all state
+and files were restored.
+
+Fixes: https://pagure.io/freeipa/issue/9487
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Christian Heimes <cheimes@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+---
+ .../test_installation_client.py               | 25 +++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+
+diff --git a/ipatests/test_integration/test_installation_client.py b/ipatests/test_integration/test_installation_client.py
+index 56e1593bfcfa3eb7f9918fc6f2993d836884ea38..f8567b39eead4dffd522aad504fa72a086969257 100644
+--- a/ipatests/test_integration/test_installation_client.py
++++ b/ipatests/test_integration/test_installation_client.py
+@@ -8,12 +8,14 @@ Module provides tests for various options of ipa-client-install.
+ 
+ from __future__ import absolute_import
+ 
++import os
+ import pytest
+ import re
+ import shlex
+ import textwrap
+ 
+ from ipaplatform.paths import paths
++from ipalib.sysrestore import SYSRESTORE_STATEFILE, SYSRESTORE_INDEXFILE
+ from ipatests.test_integration.base import IntegrationTest
+ from ipatests.pytest_ipa.integration import tasks
+ from ipatests.pytest_ipa.integration.firewall import Firewall
+@@ -90,6 +92,29 @@ class TestInstallClient(IntegrationTest):
+         assert 'includedir {dir}'.format(
+             dir=paths.SSSD_PUBCONF_KRB5_INCLUDE_D_DIR
+         ).encode() not in krb5_cfg
++        tasks.uninstall_client(self.clients[0])
++
++    def test_install_with_automount(self):
++        """Test that installation with automount is successful"""
++        tasks.install_client(self.master, self.clients[0],
++                             extra_args=['--automount-location', 'default'])
++
++    def test_uninstall_with_automount(self):
++        """Test that uninstall with automount is successful and complete"""
++        tasks.uninstall_client(self.clients[0])
++        index = os.path.join(
++            paths.IPA_CLIENT_SYSRESTORE, SYSRESTORE_INDEXFILE
++        )
++        state = os.path.join(
++            paths.IPA_CLIENT_SYSRESTORE, SYSRESTORE_STATEFILE
++        )
++        for filepath in (index, state):
++            try:
++                self.clients[0].get_file_contents(filepath)
++            except IOError:
++                pass
++            else:
++                pytest.fail("The client file %s was not removed" % filepath)
+ 
+ 
+ class TestClientInstallBind(IntegrationTest):
+-- 
+2.43.0
+

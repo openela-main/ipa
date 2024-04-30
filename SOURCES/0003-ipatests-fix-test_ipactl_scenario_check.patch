@@ -1,0 +1,35 @@
+From 8ffcce91c694d83f6698a0539b970f41ea056e2d Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Thu, 21 Sep 2023 10:32:41 +0200
+Subject: [PATCH] ipatests: fix test_ipactl_scenario_check
+
+The test is comparing the PID of services before and after
+calling ipactl start, expecting to have the same value.
+It should not compare the pid for ipa-dnskeysyncd as this service
+is automatically restarted upon failure.
+
+Fixes: https://pagure.io/freeipa/issue/9415
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipatests/test_integration/test_installation.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_installation.py b/ipatests/test_integration/test_installation.py
+index 39fbff2b674296b0696defa7bac3efe35c89e0b7..68a442a9cd7746eec728ee38fda34dbc5361c59b 100644
+--- a/ipatests/test_integration/test_installation.py
++++ b/ipatests/test_integration/test_installation.py
+@@ -695,7 +695,7 @@ def get_pki_tomcatd_pid(host):
+ def get_ipa_services_pids(host):
+     ipa_services_name = [
+         "krb5kdc", "kadmin", "named", "httpd", "ipa-custodia",
+-        "pki_tomcatd", "ipa-dnskeysyncd"
++        "pki_tomcatd"
+     ]
+     pids_of_ipa_services = {}
+     for name in ipa_services_name:
+-- 
+2.41.0
+

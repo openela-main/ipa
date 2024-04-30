@@ -1,0 +1,47 @@
+From f8a616dc6196324145372713da772fe9b2352e53 Mon Sep 17 00:00:00 2001
+From: Stanislav Levin <slev@altlinux.org>
+Date: Tue, 23 Jan 2024 19:19:43 +0300
+Subject: [PATCH] ipapython: Correct return type of krb5_free_cred_contents
+
+According to https://web.mit.edu/kerberos/krb5-latest/doc/appdev/refs/api/krb5_free_cred_contents.html
+
+> krb5_free_cred_contents - Free the contents of a krb5_creds structure.
+>
+> void krb5_free_cred_contents(krb5_context context, krb5_creds * val)
+> param:
+> [in] context - Library context
+>
+> [in] val - Credential structure to free contents of
+>
+> This function frees the contents of val , but not the structure itself.
+
+https://github.com/krb5/krb5/blob/5b00197227231943bd2305328c8260dd0b0dbcf0/src/lib/krb5/krb/kfree.c#L166
+
+This leads to undefined behavior and `krb5_free_cred_contents` can
+raise KRB5Error (because of garbage data) while actually its foreign
+function doesn't.
+
+Fixes: https://pagure.io/freeipa/issue/9519
+Signed-off-by: Stanislav Levin <slev@altlinux.org>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ ipapython/session_storage.py | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/ipapython/session_storage.py b/ipapython/session_storage.py
+index 371cf152472d54c9a59b60bece9559323ede78b7..dc36f54939a838bcb933dfb0089410d9b00f9e4d 100644
+--- a/ipapython/session_storage.py
++++ b/ipapython/session_storage.py
+@@ -200,8 +200,7 @@ krb5_cc_end_seq_get.errcheck = krb5_errcheck
+ 
+ krb5_free_cred_contents = LIBKRB5.krb5_free_cred_contents
+ krb5_free_cred_contents.argtypes = (krb5_context, ctypes.POINTER(krb5_creds))
+-krb5_free_cred_contents.restype = krb5_error
+-krb5_free_cred_contents.errcheck = krb5_errcheck
++krb5_free_cred_contents.restype = None
+ 
+ krb5_principal_compare = LIBKRB5.krb5_principal_compare
+ krb5_principal_compare.argtypes = (krb5_context, krb5_principal,
+-- 
+2.43.0
+

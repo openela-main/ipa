@@ -1,0 +1,48 @@
+From 411107e1d1fa64b15978b7c69522613fbf3aa827 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Fri, 29 Sep 2023 10:31:00 +0200
+Subject: [PATCH] ipatests: fix expected output for
+ ipahealthcheck.meta.services
+
+ipa-healthcheck commit 31be12b introduced a change in the output
+message when pki-tomcatd is not running.
+With versions <= 0.12, the service name is displayed as
+pki_tomcatd (with an underscore), but with 0.13+ it is
+pki-tomcatd (with a dash).
+
+Fixes: https://pagure.io/freeipa/issue/9460
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipatests/test_integration/test_ipahealthcheck.py | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index 35fcfe10508589ded021207a4eba4fb0143495b4..5d79f2b529e819a291228776c4cc278463f02e59 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -454,6 +454,11 @@ class TestIpaHealthCheck(IntegrationTest):
+             assert data[0]["result"] == "SUCCESS"
+             assert data[0]["kw"]["status"] is True
+ 
++        version = tasks.get_healthcheck_version(self.master)
++        # With healthcheck newer versions, the error msg for PKI tomcat
++        # contains the string pki-tomcatd instead of pki_tomcatd
++        always_replace = parse_version(version) >= parse_version("0.13")
++
+         for service in svc_list:
+             restart_service(self.master, service)
+             returncode, data = run_healthcheck(
+@@ -466,7 +471,7 @@ class TestIpaHealthCheck(IntegrationTest):
+             for check in data:
+                 if check["check"] != service:
+                     continue
+-                if service != 'pki_tomcatd':
++                if service != 'pki_tomcatd' or always_replace:
+                     service = service.replace('_', '-')
+                 assert check["result"] == "ERROR"
+                 assert check["kw"]["msg"] == "%s: not running" % service
+-- 
+2.41.0
+

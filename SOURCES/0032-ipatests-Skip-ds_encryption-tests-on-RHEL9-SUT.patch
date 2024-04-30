@@ -1,0 +1,46 @@
+From 8bdfbe8d2b203c64444390985011b2372f3bc08e Mon Sep 17 00:00:00 2001
+From: Sudhir Menon <sumenon@redhat.com>
+Date: Wed, 20 Dec 2023 18:42:25 +0530
+Subject: [PATCH] ipatests: Skip ds_encryption tests on RHEL9 SUT.
+
+test_ipahealthcheck_ds_encryption tests are failing
+in RHEL9 SUT because in this test tls protocol version
+is set to TLS1.0 using the below command, but its
+reset to TLS1.2 causing the test to fail.
+
+'dsconf', 'slapd-TESTREALM-TEST', 'security', 'set', '--tls-protocol-min=TLS1.0'
+
+Hence the test is skipped to be run on RHEL9.0 SUT.
+
+Signed-off-by: Sudhir Menon <sumenon@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+---
+ ipatests/test_integration/test_ipahealthcheck.py | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index 785e9abbae3b807f100a3d875e0c0b23f868be83..40c84898894681d8daf386b522118a6a7f793227 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -158,7 +158,6 @@ TOMCAT_CONFIG_FILES = (
+     paths.CA_CS_CFG_PATH,
+ )
+ 
+-
+ def run_healthcheck(host, source=None, check=None, output_type="json",
+                     failures_only=False, config=None):
+     """
+@@ -1262,6 +1261,10 @@ class TestIpaHealthCheck(IntegrationTest):
+         )
+         self.master.run_command(cmd)
+ 
++    @pytest.mark.skipif((osinfo.id == 'rhel'
++                         and osinfo.version_number >= (9,0)),
++                        reason=" TLS versions below 1.2 are not "
++                        "supported anymore in RHEL9.0 and above.")
+     def test_ipahealthcheck_ds_encryption(self, modify_tls):
+         """
+         This testcase modifies the default TLS version of
+-- 
+2.43.0
+

@@ -1,0 +1,91 @@
+From 34b58d8ee93ab385c1f3ba1166377fc1008a9c17 Mon Sep 17 00:00:00 2001
+From: Julien Rische <jrische@redhat.com>
+Date: Wed, 24 Jan 2024 15:50:17 +0100
+Subject: [PATCH] ipa-kdb: Fix memory leak during PAC verification
+
+Commit 0022bd70d93708d325855d5271516d6cd894d6e8 introduced a memory leak
+during the copy of some PAC buffers, because of an unfreed memory
+allocation context.
+
+Fixes: https://pagure.io/freeipa/issue/9520
+
+Signed-off-by: Julien Rische <jrische@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ daemons/ipa-kdb/ipa_kdb_mspac.c | 28 +++++++++++++---------------
+ 1 file changed, 13 insertions(+), 15 deletions(-)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb_mspac.c b/daemons/ipa-kdb/ipa_kdb_mspac.c
+index 1558e2bead288d9d00014e9b3b059934e80b54e4..2866304e1e374fb6a8dc3400dd1f56583d9d9197 100644
+--- a/daemons/ipa-kdb/ipa_kdb_mspac.c
++++ b/daemons/ipa-kdb/ipa_kdb_mspac.c
+@@ -2316,6 +2316,7 @@ krb5_error_code ipadb_common_verify_pac(krb5_context context,
+     size_t i;
+     struct dom_sid *requester_sid = NULL;
+     struct dom_sid req_sid;
++    TALLOC_CTX *tmpctx = NULL;
+ 
+     if (signing_krbtgt != NULL &&
+         ipadb_is_cross_realm_krbtgt(signing_krbtgt->princ)) {
+@@ -2371,6 +2372,12 @@ krb5_error_code ipadb_common_verify_pac(krb5_context context,
+         goto done;
+     }
+ 
++    tmpctx = talloc_new(NULL);
++    if (tmpctx == NULL) {
++        kerr = ENOMEM;
++        goto done;
++    }
++
+     for (i = 0; i < num_buffers; i++) {
+         if (types[i] == KRB5_PAC_SERVER_CHECKSUM ||
+             types[i] == KRB5_PAC_PRIVSVR_CHECKSUM ||
+@@ -2398,32 +2405,21 @@ krb5_error_code ipadb_common_verify_pac(krb5_context context,
+             DATA_BLOB pac_attrs_data;
+             krb5_boolean pac_requested;
+ 
+-            TALLOC_CTX *tmpctx = talloc_new(NULL);
+-            if (tmpctx == NULL) {
+-                kerr = ENOMEM;
+-                goto done;
+-            }
+-
+             kerr = ipadb_client_requested_pac(context, old_pac, tmpctx, &pac_requested);
+-            if (kerr != 0) {
+-                talloc_free(tmpctx);
++            if (kerr)
+                 goto done;
+-            }
+ 
+             kerr = ipadb_get_pac_attrs_blob(tmpctx, &pac_requested, &pac_attrs_data);
+-            if (kerr) {
+-                talloc_free(tmpctx);
++            if (kerr)
+                 goto done;
+-            }
++
+             data.magic = KV5M_DATA;
+             data.data = (char *)pac_attrs_data.data;
+             data.length = pac_attrs_data.length;
+ 
+             kerr = krb5_pac_add_buffer(context, new_pac, PAC_TYPE_ATTRIBUTES_INFO, &data);
+-            if (kerr) {
+-                talloc_free(tmpctx);
++            if (kerr)
+                 goto done;
+-            }
+ 
+             continue;
+         }
+@@ -2470,6 +2466,8 @@ done:
+     if (kerr != 0 && (new_pac != *pac)) {
+         krb5_pac_free(context, new_pac);
+     }
++    if (tmpctx)
++        talloc_free(tmpctx);
+     krb5_free_data_contents(context, &pac_blob);
+     free(types);
+     return kerr;
+-- 
+2.43.0
+

@@ -1,0 +1,61 @@
+From b465cf6ea596907a2845c38df9c2446efe8e65ae Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Thu, 4 Jan 2024 17:32:45 -0500
+Subject: [PATCH] ACME: Don't treat pki-server ca-config-show failures as fatal
+
+Up to PKI 11.5.0 even when a pki-server call failed it had a
+return value of 0. This was fixed in 11.5.0 which breaks
+ipa-acme-manage pruning. If a configuration value is not set
+then the call fails and the tool gives up with an error like:
+
+ERROR: No such parameter: jobsScheduler.job.pruning.certRetentionUnit
+
+In previous versions this resulted in an empty string so the tool
+displayed the default value.
+
+So now upon failure look in the stderr output for "No such parameter"
+and return an empty string so the behavior is consistent between
+both old and new PKI server versions.
+
+Fixes: https://pagure.io/freeipa/issue/9503
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+---
+ ipaserver/install/ipa_acme_manage.py | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/ipaserver/install/ipa_acme_manage.py b/ipaserver/install/ipa_acme_manage.py
+index e7c35ff6fb5b7a30ac9e2c0c18f8db805cf06ee9..dc2359f49dfdd5c8f44ab96ee11a7240f8937e11 100644
+--- a/ipaserver/install/ipa_acme_manage.py
++++ b/ipaserver/install/ipa_acme_manage.py
+@@ -261,8 +261,13 @@ class IPAACMEManage(AdminTool):
+             result = run(args, raiseonerr=False, capture_output=True,
+                          capture_error=True)
+             if result.returncode != 0:
++                # See if the parameter doesn't exist. If not then no
++                # user-specified value has been set.
++                # ERROR: No such parameter: jobsScheduler...
++                if 'No such parameter' in result.error_output:
++                    return ''
+                 raise RuntimeError(result.error_output)
+-            return result
++            return result.output.strip()
+ 
+         def ca_config_set(directive, value,
+                           prefix='jobsScheduler.job.pruning'):
+@@ -274,9 +279,8 @@ class IPAACMEManage(AdminTool):
+                 raise RuntimeError('Updating %s failed' % directive)
+ 
+         def ca_config_show(directive):
+-            result = run_pki_server('ca-config-show', directive,
+-                                    prefix='jobsScheduler.job.pruning')
+-            return result.output.strip()
++            return run_pki_server('ca-config-show', directive,
++                                  prefix='jobsScheduler.job.pruning')
+ 
+         def config_show():
+             status = ca_config_show('enabled')
+-- 
+2.43.0
+

@@ -1,0 +1,48 @@
+From d09acb5869c5d0faa35b8784c1fea1c1be3f014f Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Fri, 26 Jan 2024 20:53:39 +0200
+Subject: [PATCH] kdb: PAC generator: do not fail if canonical principal is
+ missing
+
+krbCanonicalName is mandatory for services but IPA services created
+before commit e6ff83e (FreeIPA 4.4.0, ~2016) had no normalization done
+to set krbCanonicalName; services created after that version were
+upgraded to do have krbCanonicalName.
+
+Accept krbPrincipalName alone since they have no alias either */
+
+Fixes: https://pagure.io/freeipa/issue/9465
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Thierry Bordaz <tbordaz@redhat.com>
+---
+ daemons/ipa-kdb/ipa_kdb_mspac.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb_mspac.c b/daemons/ipa-kdb/ipa_kdb_mspac.c
+index 2866304e1e374fb6a8dc3400dd1f56583d9d9197..16374a59468975ebaea5ce18ac6445ec577e5e6a 100644
+--- a/daemons/ipa-kdb/ipa_kdb_mspac.c
++++ b/daemons/ipa-kdb/ipa_kdb_mspac.c
+@@ -496,8 +496,16 @@ static krb5_error_code ipadb_fill_info3(struct ipadb_context *ipactx,
+         ret = ipadb_ldap_attr_to_str(ipactx->lcontext, lentry,
+                                      "krbCanonicalName", &strres);
+         if (ret) {
+-            /* krbCanonicalName is mandatory for services */
+-            return ret;
++            /* krbCanonicalName is mandatory for services but IPA services
++             * created before commit e6ff83e (FreeIPA 4.4.0, ~2016) had no
++             * normalization to set krbCanonicalName; services created after
++             * that version were upgraded to do have krbCanonicalName.
++             *
++             * Accept krbPrincipalName alone since they have no alias either */
++            ret = ipadb_ldap_attr_to_str(ipactx->lcontext, lentry,
++                                         "krbPrincipalName", &strres);
++            if (ret)
++                return ret;
+         }
+ 
+         ret = krb5_parse_name(ipactx->kcontext, strres, &princ);
+-- 
+2.43.0
+

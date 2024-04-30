@@ -87,8 +87,8 @@
 %global httpd_version 2.4.37-21
 %global bind_version 9.11.20-6
 
-# Fix for https://github.com/SSSD/sssd/issues/6331
-%global sssd_version 2.8.0
+# support for passkey
+%global sssd_version 2.9.0
 
 %else
 # Fedora
@@ -148,8 +148,8 @@
 # F35+, adds IdP integration
 %global sssd_version 2.7.0
 %else
-# Fix for https://github.com/SSSD/sssd/issues/6331
-%global sssd_version 2.8.0
+# Support for passkey
+%global sssd_version 2.9.0
 %endif
 
 # Fedora
@@ -210,7 +210,7 @@
 
 # Work-around fact that RPM SPEC parser does not accept
 # "Version: @VERSION@" in freeipa.spec.in used for Autoconf string replacement
-%define IPA_VERSION 4.10.2
+%define IPA_VERSION 4.11.0
 # Release candidate version -- uncomment with one percent for RC versions
 #%%global rc_version %%nil
 %define AT_SIGN @
@@ -223,7 +223,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        8%{?rc_version:.%rc_version}%{?dist}
+Release:        9%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -247,49 +247,68 @@ Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
 %endif
 %if 0%{?rhel} == 9
-Patch0001:      0001-webuitests-close-notification-which-hides-Add-button.patch
-Patch0002:      0002-ipatests-Check-that-SSSD_PUBCONF_KRB5_INCLUDE_D_DIR-.patch
-Patch0003:      0003-Revert-Use-the-OpenSSL-certificate-parser-in-cert-fi.patch
-Patch0004:      0004-Revert-cert_find-fix-call-with-all.patch
-Patch0005:      0005-Use-the-python-cryptography-parser-directly-in-cert-.patch
-Patch0006:      0006-Upgrade-add-PKI-drop-in-file-if-missing.patch
-Patch0007:      0007-Integration-test-add-a-test-for-upgrade-and-PKI-drop.patch
-Patch0008:      0008-Uninstaller-uninstall-PKI-before-shutting-down-servi.patch
-Patch0009:      0009-Detection-of-PKI-subsystem.patch
-Patch0010:      0010-Upgrade-fix-replica-agreement.patch
-Patch0011:      0011-Integration-tests-add-a-test-to-ipa-server-upgrade.patch
-Patch0012:      0012-tests-fix-backup-restore-scenario-with-replica.patch
-Patch0013:      0013-OTP-fix-data-type-to-avoid-endianness-issue.patch
-Patch0014:      0014-ipatests-enable-firewall-rule-for-http-service-on-ac.patch
-Patch0015:      0015-User-plugin-improve-error-related-to-non-existing-id.patch
-Patch0016:      0016-xmlrpc-tests-add-a-test-for-user-plugin-with-non-exi.patch
-Patch0017:      0017-Fix-memory-leak-in-the-OTP-last-token-plugin.patch
-Patch0018:      0018-Prevent-the-admin-user-from-being-deleted.patch
-Patch0019:      0019-ipa-kdb-fix-error-handling-of-is_master_host.patch
-Patch0020:      0020-ipatests-update-expected-webui-msg-for-admin-deletio.patch
-Patch0021:      0021-ipatests-remove-fixture-call-and-wait-to-get-things-.patch
-Patch0022:      0022-ipatests-fix-test_topology.patch
-Patch0023:      0023-ipatests-idm-api-related-tests.patch
-Patch0024:      0024-ipatests-fixture-can-produce-IndexError.patch
-Patch0025:      0025-Installer-activate-nss-and-pam-services-in-sssd.conf.patch
-Patch0026:      0026-updates-add-ACIs-for-RBCD-self-management.patch
-Patch0027:      0027-Check-the-HTTP-Referer-header-on-all-requests.patch
-Patch0028:      0028-Integration-tests-for-verifying-Referer-header-in-th.patch
-Patch0029:      0029-ipatests-restart-ipa-services-after-moving-date.patch
-Patch0030:      0030-ipatests-ignore-nsslapd-accesslog-logbuffering-WARN-.patch
-Patch0031:      0031-ipatests-Skip-ds_encryption-tests-on-RHEL9-SUT.patch
-Patch0032:      0032-adtrustinstance-make-sure-NetBIOS-name-defaults-are-.patch
-Patch0033:      0033-ipatests-wait-for-replica-update-in-test_dns_locatio.patch
-Patch0034:      0034-ipapython-Clean-up-krb5_error.patch
-Patch0035:      0035-ipapython-Correct-return-type-of-krb5_free_cred_cont.patch
-Patch0036:      0036-ipapython-Propagate-KRB5Error-exceptions-on-iteratin.patch
-Patch0037:      0037-ipa-kdb-Fix-memory-leak-during-PAC-verification.patch
-Patch0038:      0038-sidgen-ignore-staged-users-when-generating-SIDs.patch
-Patch0039:      0039-sidgen-fix-missing-prototypes.patch
-Patch0040:      0040-kdb-PAC-generator-do-not-fail-if-canonical-principal.patch
-Patch0041:      0041-ipatests-fix-tasks.wait_for_replication-method.patch
-Patch0042:      0042-ipa-kdb-Rework-ipadb_reinit_mspac.patch
-Patch0043:      0043-ipa-kdb-Fix-double-free-in-ipadb_reinit_mspac.patch
+Patch0001:      0001-ipatests-fix-healthcheck-test-without-DNS.patch
+Patch0002:      0002-ipatests-fix-healthcheck-test-for-indent-option.patch
+Patch0003:      0003-ipatests-fix-test_ipactl_scenario_check.patch
+Patch0004:      0004-ipalib-fix-the-IPACertificate-validity-dates.patch
+Patch0005:      0005-Allow-password-policy-minlength-to-be-removed-like-o.patch
+Patch0006:      0006-ipatests-Skip-the-test-failing-due-to-FIPS-policy.patch
+Patch0007:      0007-The-PKI-JSON-API-the-revocation-reason-key-may-be-ca.patch
+Patch0008:      0008-WIP-Get-the-PKI-version-from-the-remote-to-determine.patch
+Patch0009:      0009-ipatests-fix-expected-output-for-ipahealthcheck.meta.patch
+Patch0010:      0010-ipatests-ignore-nsslapd-accesslog-logbuffering-WARN-.patch
+Patch0011:      0011-ipatests-fix-expected-output-for-ipahealthcheck.ipa..patch
+Patch0012:      0012-group-add-member-fails-with-an-external-member.patch
+Patch0013:      0013-Handle-samba-changes-in-samba.security.dom_sid.patch
+Patch0014:      0014-test_install-restart-services-after-date-change.patch
+Patch0015:      0015-Issue-9497-Add-new-password-policy-logging-function.patch
+Patch0016:      0016-Issue-9497-Update-logging-in-ipa_enrollment.patch
+Patch0017:      0017-Issue-9497-update-debug-logging-in-ipa_graceperiod.patch
+Patch0018:      0018-Issue-9497-update-debug-logging-in-ipa_lockout.patch
+Patch0019:      0019-Issue-9497-update-debug-logging-in-ipa_modrdn.patch
+Patch0020:      0020-Issue-9497-update-debug-logging-in-ipa_otp_counter.patch
+Patch0021:      0021-Issue-9497-update-debug-logging-in-ipa_otp_lasttoken.patch
+Patch0022:      0022-Issue-9497-update-debug-logging-in-ipa-pwd-extop.patch
+Patch0023:      0023-Issue-9497-update-debug-logging-in-ipa_uuid.patch
+Patch0024:      0024-hbactest-was-not-collecting-or-returning-messages.patch
+Patch0025:      0025-ipatests-Verify-that-hbactest-will-return-messages.patch
+Patch0026:      0026-ipa-kdb-add-better-detection-of-allowed-user-auth-ty.patch
+Patch0027:      0027-ipa-kdb-when-applying-ticket-policy-do-not-deny-PKIN.patch
+Patch0028:      0028-ipa-kdb-clarify-user-auth-table-mapping-use-of-_AUTH.patch
+Patch0029:      0029-ipatests-make-sure-PKINIT-enrollment-works-with-a-st.patch
+Patch0030:      0030-Check-the-HTTP-Referer-header-on-all-requests.patch
+Patch0031:      0031-Integration-tests-for-verifying-Referer-header-in-th.patch
+Patch0032:      0032-ipatests-Skip-ds_encryption-tests-on-RHEL9-SUT.patch
+Patch0033:      0033-ACME-Don-t-treat-pki-server-ca-config-show-failures-.patch
+Patch0034:      0034-Fix-ipa-client-automount-install-uninstall-with-new-.patch
+Patch0035:      0035-ipatests-Test-client-install-uninstall-with-automoun.patch
+Patch0036:      0036-ipa-client-automount-Don-t-use-deprecated-ipadiscove.patch
+Patch0037:      0037-Server-affinity-Retain-user-requested-remote-server.patch
+Patch0038:      0038-get_directive-don-t-error-out-on-substring-mismatch.patch
+Patch0039:      0039-host-update-System-Manage-Host-Keytab-permission.patch
+Patch0040:      0040-adtrustinstance-make-sure-NetBIOS-name-defaults-are-.patch
+Patch0041:      0041-Server-affinity-Don-t-rely-just-on-ca-kra-_enabled-f.patch
+Patch0042:      0042-ipatests-wait-for-replica-update-in-test_dns_locatio.patch
+Patch0043:      0043-Server-affinity-call-ca.install-if-there-is-a-CA-in-.patch
+Patch0044:      0044-ipapython-Clean-up-krb5_error.patch
+Patch0045:      0045-ipapython-Correct-return-type-of-krb5_free_cred_cont.patch
+Patch0046:      0046-ipapython-Propagate-KRB5Error-exceptions-on-iteratin.patch
+Patch0047:      0047-ipa-kdb-Fix-memory-leak-during-PAC-verification.patch
+Patch0048:      0048-sidgen-ignore-staged-users-when-generating-SIDs.patch
+Patch0049:      0049-sidgen-fix-missing-prototypes.patch
+Patch0050:      0050-kdb-PAC-generator-do-not-fail-if-canonical-principal.patch
+Patch0051:      0051-ipatests-Skip-tests-for-ipahealtcheck-tests-for-spec.patch
+Patch0052:      0052-ipatests-remove-xfail-thanks-to-sssd-2.9.4.patch
+Patch0053:      0053-ipatests-add-xfail-for-autoprivate-group-test-with-o.patch
+Patch0054:      0054-ipatests-fix-tasks.wait_for_replication-method.patch
+Patch0055:      0055-ipa-kdb-Rework-ipadb_reinit_mspac.patch
+Patch0056:      0056-Vault-add-support-for-RSA-OAEP-wrapping-algo.patch
+Patch0057:      0057-Vault-improve-vault-server-archival-retrieval-calls-.patch
+Patch0058:      0058-kra-set-RSA-OAEP-as-default-wrapping-algo-when-FIPS-.patch
+Patch0059:      0059-ipa-kdb-Fix-double-free-in-ipadb_reinit_mspac.patch
+Patch0060:      0060-rpcserver-validate-Kerberos-principal-name-before-ru.patch
+Patch0061:      0061-validate_principal-Don-t-try-to-verify-that-the-real.patch
+Patch0062:      0062-Vault-add-additional-fallback-to-RSA-OAEP-wrapping-a.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -599,12 +618,8 @@ Requires: python3-pyasn1 >= 0.3.2-2
 Requires: python3-sssdconfig >= %{sssd_version}
 Requires: python3-psutil
 Requires: rpm-libs
-# Indirect dependency: use newer urllib3 with TLS 1.3 PHA support
-%if 0%{?rhel}
-Requires: python3-urllib3 >= 1.24.2-3
-%else
-Requires: python3-urllib3 >= 1.25.7
-%endif
+# For urllib3.util.ssl_match_hostname
+Requires: python3-urllib3 >= 1.25.8
 
 %description -n python3-ipaserver
 IPA is an integrated solution to provide centrally managed Identity (users,
@@ -756,6 +771,9 @@ Requires(post): policycoreutils
 Recommends: libsss_sudo
 Recommends: sudo
 Requires: (libsss_sudo if sudo)
+
+# Passkey support
+Recommends: sssd-passkey
 
 Provides: %{alt_name}-client = %{version}
 Conflicts: %{alt_name}-client
@@ -927,6 +945,8 @@ Requires: platform-python-setuptools
 %else
 Requires: python3-setuptools
 %endif
+# For urllib3.util.ssl_match_hostname
+Requires: python3-urllib3 >= 1.25.8
 
 %description -n python3-ipalib
 IPA is an integrated solution to provide centrally managed Identity (users,
@@ -1781,27 +1801,54 @@ fi
 %endif
 
 %changelog
-* Tue Feb 20 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-8
-- Resolves: RHEL-25741 ipa-kdb: Cannot determine if PAC generator is available
+* Thu Mar 07 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-9
+- Resolves: RHEL-28258 vault fails on non-fips client if server is in FIPS mode
+- Resolves: RHEL-26154 ipa: freeipa: specially crafted HTTP requests potentially lead to DoS or data exposure
 
-* Fri Feb 16 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-7
-- Resolves: RHEL-25741 ipa-kdb: Cannot determine if PAC generator is available
-- Resolves: RHEL-25707 tier-1-upstream-dns-locations failed on RHEL8.8 gating
+* Tue Feb 20 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-8
+- Resolves: RHEL-12143 'ipa vault-add is failing with ipa: ERROR: an internal error has occurred in FIPS mode
+- Resolves: RHEL-25738 ipa-kdb: Cannot determine if PAC generator is available
 
-* Tue Feb 06 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-6
-- Resolves: RHEL-24360 IPA stops working if HTTP/... service principal was created before FreeIPA 4.4.0 and never modified
-- Resolves: RHEL-24363 Pagure #9517: sidgen plugin does not ignore staged users
-- Resolves: RHEL-24366 Memory leak in IdM's KDC
-- Resolves: RHEL-24370 session cookie can't be read
-- Resolves: RHEL-24373 Gating-DL1 test failure in test_integration/test_dns_locations.py::TestDNSLocations::()::test_ipa_ca_records
-- Resolves: RHEL-24376 Make sure a default NetBIOS name is set if not passed in by ADTrust instance constructor
-- Resolves: RHEL-24464 healthcheck reports nsslapd-accesslog-logbuffering is set to 'off'
+* Fri Feb 16 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-7
+- Resolves: RHEL-25260 tier-1-upstream-dns-locations failed on RHEL8.8 gating
+- Resolves: RHEL-25738 ipa-kdb: Cannot determine if PAC generator is available
+- Resolves: RHEL-25815 Backport latest test fixes in python3-ipatests
 
-* Fri Nov 24 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-5
-- Resolves: RHEL-12588 ipa: Invalid CSRF protection
+* Fri Feb 09 2024  2024 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-6
+- Resolves: RHEL-23627 IPA stops working if HTTP/... service principal was created before FreeIPA 4.4.0 and never modified
+- Resolves: RHEL-23625 sidgen plugin does not ignore staged users
+- Resolves: RHEL-23621 session cookie can't be read
+- Resolves: RHEL-22372 Gating-DL1 test failure in test_integration/test_dns_locations.py::TestDNSLocations::()::test_ipa_ca_records
+- Resolves: RHEL-21809 CA less servers are failing to be added in topology segment for domain suffix
+- Resolves: RHEL-17996 Memory leak in IdM's KDC
 
-* Tue Oct 10 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-4.1
-- Resolves: RHEL-12373 ACIs are missing for RBCD self-management
+* Thu Jan 18 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-5
+- Resolves: RHEL-12589 ipa: Invalid CSRF protection
+- Resolves: RHEL-19748 ipa hbac-test did not report that it hit an arbitrary search limit
+- Resolves: RHEL-21059 'DogtagCertsConfigCheck' fails, displaying the error message 'Malformed directive: ca.signing.certnickname=caSigningCert cert-pki-ca'
+- Resolves: RHEL-21804 ipa client 4.10.2 - Failed to obtain host TGT
+- Resolves: RHEL-21809 CA less servers are failing to be added in topology segment for domain suffix
+- Resolves: RHEL-21810 ipa-client-install --automount-location does not work
+- Resolves: RHEL-21811 Handle change in behavior of pki-server ca-config-show in pki 11.5.0
+- Resolves: RHEL-21812 Backport latest test fixes in ipa
+- Resolves: RHEL-21813 krb5kdc fails to start when pkinit and otp auth type is enabled in ipa
+- Resolves: RHEL-21815 IPA 389ds plugins need to have better logging and tracing
+- Resolves: RHEL-21937 Make sure a default NetBIOS name is set if not passed in by ADTrust instance constructor
+
+* Fri Dec 1 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-4
+- Resolves: RHEL-16985 Handle samba 4.19 changes in samba.security.dom_sid()
+
+* Mon Nov 20 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-3
+- Resolves: RHEL-14428 healthcheck reports nsslapd-accesslog-logbuffering is set to 'off'
+
+* Mon Nov 6 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-2
+- Resolves: RHEL-14292 Backport latest test fixes in python3-ipatests
+- Resolves: RHEL-15443 Server install: failure to install with externally signed CA because of timezone issue
+- Resolves: RHEL-15444 Minimum length parameter in pwpolicy cannot be removed with empty string
+- Resolves: RHEL-14842 Upstream xmlrpc tests are failing in RHEL9.4
+
+* Fri Oct 06 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-1
+- Resolves: RHEL-11652 Rebase ipa to latest 4.11.x version for RHEL 9.4
 
 * Thu Aug 17 2023 Florence Blanc-Renaud <flo@redhat.com> - 4.10.2-4
 - Resolves: rhbz#2231847 RHEL 8.8 & 9.2 fails to create AD trust with STIG applied

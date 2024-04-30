@@ -1,0 +1,56 @@
+From e8810696a38b70af286a2a2aae464ba4294e1fb5 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Tue, 28 Nov 2023 13:35:13 -0500
+Subject: [PATCH] ipatests: Verify that hbactest will return messages
+
+Limit the sizelimit of the hbactest request to confirm that
+the output includes a SearchResultTruncated message.
+
+Fixes: https://pagure.io/freeipa/issue/9486
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ ipatests/test_xmlrpc/test_hbactest_plugin.py | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/ipatests/test_xmlrpc/test_hbactest_plugin.py b/ipatests/test_xmlrpc/test_hbactest_plugin.py
+index 73c4ce232066dd7e45bc9a636f9fd955d50d6818..e2e66c759ab4bd1ac3e6dd2ab380c6359fc90042 100644
+--- a/ipatests/test_xmlrpc/test_hbactest_plugin.py
++++ b/ipatests/test_xmlrpc/test_hbactest_plugin.py
+@@ -134,6 +134,7 @@ class test_hbactest(XMLRPC_test):
+         assert ret['value']
+         assert ret['error'] is None
+         assert ret['matched'] is None
++        assert 'messages' not in ret
+         assert ret['notmatched'] is None
+ 
+     def test_c_hbactest_check_rules_enabled_detail(self):
+@@ -200,7 +201,23 @@ class test_hbactest(XMLRPC_test):
+                 nodetail=True
+             )
+ 
+-    def test_g_hbactest_clear_testing_data(self):
++    def test_g_hbactest_searchlimit_message(self):
++        """
++        Test running 'ipa hbactest' with limited --sizelimit
++
++        We know there are at least 6 rules, 4 created here + 2 default.
++        """
++        ret = api.Command['hbactest'](
++            user=self.test_user,
++            targethost=self.test_host,
++            service=self.test_service,
++            nodetail=True,
++            sizelimit=2,
++        )
++
++        assert ret['messages'] is not None
++
++    def test_h_hbactest_clear_testing_data(self):
+         """
+         Clear data for HBAC test plugin testing.
+         """
+-- 
+2.43.0
+

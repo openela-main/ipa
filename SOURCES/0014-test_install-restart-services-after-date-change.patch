@@ -1,0 +1,43 @@
+From c7f999599efe9f3f237f8ad3b7c739714051e3e9 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Thu, 7 Dec 2023 08:35:45 +0100
+Subject: [PATCH] test_install: restart services after date change
+
+The test TestKRAinstallAfterCertRenew is moving the
+date in the future in order to reach the grace period where
+certmonger detects some certificates need to be renewed.
+Restart the services after the date change.
+
+Fixes: https://pagure.io/freeipa/issue/9405
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Michal Polovka <mpolovka@redhat.com>
+---
+ ipatests/test_integration/test_installation.py | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/ipatests/test_integration/test_installation.py b/ipatests/test_integration/test_installation.py
+index bf4163abc0f138ed42c639eee3e95df52da43a71..02fa5bc56d63421c28a5dd1fa02f9f75d305e7bf 100644
+--- a/ipatests/test_integration/test_installation.py
++++ b/ipatests/test_integration/test_installation.py
+@@ -1569,6 +1569,8 @@ class TestKRAinstallAfterCertRenew(IntegrationTest):
+         grace_date = cert_expiry - timedelta(days=10)
+         grace_date = datetime.strftime(grace_date, "%Y-%m-%d %H:%M:%S")
+         self.master.run_command(['date', '-s', grace_date])
++        # restart service after date change
++        self.master.run_command(['ipactl', 'restart'])
+ 
+         # get the count of certs track by certmonger
+         cmd = self.master.run_command(['getcert', 'list'])
+@@ -1591,6 +1593,8 @@ class TestKRAinstallAfterCertRenew(IntegrationTest):
+         cert_expiry = cert_expiry + timedelta(days=3)
+         cert_expiry = datetime.strftime(cert_expiry, "%Y-%m-%d %H:%M:%S")
+         self.master.run_command(['date', '-s', cert_expiry])
++        # restart service after date change
++        self.master.run_command(['ipactl', 'restart'])
+ 
+         passwd = "{passwd}\n{passwd}\n{passwd}".format(passwd=admin_pass)
+         self.master.run_command(['kinit', 'admin'], stdin_text=passwd)
+-- 
+2.43.0
+

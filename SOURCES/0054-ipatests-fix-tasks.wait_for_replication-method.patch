@@ -1,0 +1,36 @@
+From 7f1142504d41a821357168acd2484c7cb7c1a4c2 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Tue, 13 Feb 2024 13:30:15 +0100
+Subject: [PATCH] ipatests: fix tasks.wait_for_replication method
+
+With the fix for https://pagure.io/freeipa/issue/9171, the
+method entry.single_value['nsds5replicaupdateinprogress'] now
+returns a Boolean instead of a string "TRUE"/"FALSE".
+
+The method tasks.wait_for_replication needs to be fixed so that
+it properly detects when replication is not done.
+
+Fixes: https://pagure.io/freeipa/issue/9530
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipatests/pytest_ipa/integration/tasks.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ipatests/pytest_ipa/integration/tasks.py b/ipatests/pytest_ipa/integration/tasks.py
+index ee6dec7a1d2416b442a6ce20e41b09d84f43b5c7..418c63f2c17e4fc0a2f625bca9a02879c1a1566f 100755
+--- a/ipatests/pytest_ipa/integration/tasks.py
++++ b/ipatests/pytest_ipa/integration/tasks.py
+@@ -1520,7 +1520,7 @@ def wait_for_replication(ldap, timeout=30,
+         statuses = [entry.single_value[status_attr] for entry in entries]
+         wrong_statuses = [s for s in statuses
+                           if not re.match(target_status_re, s)]
+-        if any(e.single_value[progress_attr] == 'TRUE' for e in entries):
++        if any(e.single_value[progress_attr] for e in entries):
+             msg = 'Replication not finished'
+             logger.debug(msg)
+         elif wrong_statuses:
+-- 
+2.43.0
+

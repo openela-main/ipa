@@ -1,0 +1,31 @@
+From fab08337dac0eb6322dc5ebe730b2541f4bb6111 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Fri, 24 Nov 2023 12:20:55 +0200
+Subject: [PATCH] ipa-kdb: clarify user auth table mapping use of
+ _AUTH_PASSWORD
+
+Related: https://pagure.io/freeipa/issue/9485
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Francisco Trivino <ftrivino@redhat.com>
+---
+ daemons/ipa-kdb/ipa_kdb.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb.c b/daemons/ipa-kdb/ipa_kdb.c
+index dbb98dba6d6d273e86e39e8ca8b8877d13f4299b..4e6cacf24e27b05538db2c95ab85400bb83e3d58 100644
+--- a/daemons/ipa-kdb/ipa_kdb.c
++++ b/daemons/ipa-kdb/ipa_kdb.c
+@@ -195,6 +195,9 @@ done:
+     return base;
+ }
+ 
++/* In this table all _AUTH_PASSWORD entries will be
++ * expanded to include _AUTH_HARDENED in ipadb_parse_user_auth()
++ * which means there is no need to explicitly add it here */
+ static const struct {
+     const char *name;
+     enum ipadb_user_auth flag;
+-- 
+2.43.0
+

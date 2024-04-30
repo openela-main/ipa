@@ -1,0 +1,126 @@
+From c90ba9478b663bd5bcac9bb3af4272ee1406816b Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Fri, 24 Nov 2023 11:46:19 +0200
+Subject: [PATCH] ipa-kdb: add better detection of allowed user auth type
+
+If default user authentication type is set to a list that does not
+include a password or a hardened credential, the resulting configuration
+might be incorrect for special service principals, including a krbtgt/..
+one.
+
+Add detection of special principals to avoid these situations and always
+allow password or hardened for services.
+
+Special handling is needed for the following principals:
+
+ - krbtgt/..       -- TGT service principals
+ - K/M             -- master key principal
+ - kadmin/changepw -- service for changing passwords
+ - kadmin/kadmin   -- kadmin service principal
+ - kadmin/history  -- key used to encrypt history
+
+Additionally, implicitly allow password or hardened credential use for
+IPA services and IPA hosts since applications typically use keytabs for
+that purpose.
+
+Fixes: https://pagure.io/freeipa/issue/9485
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Francisco Trivino <ftrivino@redhat.com>
+---
+ daemons/ipa-kdb/ipa_kdb.c | 62 ++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 54 insertions(+), 8 deletions(-)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb.c b/daemons/ipa-kdb/ipa_kdb.c
+index 06d511c762006f6a1e6e7a0ec663bc059489cf64..dbb98dba6d6d273e86e39e8ca8b8877d13f4299b 100644
+--- a/daemons/ipa-kdb/ipa_kdb.c
++++ b/daemons/ipa-kdb/ipa_kdb.c
+@@ -26,6 +26,7 @@
+ #include "ipa_kdb.h"
+ #include "ipa_krb5.h"
+ #include "ipa_hostname.h"
++#include <kadm5/admin.h>
+ 
+ #define IPADB_GLOBAL_CONFIG_CACHE_TIME 60
+ 
+@@ -207,6 +208,19 @@ static const struct {
+     { "idp", IPADB_USER_AUTH_IDP },
+     { "passkey", IPADB_USER_AUTH_PASSKEY },
+     { }
++},
++  objclass_table[] = {
++    { "ipaservice", IPADB_USER_AUTH_PASSWORD },
++    { "ipahost", IPADB_USER_AUTH_PASSWORD },
++    { }
++},
++  princname_table[] = {
++    { KRB5_TGS_NAME, IPADB_USER_AUTH_PASSWORD },
++    { KRB5_KDB_M_NAME, IPADB_USER_AUTH_PASSWORD },
++    { KADM5_ADMIN_SERVICE, IPADB_USER_AUTH_PASSWORD },
++    { KADM5_CHANGEPW_SERVICE, IPADB_USER_AUTH_PASSWORD },
++    { KADM5_HIST_PRINCIPAL, IPADB_USER_AUTH_PASSWORD },
++    { }
+ };
+ 
+ void ipadb_parse_user_auth(LDAP *lcontext, LDAPMessage *le,
+@@ -217,17 +231,49 @@ void ipadb_parse_user_auth(LDAP *lcontext, LDAPMessage *le,
+ 
+     *userauth = IPADB_USER_AUTH_NONE;
+     vals = ldap_get_values_len(lcontext, le, IPA_USER_AUTH_TYPE);
+-    if (!vals)
+-        return;
+-
+-    for (i = 0; vals[i]; i++) {
+-        for (j = 0; userauth_table[j].name; j++) {
+-            if (strcasecmp(vals[i]->bv_val, userauth_table[j].name) == 0) {
+-                *userauth |= userauth_table[j].flag;
+-                break;
++    if (!vals) {
++        /* if there is no explicit ipaUserAuthType set, use objectclass */
++        vals = ldap_get_values_len(lcontext, le, "objectclass");
++        if (!vals)
++            return;
++
++        for (i = 0; vals[i]; i++) {
++            for (j = 0; objclass_table[j].name; j++) {
++                if (strcasecmp(vals[i]->bv_val, objclass_table[j].name) == 0) {
++                    *userauth |= objclass_table[j].flag;
++                    break;
++                }
++            }
++        }
++    } else {
++        for (i = 0; vals[i]; i++) {
++            for (j = 0; userauth_table[j].name; j++) {
++                if (strcasecmp(vals[i]->bv_val, userauth_table[j].name) == 0) {
++                    *userauth |= userauth_table[j].flag;
++                    break;
++                }
+             }
+         }
+     }
++
++    /* If neither ipaUserAuthType nor objectClass were definitive,
++     * check the krbPrincipalName to see if it is krbtgt/ or K/M one */
++    if (*userauth == IPADB_USER_AUTH_NONE) {
++        ldap_value_free_len(vals);
++        vals = ldap_get_values_len(lcontext, le, "krbprincipalname");
++        if (!vals)
++            return;
++        for (i = 0; vals[i]; i++) {
++            for (j = 0; princname_table[j].name; j++) {
++                if (strncmp(vals[i]->bv_val, princname_table[j].name,
++                            strlen(princname_table[j].name)) == 0) {
++                    *userauth |= princname_table[j].flag;
++                    break;
++                }
++            }
++        }
++
++    }
+     /* If password auth is enabled, enable hardened policy too. */
+     if (*userauth & IPADB_USER_AUTH_PASSWORD) {
+         *userauth |= IPADB_USER_AUTH_HARDENED;
+-- 
+2.43.0
+

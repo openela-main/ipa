@@ -1,0 +1,35 @@
+From eab52d3cda9bbec716008c040551bd11facd0e11 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Wed, 17 Jan 2024 12:27:26 +0200
+Subject: [PATCH] adtrustinstance: make sure NetBIOS name defaults are set
+ properly
+
+Some tools may pass None as NetBIOS name if not put explicitly by a
+user. This meant to use default NetBIOS name generator based on the
+domain (realm) name. However, this wasn't done properly, so None is
+passed later to python-ldap and it rejects such LDAP entry.
+
+Fixes: https://pagure.io/freeipa/issue/9514
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ ipaserver/install/adtrustinstance.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/ipaserver/install/adtrustinstance.py b/ipaserver/install/adtrustinstance.py
+index d55ba849157bee8e335e2e0772514fc15ec11193..2ff68dfb46371a6118eb67515347eb762a37e1ec 100644
+--- a/ipaserver/install/adtrustinstance.py
++++ b/ipaserver/install/adtrustinstance.py
+@@ -189,6 +189,8 @@ class ADTRUSTInstance(service.Service):
+         self.fqdn = self.fqdn or api.env.host
+         self.host_netbios_name = make_netbios_name(self.fqdn)
+         self.realm = self.realm or api.env.realm
++        if not self.netbios_name:
++            self.netbios_name = make_netbios_name(self.realm)
+ 
+         self.suffix = ipautil.realm_to_suffix(self.realm)
+         self.ldapi_socket = "%%2fvar%%2frun%%2fslapd-%s.socket" % \
+-- 
+2.43.0
+
