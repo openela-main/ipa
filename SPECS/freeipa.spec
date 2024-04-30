@@ -223,7 +223,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        9%{?rc_version:.%rc_version}%{?dist}
+Release:        10%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -309,6 +309,11 @@ Patch0059:      0059-ipa-kdb-Fix-double-free-in-ipadb_reinit_mspac.patch
 Patch0060:      0060-rpcserver-validate-Kerberos-principal-name-before-ru.patch
 Patch0061:      0061-validate_principal-Don-t-try-to-verify-that-the-real.patch
 Patch0062:      0062-Vault-add-additional-fallback-to-RSA-OAEP-wrapping-a.patch
+Patch0063:      0063-ipa-pwd-extop-allow-enforcing-2FA-only-over-LDAP-bin.patch
+Patch0064:      0064-ipa-pwd-extop-add-MFA-note-in-case-of-a-successful-L.patch
+Patch0065:      0065-ipa-pwd-extop-declare-operation-notes-support-from-3.patch
+Patch0066:      0066-dcerpc-invalidate-forest-trust-info-cache-when-filte.patch
+Patch0067:      0067-ipatests-Fixes-for-test_ipahealthcheck_ipansschainva.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -1801,6 +1806,11 @@ fi
 %endif
 
 %changelog
+* Fri Mar 29 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-10
+- Resolves: RHEL-23377 Enforce OTP for ldap bind (in some scenarios)
+- Resolves: RHEL-29745 Unable to re-add broken AD trust - NT_STATUS_INVALID_PARAMETER
+- Resolves: RHEL-30905 Backport latest test fixes in ipa
+
 * Thu Mar 07 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-9
 - Resolves: RHEL-28258 vault fails on non-fips client if server is in FIPS mode
 - Resolves: RHEL-26154 ipa: freeipa: specially crafted HTTP requests potentially lead to DoS or data exposure

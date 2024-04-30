@@ -1,0 +1,294 @@
+From 82eca6c0a994c4db8f85ea0d5c012cd4d80edefe Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Tue, 30 Jan 2024 11:17:27 +0200
+Subject: [PATCH] ipa-pwd-extop: allow enforcing 2FA-only over LDAP bind
+
+When authentication indicators were introduced in 2016, ipa-pwd-extop
+plugin gained ability to reject LDAP BIND when an LDAP client insists
+the authentication must use an OTP token. This is used by ipa-otpd to
+ensure Kerberos authentication using OTP method is done with at least
+two factors (the token and the password).
+
+This enfrocement is only possible when an LDAP client sends the LDAP
+control. There are cases when LDAP clients cannot be configured to send
+a custom LDAP control during BIND operation. For these clients an LDAP
+BIND against an account that only has password and no valid token would
+succeed even if admins intend it to fail.
+
+Ability to do LDAP BIND without a token was added to allow users to add
+their own OTP tokens securely. If administrators require full
+enforcement over LDAP BIND, it is cannot be achieved with LDAP without
+sending the LDAP control to do so.
+
+Add IPA configuration string, EnforceLDAPOTP, to allow administrators to
+prevent LDAP BIND with a password only if user is required to have OTP
+tokens. With this configuration enabled, it will be not possible for
+users to add OTP token if one is missing, thus ensuring no user can
+authenticate without OTP and admins will have to add initial OTP tokens
+to users explicitly.
+
+Fixes: https://pagure.io/freeipa/issue/5169
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ API.txt                                       |  2 +-
+ .../ipa-slapi-plugins/ipa-pwd-extop/common.c  | 47 +++++++++++++------
+ .../ipa-slapi-plugins/ipa-pwd-extop/ipapwd.h  |  2 +
+ .../ipa-slapi-plugins/ipa-pwd-extop/prepost.c | 14 ++++++
+ doc/api/config_mod.md                         |  2 +-
+ ipaserver/plugins/config.py                   |  3 +-
+ ipatests/test_integration/test_otp.py         | 46 ++++++++++++++++++
+ 7 files changed, 98 insertions(+), 18 deletions(-)
+
+diff --git a/API.txt b/API.txt
+index 7d91077fc340ababee5c9a4b8a695290728b9135..5ed1f5327d9154bf2b301a781b723213c7677ed9 100644
+--- a/API.txt
++++ b/API.txt
+@@ -1082,7 +1082,7 @@ option: Flag('all', autofill=True, cli_name='all', default=False)
+ option: Str('ca_renewal_master_server?', autofill=False)
+ option: Str('delattr*', cli_name='delattr')
+ option: Flag('enable_sid?', autofill=True, default=False)
+-option: StrEnum('ipaconfigstring*', autofill=False, cli_name='ipaconfigstring', values=[u'AllowNThash', u'KDC:Disable Last Success', u'KDC:Disable Lockout', u'KDC:Disable Default Preauth for SPNs'])
++option: StrEnum('ipaconfigstring*', autofill=False, cli_name='ipaconfigstring', values=[u'AllowNThash', u'KDC:Disable Last Success', u'KDC:Disable Lockout', u'KDC:Disable Default Preauth for SPNs', u'EnforceLDAPOTP'])
+ option: Str('ipadefaultemaildomain?', autofill=False, cli_name='emaildomain')
+ option: Str('ipadefaultloginshell?', autofill=False, cli_name='defaultshell')
+ option: Str('ipadefaultprimarygroup?', autofill=False, cli_name='defaultgroup')
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
+index d30764bb2a05c7ca4a33ea114a2dc19af39e216f..1355f20d3ab990c81b5b41875d659a9bc9f97085 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
+@@ -83,6 +83,7 @@ static struct ipapwd_krbcfg *ipapwd_getConfig(void)
+     char *tmpstr;
+     int ret;
+     size_t i;
++    bool fips_enabled = false;
+ 
+     config = calloc(1, sizeof(struct ipapwd_krbcfg));
+     if (!config) {
+@@ -241,28 +242,35 @@ static struct ipapwd_krbcfg *ipapwd_getConfig(void)
+     config->allow_nt_hash = false;
+     if (ipapwd_fips_enabled()) {
+         LOG("FIPS mode is enabled, NT hashes are not allowed.\n");
++        fips_enabled = true;
++    }
++
++    sdn = slapi_sdn_new_dn_byval(ipa_etc_config_dn);
++    ret = ipapwd_getEntry(sdn, &config_entry, NULL);
++    slapi_sdn_free(&sdn);
++    if (ret != LDAP_SUCCESS) {
++        LOG_FATAL("No config Entry?\n");
++        goto free_and_error;
+     } else {
+-        sdn = slapi_sdn_new_dn_byval(ipa_etc_config_dn);
+-        ret = ipapwd_getEntry(sdn, &config_entry, NULL);
+-        slapi_sdn_free(&sdn);
+-        if (ret != LDAP_SUCCESS) {
+-            LOG_FATAL("No config Entry?\n");
+-            goto free_and_error;
+-        } else {
+-            tmparray = slapi_entry_attr_get_charray(config_entry,
+-                                                    "ipaConfigString");
+-            for (i = 0; tmparray && tmparray[i]; i++) {
++        tmparray = slapi_entry_attr_get_charray(config_entry,
++                                                "ipaConfigString");
++        for (i = 0; tmparray && tmparray[i]; i++) {
++            if (strcasecmp(tmparray[i], "EnforceLDAPOTP") == 0) {
++                config->enforce_ldap_otp = true;
++                continue;
++            }
++            if (!fips_enabled) {
+                 if (strcasecmp(tmparray[i], "AllowNThash") == 0) {
+                     config->allow_nt_hash = true;
+                     continue;
+                 }
+             }
+-            if (tmparray) slapi_ch_array_free(tmparray);
+         }
+-
+-        slapi_entry_free(config_entry);
++        if (tmparray) slapi_ch_array_free(tmparray);
+     }
+ 
++    slapi_entry_free(config_entry);
++
+     return config;
+ 
+ free_and_error:
+@@ -571,6 +579,13 @@ int ipapwd_gen_checks(Slapi_PBlock *pb, char **errMesg,
+         rc = LDAP_OPERATIONS_ERROR;
+     }
+ 
++    /* do not return the master key if asked */
++    if (check_flags & IPAPWD_CHECK_ONLY_CONFIG) {
++        free((*config)->kmkey->contents);
++        free((*config)->kmkey);
++	(*config)->kmkey = NULL;
++    }
++
+ done:
+     return rc;
+ }
+@@ -1103,8 +1118,10 @@ void free_ipapwd_krbcfg(struct ipapwd_krbcfg **cfg)
+ 
+     krb5_free_default_realm(c->krbctx, c->realm);
+     krb5_free_context(c->krbctx);
+-    free(c->kmkey->contents);
+-    free(c->kmkey);
++    if (c->kmkey) {
++        free(c->kmkey->contents);
++        free(c->kmkey);
++    }
+     free(c->supp_encsalts);
+     free(c->pref_encsalts);
+     slapi_ch_array_free(c->passsync_mgrs);
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipapwd.h b/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipapwd.h
+index 79606a8c795d166590c4655f9021aa414c3684d9..97697000674d8fbbe3a924af63261482db173852 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipapwd.h
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipapwd.h
+@@ -70,6 +70,7 @@
+ 
+ #define IPAPWD_CHECK_CONN_SECURE    0x00000001
+ #define IPAPWD_CHECK_DN             0x00000002
++#define IPAPWD_CHECK_ONLY_CONFIG    0x00000004
+ 
+ #define IPA_CHANGETYPE_NORMAL 0
+ #define IPA_CHANGETYPE_ADMIN 1
+@@ -109,6 +110,7 @@ struct ipapwd_krbcfg {
+     char **passsync_mgrs;
+     int num_passsync_mgrs;
+     bool allow_nt_hash;
++    bool enforce_ldap_otp;
+ };
+ 
+ int ipapwd_entry_checks(Slapi_PBlock *pb, struct slapi_entry *e,
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+index 6898e6596e1cbbb2cc69ba592401619ce86899d8..69023515018d522651bccb984ddd8e9174c22f59 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+@@ -1431,6 +1431,7 @@ static int ipapwd_pre_bind(Slapi_PBlock *pb)
+         "krbPasswordExpiration", "krblastpwchange",
+         NULL
+     };
++    struct ipapwd_krbcfg *krbcfg = NULL;
+     struct berval *credentials = NULL;
+     Slapi_Entry *entry = NULL;
+     Slapi_DN *target_sdn = NULL;
+@@ -1505,6 +1506,18 @@ static int ipapwd_pre_bind(Slapi_PBlock *pb)
+     /* Try to do OTP first. */
+     syncreq = otpctrl_present(pb, OTP_SYNC_REQUEST_OID);
+     otpreq = otpctrl_present(pb, OTP_REQUIRED_OID);
++    if (!syncreq && !otpreq) {
++        ret = ipapwd_gen_checks(pb, &errMesg, &krbcfg, IPAPWD_CHECK_ONLY_CONFIG);
++        if (ret != 0) {
++            LOG_FATAL("ipapwd_gen_checks failed!?\n");
++            slapi_entry_free(entry);
++            slapi_sdn_free(&sdn);
++            return 0;
++        }
++        if (krbcfg->enforce_ldap_otp) {
++            otpreq = true;
++        }
++    }
+     if (!syncreq && !ipapwd_pre_bind_otp(dn, entry, credentials, otpreq))
+         goto invalid_creds;
+ 
+@@ -1543,6 +1556,7 @@ static int ipapwd_pre_bind(Slapi_PBlock *pb)
+     return 0;
+ 
+ invalid_creds:
++    free_ipapwd_krbcfg(&krbcfg);
+     slapi_entry_free(entry);
+     slapi_sdn_free(&sdn);
+     slapi_send_ldap_result(pb, rc, NULL, errMesg, 0, NULL);
+diff --git a/doc/api/config_mod.md b/doc/api/config_mod.md
+index c479a034416068c72c0d70deabb149acf8002e44..b3203c350605af5a386544c858a9a5f7f724342f 100644
+--- a/doc/api/config_mod.md
++++ b/doc/api/config_mod.md
+@@ -27,7 +27,7 @@ No arguments.
+ * ipauserobjectclasses : :ref:`Str<Str>`
+ * ipapwdexpadvnotify : :ref:`Int<Int>`
+ * ipaconfigstring : :ref:`StrEnum<StrEnum>`
+- * Values: ('AllowNThash', 'KDC:Disable Last Success', 'KDC:Disable Lockout', 'KDC:Disable Default Preauth for SPNs')
++ * Values: ('AllowNThash', 'KDC:Disable Last Success', 'KDC:Disable Lockout', 'KDC:Disable Default Preauth for SPNs', 'EnforceLDAPOTP')
+ * ipaselinuxusermaporder : :ref:`Str<Str>`
+ * ipaselinuxusermapdefault : :ref:`Str<Str>`
+ * ipakrbauthzdata : :ref:`StrEnum<StrEnum>`
+diff --git a/ipaserver/plugins/config.py b/ipaserver/plugins/config.py
+index eface545def441d1a6fe9bdb054ab62eaa6589d3..45bd0c108dc958e3e141055901ea3872bc30d511 100644
+--- a/ipaserver/plugins/config.py
++++ b/ipaserver/plugins/config.py
+@@ -247,7 +247,8 @@ class config(LDAPObject):
+             doc=_('Extra hashes to generate in password plug-in'),
+             values=(u'AllowNThash',
+                     u'KDC:Disable Last Success', u'KDC:Disable Lockout',
+-                    u'KDC:Disable Default Preauth for SPNs'),
++                    u'KDC:Disable Default Preauth for SPNs',
++                    u'EnforceLDAPOTP'),
+         ),
+         Str('ipaselinuxusermaporder',
+             label=_('SELinux user map order'),
+diff --git a/ipatests/test_integration/test_otp.py b/ipatests/test_integration/test_otp.py
+index 8e2ea563f1190e39fab0cab2f54da1f382c29356..d2dfca4cbf8c60955e888b6f92bd88a2608bb265 100644
+--- a/ipatests/test_integration/test_otp.py
++++ b/ipatests/test_integration/test_otp.py
+@@ -21,6 +21,9 @@ from ipaplatform.paths import paths
+ from ipatests.pytest_ipa.integration import tasks
+ from ipapython.dn import DN
+ 
++from ldap.controls.simple import BooleanControl
++
++from ipalib import errors
+ 
+ PASSWORD = "DummyPassword123"
+ USER = "opttestuser"
+@@ -450,3 +453,46 @@ class TestOTPToken(IntegrationTest):
+             assert "ipa-otpd" not in failed_services.stdout_text
+         finally:
+             del_otptoken(self.master, otpuid)
++
++    def test_totp_ldap(self):
++        master = self.master
++        basedn = master.domain.basedn
++        USER1 = 'user-forced-otp'
++        binddn = DN(f"uid={USER1},cn=users,cn=accounts,{basedn}")
++
++        tasks.create_active_user(master, USER1, PASSWORD)
++        tasks.kinit_admin(master)
++        # Enforce use of OTP token for this user
++        master.run_command(['ipa', 'user-mod', USER1,
++                            '--user-auth-type=otp'])
++        try:
++            conn = master.ldap_connect()
++            # First, attempt authenticating with a password but without LDAP
++            # control to enforce OTP presence and without server-side
++            # enforcement of the OTP presence check.
++            conn.simple_bind(binddn, f"{PASSWORD}")
++            # Add an OTP token now
++            otpuid, totp = add_otptoken(master, USER1, otptype="totp")
++            # Next, enforce Password+OTP for a user with OTP token
++            master.run_command(['ipa', 'config-mod', '--addattr',
++                                'ipaconfigstring=EnforceLDAPOTP'])
++            # Next, authenticate with Password+OTP and with the LDAP control
++            # this operation should succeed
++            otpvalue = totp.generate(int(time.time())).decode("ascii")
++            conn.simple_bind(binddn, f"{PASSWORD}{otpvalue}",
++                             client_controls=[
++                                 BooleanControl(
++                                     controlType="2.16.840.1.113730.3.8.10.7",
++                                     booleanValue=True)])
++            # Remove token
++            del_otptoken(self.master, otpuid)
++            # Now, try to authenticate without otp and without control
++            # this operation should fail
++            try:
++                conn.simple_bind(binddn, f"{PASSWORD}")
++            except errors.ACIError:
++                pass
++            master.run_command(['ipa', 'config-mod', '--delattr',
++                                'ipaconfigstring=EnforceLDAPOTP'])
++        finally:
++            master.run_command(['ipa', 'user-del', USER1])
+-- 
+2.44.0
+
