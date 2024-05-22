@@ -1,0 +1,238 @@
+From 381af470779ea87335f57038dcbe72cd042ae6bb Mon Sep 17 00:00:00 2001
+From: Stanislav Levin <slev@altlinux.org>
+Date: Jan 30 2024 15:11:05 +0000
+Subject: ipapython: Clean up krb5_error
+
+
+`krb5_error` has different definition in MIT krb.
+https://web.mit.edu/kerberos/krb5-latest/doc/appdev/refs/types/krb5_error.html
+
+> Error message structure.
+>
+> Declaration:
+> typedef struct _krb5_error krb5_error
+
+While `krb5_error_code`
+https://web.mit.edu/kerberos/www/krb5-latest/doc/appdev/refs/types/krb5_error_code.html#c.krb5_error_code
+
+> krb5_error_code
+> Used to convey an operation status.
+>
+> The value 0 indicates success; any other values are com_err codes. Use krb5_get_error_message() to obtain a string describing the error.
+>
+> Declaration
+> typedef krb5_int32 krb5_error_code
+
+And this is what was actually used.
+
+To prevent confusion of types `krb5_error` was replaced with
+`krb5_error_code`.
+
+Fixes: https://pagure.io/freeipa/issue/9519
+Signed-off-by: Stanislav Levin <slev@altlinux.org>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+
+---
+
+diff --git a/ipapython/session_storage.py b/ipapython/session_storage.py
+index c43ef7d..371cf15 100644
+--- a/ipapython/session_storage.py
++++ b/ipapython/session_storage.py
+@@ -111,7 +111,7 @@ class KRB5Error(Exception):
+ 
+ 
+ def krb5_errcheck(result, func, arguments):
+-    """Error checker for krb5_error return value"""
++    """Error checker for krb5_error_code return value"""
+     if result != 0:
+         raise KRB5Error(result, func.__name__, arguments)
+ 
+@@ -119,14 +119,13 @@ def krb5_errcheck(result, func, arguments):
+ krb5_context = ctypes.POINTER(_krb5_context)
+ krb5_ccache = ctypes.POINTER(_krb5_ccache)
+ krb5_data_p = ctypes.POINTER(_krb5_data)
+-krb5_error = ctypes.c_int32
+ krb5_creds = _krb5_creds
+ krb5_pointer = ctypes.c_void_p
+ krb5_cc_cursor = krb5_pointer
+ 
+ krb5_init_context = LIBKRB5.krb5_init_context
+ krb5_init_context.argtypes = (ctypes.POINTER(krb5_context), )
+-krb5_init_context.restype = krb5_error
++krb5_init_context.restype = krb5_error_code
+ krb5_init_context.errcheck = krb5_errcheck
+ 
+ krb5_free_context = LIBKRB5.krb5_free_context
+@@ -143,30 +142,30 @@ krb5_free_data_contents.restype = None
+ 
+ krb5_cc_default = LIBKRB5.krb5_cc_default
+ krb5_cc_default.argtypes = (krb5_context, ctypes.POINTER(krb5_ccache), )
+-krb5_cc_default.restype = krb5_error
++krb5_cc_default.restype = krb5_error_code
+ krb5_cc_default.errcheck = krb5_errcheck
+ 
+ krb5_cc_close = LIBKRB5.krb5_cc_close
+ krb5_cc_close.argtypes = (krb5_context, krb5_ccache, )
+-krb5_cc_close.restype = krb5_error
++krb5_cc_close.restype = krb5_error_code
+ krb5_cc_close.errcheck = krb5_errcheck
+ 
+ krb5_parse_name = LIBKRB5.krb5_parse_name
+ krb5_parse_name.argtypes = (krb5_context, ctypes.c_char_p,
+                             ctypes.POINTER(krb5_principal), )
+-krb5_parse_name.restype = krb5_error
++krb5_parse_name.restype = krb5_error_code
+ krb5_parse_name.errcheck = krb5_errcheck
+ 
+ krb5_cc_set_config = LIBKRB5.krb5_cc_set_config
+ krb5_cc_set_config.argtypes = (krb5_context, krb5_ccache, krb5_principal,
+                                ctypes.c_char_p, krb5_data_p, )
+-krb5_cc_set_config.restype = krb5_error
++krb5_cc_set_config.restype = krb5_error_code
+ krb5_cc_set_config.errcheck = krb5_errcheck
+ 
+ krb5_cc_get_principal = LIBKRB5.krb5_cc_get_principal
+ krb5_cc_get_principal.argtypes = (krb5_context, krb5_ccache,
+                                   ctypes.POINTER(krb5_principal), )
+-krb5_cc_get_principal.restype = krb5_error
++krb5_cc_get_principal.restype = krb5_error_code
+ krb5_cc_get_principal.errcheck = krb5_errcheck
+ 
+ # krb5_build_principal is a variadic function but that can't be expressed
+@@ -177,26 +176,26 @@ krb5_build_principal.argtypes = (krb5_context, ctypes.POINTER(krb5_principal),
+                                  ctypes.c_uint, ctypes.c_char_p,
+                                  ctypes.c_char_p, ctypes.c_char_p,
+                                  ctypes.c_char_p, ctypes.c_char_p, )
+-krb5_build_principal.restype = krb5_error
++krb5_build_principal.restype = krb5_error_code
+ krb5_build_principal.errcheck = krb5_errcheck
+ 
+ krb5_cc_start_seq_get = LIBKRB5.krb5_cc_start_seq_get
+ krb5_cc_start_seq_get.argtypes = (krb5_context, krb5_ccache,
+                                   ctypes.POINTER(krb5_cc_cursor), )
+-krb5_cc_start_seq_get.restype = krb5_error
++krb5_cc_start_seq_get.restype = krb5_error_code
+ krb5_cc_start_seq_get.errcheck = krb5_errcheck
+ 
+ krb5_cc_next_cred = LIBKRB5.krb5_cc_next_cred
+ krb5_cc_next_cred.argtypes = (krb5_context, krb5_ccache,
+                               ctypes.POINTER(krb5_cc_cursor),
+                               ctypes.POINTER(krb5_creds), )
+-krb5_cc_next_cred.restype = krb5_error
++krb5_cc_next_cred.restype = krb5_error_code
+ krb5_cc_next_cred.errcheck = krb5_errcheck
+ 
+ krb5_cc_end_seq_get = LIBKRB5.krb5_cc_end_seq_get
+ krb5_cc_end_seq_get.argtypes = (krb5_context, krb5_ccache,
+                                 ctypes.POINTER(krb5_cc_cursor), )
+-krb5_cc_end_seq_get.restype = krb5_error
++krb5_cc_end_seq_get.restype = krb5_error_code
+ krb5_cc_end_seq_get.errcheck = krb5_errcheck
+ 
+ krb5_free_cred_contents = LIBKRB5.krb5_free_cred_contents
+@@ -212,7 +211,7 @@ krb5_principal_compare.restype = krb5_boolean
+ krb5_unparse_name = LIBKRB5.krb5_unparse_name
+ krb5_unparse_name.argtypes = (krb5_context, krb5_principal,
+                               ctypes.POINTER(ctypes.c_char_p), )
+-krb5_unparse_name.restype = krb5_error
++krb5_unparse_name.restype = krb5_error_code
+ krb5_unparse_name.errcheck = krb5_errcheck
+ 
+ krb5_free_unparsed_name = LIBKRB5.krb5_free_unparsed_name
+
+From 2a4bad8bb3295c5c0f5a760ecd41871c4c5a0c56 Mon Sep 17 00:00:00 2001
+From: Stanislav Levin <slev@altlinux.org>
+Date: Jan 30 2024 15:11:05 +0000
+Subject: ipapython: Correct return type of krb5_free_cred_contents
+
+
+According to https://web.mit.edu/kerberos/krb5-latest/doc/appdev/refs/api/krb5_free_cred_contents.html
+
+> krb5_free_cred_contents - Free the contents of a krb5_creds structure.
+>
+> void krb5_free_cred_contents(krb5_context context, krb5_creds * val)
+> param:
+> [in] context - Library context
+>
+> [in] val - Credential structure to free contents of
+>
+> This function frees the contents of val , but not the structure itself.
+
+https://github.com/krb5/krb5/blob/5b00197227231943bd2305328c8260dd0b0dbcf0/src/lib/krb5/krb/kfree.c#L166
+
+This leads to undefined behavior and `krb5_free_cred_contents` can
+raise KRB5Error (because of garbage data) while actually its foreign
+function doesn't.
+
+Fixes: https://pagure.io/freeipa/issue/9519
+Signed-off-by: Stanislav Levin <slev@altlinux.org>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+
+---
+
+diff --git a/ipapython/session_storage.py b/ipapython/session_storage.py
+index 371cf15..dc36f54 100644
+--- a/ipapython/session_storage.py
++++ b/ipapython/session_storage.py
+@@ -200,8 +200,7 @@ krb5_cc_end_seq_get.errcheck = krb5_errcheck
+ 
+ krb5_free_cred_contents = LIBKRB5.krb5_free_cred_contents
+ krb5_free_cred_contents.argtypes = (krb5_context, ctypes.POINTER(krb5_creds))
+-krb5_free_cred_contents.restype = krb5_error
+-krb5_free_cred_contents.errcheck = krb5_errcheck
++krb5_free_cred_contents.restype = None
+ 
+ krb5_principal_compare = LIBKRB5.krb5_principal_compare
+ krb5_principal_compare.argtypes = (krb5_context, krb5_principal,
+
+From beb402afdbf32c01eed860e9416356f7b492ad74 Mon Sep 17 00:00:00 2001
+From: Stanislav Levin <slev@altlinux.org>
+Date: Jan 30 2024 15:11:05 +0000
+Subject: ipapython: Propagate KRB5Error exceptions on iterating ccache
+
+
+`ipapython.session_storage.get_data` iterates over
+credentials in a credential cache till `krb5_cc_next_cred` returns
+an error. This function doesn't expect any error on calling
+other kerberos foreign functions during iteration. But that can
+actually happen and KRB5Error exceptions stop an iteration while
+they should be propagated.
+
+With this change iteration will exactly stop on `krb5_cc_next_cred`
+error as it was supposed to be.
+
+Fixes: https://pagure.io/freeipa/issue/9519
+Signed-off-by: Stanislav Levin <slev@altlinux.org>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+
+---
+
+diff --git a/ipapython/session_storage.py b/ipapython/session_storage.py
+index dc36f54..e890dc9 100644
+--- a/ipapython/session_storage.py
++++ b/ipapython/session_storage.py
+@@ -312,8 +312,12 @@ def get_data(princ_name, key):
+                 checkcreds = krb5_creds()
+                 # the next function will throw an error and break out of the
+                 # while loop when we try to access past the last cred
+-                krb5_cc_next_cred(context, ccache, ctypes.byref(cursor),
+-                                  ctypes.byref(checkcreds))
++                try:
++                    krb5_cc_next_cred(context, ccache, ctypes.byref(cursor),
++                                      ctypes.byref(checkcreds))
++                except KRB5Error:
++                    break
++
+                 if (krb5_principal_compare(context, principal,
+                                           checkcreds.client) == 1 and
+                     krb5_principal_compare(context, srv_princ,
+@@ -328,8 +332,6 @@ def get_data(princ_name, key):
+                 else:
+                     krb5_free_cred_contents(context,
+                                             ctypes.byref(checkcreds))
+-        except KRB5Error:
+-            pass
+         finally:
+             krb5_cc_end_seq_get(context, ccache, ctypes.byref(cursor))
+ 
+

@@ -1,0 +1,98 @@
+From a406fd9aec7d053c044e73f16b05489bebd84bc8 Mon Sep 17 00:00:00 2001
+From: Francisco Trivino <ftrivino@redhat.com>
+Date: Fri, 19 Jan 2024 17:12:07 +0100
+Subject: [PATCH] kra: set RSA-OAEP as default wrapping algo when FIPS is
+ enabled
+
+Vault uses PKCS1v15 as default padding wrapping algo, which is not an approved
+FIPS algorithm. This commit ensures that KRA is installed with RSA-OAEP if FIPS
+is enabled. It also handles upgrade path.
+
+Fixes: https://pagure.io/freeipa/issue/9191
+
+Signed-off-by: Francisco Trivino <ftrivino@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+(cherry picked from commit f2eec9eb208e62f923375b9eaf34fcc491046a0d)
+---
+ install/share/ipaca_default.ini     |  3 +++
+ ipaserver/install/dogtaginstance.py |  4 +++-
+ ipaserver/install/krainstance.py    | 12 ++++++++++++
+ ipaserver/install/server/upgrade.py | 12 ++++++++++++
+ 4 files changed, 30 insertions(+), 1 deletion(-)
+
+diff --git a/install/share/ipaca_default.ini b/install/share/ipaca_default.ini
+index 082f507b2..691f1e1b7 100644
+--- a/install/share/ipaca_default.ini
++++ b/install/share/ipaca_default.ini
+@@ -166,3 +166,6 @@ pki_audit_signing_subject_dn=cn=KRA Audit,%(ipa_subject_base)s
+ # We will use the dbuser created for the CA.
+ pki_share_db=True
+ pki_share_dbuser_dn=uid=pkidbuser,ou=people,o=ipaca
++
++# KRA padding, set RSA-OAEP in FIPS mode
++pki_use_oaep_rsa_keywrap=%(fips_use_oaep_rsa_keywrap)s
+\ No newline at end of file
+diff --git a/ipaserver/install/dogtaginstance.py b/ipaserver/install/dogtaginstance.py
+index c2c6b3f49..c3c726f68 100644
+--- a/ipaserver/install/dogtaginstance.py
++++ b/ipaserver/install/dogtaginstance.py
+@@ -1020,7 +1020,9 @@ class PKIIniLoader:
+             # for softhsm2 testing
+             softhsm2_so=paths.LIBSOFTHSM2_SO,
+             # Configure a more secure AJP password by default
+-            ipa_ajp_secret=ipautil.ipa_generate_password(special=None)
++            ipa_ajp_secret=ipautil.ipa_generate_password(special=None),
++            # in FIPS mode use RSA-OAEP wrapping padding algo as default
++            fips_use_oaep_rsa_keywrap=tasks.is_fips_enabled()
+         )
+ 
+     @classmethod
+diff --git a/ipaserver/install/krainstance.py b/ipaserver/install/krainstance.py
+index 13cb2dcaa..0e04840a1 100644
+--- a/ipaserver/install/krainstance.py
++++ b/ipaserver/install/krainstance.py
+@@ -277,6 +277,18 @@ class KRAInstance(DogtagInstance):
+ 
+         # A restart is required
+ 
++    def enable_oaep_wrap_algo(self):
++        """
++        Enable KRA OAEP key wrap algorithm
++        """
++        with installutils.stopped_service('pki-tomcatd', 'pki-tomcat'):
++            directivesetter.set_directive(
++                self.config,
++                'keyWrap.useOAEP',
++                'true', quotes=False, separator='=')
++
++        # A restart is required
++
+     def update_cert_config(self, nickname, cert):
+         """
+         When renewing a KRA subsystem certificate the configuration file
+diff --git a/ipaserver/install/server/upgrade.py b/ipaserver/install/server/upgrade.py
+index e4dc7ae73..c84516b56 100644
+--- a/ipaserver/install/server/upgrade.py
++++ b/ipaserver/install/server/upgrade.py
+@@ -1780,6 +1780,18 @@ def upgrade_configuration():
+             else:
+                 logger.info('ephemeralRequest is already enabled')
+ 
++            if tasks.is_fips_enabled():
++                logger.info('[Ensuring KRA OAEP wrap algo is enabled in FIPS]')
++                value = directivesetter.get_directive(
++                    paths.KRA_CS_CFG_PATH,
++                    'keyWrap.useOAEP',
++                    separator='=')
++                if value is None or value.lower() != 'true':
++                    logger.info('Use the OAEP key wrap algo')
++                    kra.enable_oaep_wrap_algo()
++                else:
++                    logger.info('OAEP key wrap algo is already enabled')
++
+     # several upgrade steps require running CA.  If CA is configured,
+     # always run ca.start() because we need to wait until CA is really ready
+     # by checking status using http
+-- 
+2.43.0
+

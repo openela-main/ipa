@@ -1,0 +1,272 @@
+From 00f8ddbfd2795228b343e1c39c1944b44d482c18 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Fri, 24 Nov 2023 11:46:19 +0200
+Subject: [PATCH 1/4] ipa-kdb: add better detection of allowed user auth type
+
+If default user authentication type is set to a list that does not
+include a password or a hardened credential, the resulting configuration
+might be incorrect for special service principals, including a krbtgt/..
+one.
+
+Add detection of special principals to avoid these situations and always
+allow password or hardened for services.
+
+Special handling is needed for the following principals:
+
+ - krbtgt/..       -- TGT service principals
+ - K/M             -- master key principal
+ - kadmin/changepw -- service for changing passwords
+ - kadmin/kadmin   -- kadmin service principal
+ - kadmin/history  -- key used to encrypt history
+
+Additionally, implicitly allow password or hardened credential use for
+IPA services and IPA hosts since applications typically use keytabs for
+that purpose.
+
+Fixes: https://pagure.io/freeipa/issue/9485
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Francisco Trivino <ftrivino@redhat.com>
+---
+ daemons/ipa-kdb/ipa_kdb.c | 62 ++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 54 insertions(+), 8 deletions(-)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb.c b/daemons/ipa-kdb/ipa_kdb.c
+index 06d511c76..dbb98dba6 100644
+--- a/daemons/ipa-kdb/ipa_kdb.c
++++ b/daemons/ipa-kdb/ipa_kdb.c
+@@ -26,6 +26,7 @@
+ #include "ipa_kdb.h"
+ #include "ipa_krb5.h"
+ #include "ipa_hostname.h"
++#include <kadm5/admin.h>
+ 
+ #define IPADB_GLOBAL_CONFIG_CACHE_TIME 60
+ 
+@@ -207,6 +208,19 @@ static const struct {
+     { "idp", IPADB_USER_AUTH_IDP },
+     { "passkey", IPADB_USER_AUTH_PASSKEY },
+     { }
++},
++  objclass_table[] = {
++    { "ipaservice", IPADB_USER_AUTH_PASSWORD },
++    { "ipahost", IPADB_USER_AUTH_PASSWORD },
++    { }
++},
++  princname_table[] = {
++    { KRB5_TGS_NAME, IPADB_USER_AUTH_PASSWORD },
++    { KRB5_KDB_M_NAME, IPADB_USER_AUTH_PASSWORD },
++    { KADM5_ADMIN_SERVICE, IPADB_USER_AUTH_PASSWORD },
++    { KADM5_CHANGEPW_SERVICE, IPADB_USER_AUTH_PASSWORD },
++    { KADM5_HIST_PRINCIPAL, IPADB_USER_AUTH_PASSWORD },
++    { }
+ };
+ 
+ void ipadb_parse_user_auth(LDAP *lcontext, LDAPMessage *le,
+@@ -217,17 +231,49 @@ void ipadb_parse_user_auth(LDAP *lcontext, LDAPMessage *le,
+ 
+     *userauth = IPADB_USER_AUTH_NONE;
+     vals = ldap_get_values_len(lcontext, le, IPA_USER_AUTH_TYPE);
+-    if (!vals)
+-        return;
+-
+-    for (i = 0; vals[i]; i++) {
+-        for (j = 0; userauth_table[j].name; j++) {
+-            if (strcasecmp(vals[i]->bv_val, userauth_table[j].name) == 0) {
+-                *userauth |= userauth_table[j].flag;
+-                break;
++    if (!vals) {
++        /* if there is no explicit ipaUserAuthType set, use objectclass */
++        vals = ldap_get_values_len(lcontext, le, "objectclass");
++        if (!vals)
++            return;
++
++        for (i = 0; vals[i]; i++) {
++            for (j = 0; objclass_table[j].name; j++) {
++                if (strcasecmp(vals[i]->bv_val, objclass_table[j].name) == 0) {
++                    *userauth |= objclass_table[j].flag;
++                    break;
++                }
++            }
++        }
++    } else {
++        for (i = 0; vals[i]; i++) {
++            for (j = 0; userauth_table[j].name; j++) {
++                if (strcasecmp(vals[i]->bv_val, userauth_table[j].name) == 0) {
++                    *userauth |= userauth_table[j].flag;
++                    break;
++                }
+             }
+         }
+     }
++
++    /* If neither ipaUserAuthType nor objectClass were definitive,
++     * check the krbPrincipalName to see if it is krbtgt/ or K/M one */
++    if (*userauth == IPADB_USER_AUTH_NONE) {
++        ldap_value_free_len(vals);
++        vals = ldap_get_values_len(lcontext, le, "krbprincipalname");
++        if (!vals)
++            return;
++        for (i = 0; vals[i]; i++) {
++            for (j = 0; princname_table[j].name; j++) {
++                if (strncmp(vals[i]->bv_val, princname_table[j].name,
++                            strlen(princname_table[j].name)) == 0) {
++                    *userauth |= princname_table[j].flag;
++                    break;
++                }
++            }
++        }
++
++    }
+     /* If password auth is enabled, enable hardened policy too. */
+     if (*userauth & IPADB_USER_AUTH_PASSWORD) {
+         *userauth |= IPADB_USER_AUTH_HARDENED;
+-- 
+2.43.0
+
+
+From 69ae9febfb4462766b3bfe3e07e76550ece97b42 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Fri, 24 Nov 2023 11:54:04 +0200
+Subject: [PATCH 2/4] ipa-kdb: when applying ticket policy, do not deny PKINIT
+
+PKINIT differs from other pre-authentication methods by the fact that it
+can be matched indepedently of the user authentication types via certmap
+plugin in KDC.
+
+Since PKINIT is a strong authentication method, allow its authentication
+indicator and only apply the ticket policy.
+
+Fixes: https://pagure.io/freeipa/issue/9485
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Francisco Trivino <ftrivino@redhat.com>
+---
+ daemons/ipa-kdb/ipa_kdb_kdcpolicy.c | 7 ++-----
+ 1 file changed, 2 insertions(+), 5 deletions(-)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb_kdcpolicy.c b/daemons/ipa-kdb/ipa_kdb_kdcpolicy.c
+index 436ee0e62..2802221c7 100644
+--- a/daemons/ipa-kdb/ipa_kdb_kdcpolicy.c
++++ b/daemons/ipa-kdb/ipa_kdb_kdcpolicy.c
+@@ -119,11 +119,8 @@ ipa_kdcpolicy_check_as(krb5_context context, krb5_kdcpolicy_moddata moddata,
+             pol_limits = &(ied->pol_limits[IPADB_USER_AUTH_IDX_RADIUS]);
+         } else if (strcmp(auth_indicator, "pkinit") == 0) {
+             valid_auth_indicators++;
+-            if (!(ua & IPADB_USER_AUTH_PKINIT)) {
+-                *status = "PKINIT pre-authentication not allowed for this user.";
+-                kerr = KRB5KDC_ERR_POLICY;
+-                goto done;
+-            }
++            /* allow PKINIT unconditionally -- it has passed already at this
++             * point so some certificate was useful, only apply the limits */
+             pol_limits = &(ied->pol_limits[IPADB_USER_AUTH_IDX_PKINIT]);
+         } else if (strcmp(auth_indicator, "hardened") == 0) {
+             valid_auth_indicators++;
+-- 
+2.43.0
+
+
+From 62c44c9e69aa2721990ca3628434713e1af6f59b Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Fri, 24 Nov 2023 12:20:55 +0200
+Subject: [PATCH 3/4] ipa-kdb: clarify user auth table mapping use of
+ _AUTH_PASSWORD
+
+Related: https://pagure.io/freeipa/issue/9485
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Francisco Trivino <ftrivino@redhat.com>
+---
+ daemons/ipa-kdb/ipa_kdb.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb.c b/daemons/ipa-kdb/ipa_kdb.c
+index dbb98dba6..4e6cacf24 100644
+--- a/daemons/ipa-kdb/ipa_kdb.c
++++ b/daemons/ipa-kdb/ipa_kdb.c
+@@ -195,6 +195,9 @@ done:
+     return base;
+ }
+ 
++/* In this table all _AUTH_PASSWORD entries will be
++ * expanded to include _AUTH_HARDENED in ipadb_parse_user_auth()
++ * which means there is no need to explicitly add it here */
+ static const struct {
+     const char *name;
+     enum ipadb_user_auth flag;
+-- 
+2.43.0
+
+
+From c3bc938650b19a51706d8ccd98cdf8deaa26dc28 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Fri, 24 Nov 2023 13:00:48 +0200
+Subject: [PATCH 4/4] ipatests: make sure PKINIT enrollment works with a strict
+ policy
+
+Previously, for a global policy which does not include
+'password', krb5kdc restart was failing. Now it should succeed.
+
+We set admin user authentication type to PASSWORD to simplify
+configuration in the test.
+
+What matters here is that global policy does not include PKINIT and that
+means a code in the ticket policy check will allow PKINIT implicitly
+rather than explicitly.
+
+Related: https://pagure.io/freeipa/issue/9485
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Francisco Trivino <ftrivino@redhat.com>
+---
+ .../test_integration/test_pkinit_install.py   | 26 +++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/ipatests/test_integration/test_pkinit_install.py b/ipatests/test_integration/test_pkinit_install.py
+index caa0e6a34..5c2e7af02 100644
+--- a/ipatests/test_integration/test_pkinit_install.py
++++ b/ipatests/test_integration/test_pkinit_install.py
+@@ -23,6 +23,24 @@ class TestPkinitClientInstall(IntegrationTest):
+     def install(cls, mh):
+         tasks.install_master(cls.master)
+ 
++    def enforce_password_and_otp(self):
++        """enforce otp by default and password for admin """
++        self.master.run_command(
++            [
++                "ipa",
++                "config-mod",
++                "--user-auth-type=otp",
++            ]
++        )
++        self.master.run_command(
++            [
++                "ipa",
++                "user-mod",
++                "admin",
++                "--user-auth-type=password",
++            ]
++        )
++
+     def add_certmaperule(self):
+         """add certmap rule to map SAN dNSName to host entry"""
+         self.master.run_command(
+@@ -86,6 +104,14 @@ class TestPkinitClientInstall(IntegrationTest):
+         cabundle = self.master.get_file_contents(paths.KDC_CA_BUNDLE_PEM)
+         client.put_file_contents(self.tmpbundle, cabundle)
+ 
++    def test_restart_krb5kdc(self):
++        tasks.kinit_admin(self.master)
++        self.enforce_password_and_otp()
++        self.master.run_command(['systemctl', 'stop', 'krb5kdc.service'])
++        self.master.run_command(['systemctl', 'start', 'krb5kdc.service'])
++        self.master.run_command(['systemctl', 'stop', 'kadmin.service'])
++        self.master.run_command(['systemctl', 'start', 'kadmin.service'])
++
+     def test_client_install_pkinit(self):
+         tasks.kinit_admin(self.master)
+         self.add_certmaperule()
+-- 
+2.43.0
+

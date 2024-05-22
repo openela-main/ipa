@@ -1,0 +1,45 @@
+From dcb9d6edc7ae4278cd552e87f644705faa13d558 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Jan 31 2024 08:31:13 +0000
+Subject: kdb: PAC generator: do not fail if canonical principal is missing
+
+
+krbCanonicalName is mandatory for services but IPA services created
+before commit e6ff83e (FreeIPA 4.4.0, ~2016) had no normalization done
+to set krbCanonicalName; services created after that version were
+upgraded to do have krbCanonicalName.
+
+Accept krbPrincipalName alone since they have no alias either */
+
+Fixes: https://pagure.io/freeipa/issue/9465
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Thierry Bordaz <tbordaz@redhat.com>
+
+---
+
+diff --git a/daemons/ipa-kdb/ipa_kdb_mspac.c b/daemons/ipa-kdb/ipa_kdb_mspac.c
+index 9e1431c..8035036 100644
+--- a/daemons/ipa-kdb/ipa_kdb_mspac.c
++++ b/daemons/ipa-kdb/ipa_kdb_mspac.c
+@@ -496,8 +496,16 @@ static krb5_error_code ipadb_fill_info3(struct ipadb_context *ipactx,
+         ret = ipadb_ldap_attr_to_str(ipactx->lcontext, lentry,
+                                      "krbCanonicalName", &strres);
+         if (ret) {
+-            /* krbCanonicalName is mandatory for services */
+-            return ret;
++            /* krbCanonicalName is mandatory for services but IPA services
++             * created before commit e6ff83e (FreeIPA 4.4.0, ~2016) had no
++             * normalization to set krbCanonicalName; services created after
++             * that version were upgraded to do have krbCanonicalName.
++             *
++             * Accept krbPrincipalName alone since they have no alias either */
++            ret = ipadb_ldap_attr_to_str(ipactx->lcontext, lentry,
++                                         "krbPrincipalName", &strres);
++            if (ret)
++                return ret;
+         }
+ 
+         ret = krb5_parse_name(ipactx->kcontext, strres, &princ);
+
