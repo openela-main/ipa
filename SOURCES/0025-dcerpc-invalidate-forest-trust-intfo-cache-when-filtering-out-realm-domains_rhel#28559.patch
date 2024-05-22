@@ -1,0 +1,50 @@
+From 656a11ae961f8d1afad54567cfe8ccb53e084a67 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mar 20 2024 10:06:07 +0000
+Subject: dcerpc: invalidate forest trust info cache when filtering out realm domains
+
+
+When get_realmdomains() method is called, it will filter out subdomains
+of the IPA primary domain. This is required because Active Directory
+domain controllers are assuming subdomains already covered by the main
+domain namespace.
+
+[MS-LSAD] 3.1.4.7.16.1, 'Forest Trust Collision Generation' defines the
+method of validating the forest trust information. They are the same as
+rules in [MS-ADTS] section 6.1.6. Specifically,
+
+  - A top-level name must not be superior to an enabled top-level name
+    for another trusted domain object, unless the current trusted domain
+    object has a corresponding exclusion record.
+
+In practice, we filtered those subdomains already but the code wasn't
+invalidating a previously retrieved forest trust information.
+
+Fixes: https://pagure.io/freeipa/issue/9551
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+
+---
+
+diff --git a/ipaserver/dcerpc.py b/ipaserver/dcerpc.py
+index b6139db..7ee553d 100644
+--- a/ipaserver/dcerpc.py
++++ b/ipaserver/dcerpc.py
+@@ -1103,6 +1103,7 @@ class TrustDomainInstance:
+ 
+         info.count = len(ftinfo_records)
+         info.entries = ftinfo_records
++        another_domain.ftinfo_data = info
+         return info
+ 
+     def clear_ftinfo_conflict(self, another_domain, cinfo):
+@@ -1778,6 +1779,7 @@ class TrustDomainJoins:
+             return
+ 
+         self.local_domain.ftinfo_records = []
++        self.local_domain.ftinfo_data = None
+ 
+         realm_domains = self.api.Command.realmdomains_show()['result']
+         # Use realmdomains' modification timestamp
+

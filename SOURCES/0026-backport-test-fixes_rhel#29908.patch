@@ -1,0 +1,335 @@
+From 3bba254ccdcf9b62fdd8a6d71baecf37c97c300c Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 3 Apr 2023 08:37:28 +0200
+Subject: [PATCH] ipatests: mark known failures for autoprivategroup
+
+Two tests have known issues in test_trust.py with sssd 2.8.2+:
+- TestNonPosixAutoPrivateGroup::test_idoverride_with_auto_private_group
+(when called with the "hybrid" parameter)
+- TestPosixAutoPrivateGroup::test_only_uid_number_auto_private_group_default
+(when called with the "true" parameter)
+
+Related: https://pagure.io/freeipa/issue/9295
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ ipatests/test_integration/test_trust.py | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/ipatests/test_integration/test_trust.py b/ipatests/test_integration/test_trust.py
+index 0d5b71cb0..12f000c1a 100644
+--- a/ipatests/test_integration/test_trust.py
++++ b/ipatests/test_integration/test_trust.py
+@@ -1154,11 +1154,15 @@ class TestNonPosixAutoPrivateGroup(BaseTestTrust):
+                                      self.gid_override
+                                      ):
+             self.mod_idrange_auto_private_group(type)
+-            (uid, gid) = self.get_user_id(self.clients[0], nonposixuser)
+-            assert (uid == self.uid_override and gid == self.gid_override)
++            sssd_version = tasks.get_sssd_version(self.clients[0])
++            bad_version = sssd_version >= tasks.parse_version("2.8.2")
++            cond = (type == 'hybrid') and bad_version
++            with xfail_context(condition=cond,
++                               reason="https://pagure.io/freeipa/issue/9295"):
++                (uid, gid) = self.get_user_id(self.clients[0], nonposixuser)
++                assert (uid == self.uid_override and gid == self.gid_override)
+             test_group = self.clients[0].run_command(
+                 ["id", nonposixuser]).stdout_text
+-            # version = tasks.get_sssd_version(self.clients[0])
+             with xfail_context(type == "hybrid",
+                                'https://github.com/SSSD/sssd/issues/5989'):
+                 assert "domain users@{0}".format(self.ad_domain) in test_group
+@@ -1232,8 +1236,11 @@ class TestPosixAutoPrivateGroup(BaseTestTrust):
+         posixuser = "testuser1@%s" % self.ad_domain
+         self.mod_idrange_auto_private_group(type)
+         if type == "true":
+-            (uid, gid) = self.get_user_id(self.clients[0], posixuser)
+-            assert uid == gid
++            sssd_version = tasks.get_sssd_version(self.clients[0])
++            with xfail_context(sssd_version >= tasks.parse_version("2.8.2"),
++                 "https://pagure.io/freeipa/issue/9295"):
++                (uid, gid) = self.get_user_id(self.clients[0], posixuser)
++                assert uid == gid
+         else:
+             for host in [self.master, self.clients[0]]:
+                 result = host.run_command(['id', posixuser], raiseonerr=False)
+-- 
+2.44.0
+
+From ed2a8eb0cefadfe0544074114facfef381349ae0 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Feb 12 2024 10:43:39 +0000
+Subject: ipatests: add xfail for autoprivate group test with override
+
+
+Because of SSSD issue 7169, secondary groups are not
+retrieved when autoprivate group is set and an idoverride
+replaces the user's primary group.
+Mark the known issues as xfail.
+
+Related: https://github.com/SSSD/sssd/issues/7169
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Anuja More <amore@redhat.com>
+
+---
+
+diff --git a/ipatests/test_integration/test_trust.py b/ipatests/test_integration/test_trust.py
+index 3b9f0fb..2b94514 100644
+--- a/ipatests/test_integration/test_trust.py
++++ b/ipatests/test_integration/test_trust.py
+@@ -1164,8 +1164,12 @@ class TestNonPosixAutoPrivateGroup(BaseTestTrust):
+                 assert (uid == self.uid_override and gid == self.gid_override)
+             test_group = self.clients[0].run_command(
+                 ["id", nonposixuser]).stdout_text
+-            with xfail_context(type == "hybrid",
+-                               'https://github.com/SSSD/sssd/issues/5989'):
++            cond2 = ((type == 'false'
++                      and sssd_version >= tasks.parse_version("2.9.4"))
++                     or type == 'hybrid')
++            with xfail_context(cond2,
++                               'https://github.com/SSSD/sssd/issues/5989 '
++                               'and 7169'):
+                 assert "domain users@{0}".format(self.ad_domain) in test_group
+ 
+     @pytest.mark.parametrize('type', ['hybrid', 'true', "false"])
+@@ -1287,5 +1291,9 @@ class TestPosixAutoPrivateGroup(BaseTestTrust):
+             assert(uid == self.uid_override
+                    and gid == self.gid_override)
+             result = self.clients[0].run_command(['id', posixuser])
+-            assert "10047(testgroup@{0})".format(
+-                self.ad_domain) in result.stdout_text
++            sssd_version = tasks.get_sssd_version(self.clients[0])
++            bad_version = sssd_version >= tasks.parse_version("2.9.4")
++            with xfail_context(bad_version and type in ('false', 'hybrid'),
++                 "https://github.com/SSSD/sssd/issues/7169"):
++                assert "10047(testgroup@{0})".format(
++                    self.ad_domain) in result.stdout_text
+
+From d5392300d77170ea3202ee80690ada8bf81b60b5 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Feb 12 2024 10:44:47 +0000
+Subject: ipatests: remove xfail thanks to sssd 2.9.4
+
+
+SSSD 2.9.4 fixes some issues related to auto-private-group
+
+Related: https://pagure.io/freeipa/issue/9295
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Anuja More <amore@redhat.com>
+
+---
+
+diff --git a/ipatests/test_integration/test_trust.py b/ipatests/test_integration/test_trust.py
+index 12f000c..3b9f0fb 100644
+--- a/ipatests/test_integration/test_trust.py
++++ b/ipatests/test_integration/test_trust.py
+@@ -1155,7 +1155,8 @@ class TestNonPosixAutoPrivateGroup(BaseTestTrust):
+                                      ):
+             self.mod_idrange_auto_private_group(type)
+             sssd_version = tasks.get_sssd_version(self.clients[0])
+-            bad_version = sssd_version >= tasks.parse_version("2.8.2")
++            bad_version = (tasks.parse_version("2.8.2") <= sssd_version
++                           < tasks.parse_version("2.9.4"))
+             cond = (type == 'hybrid') and bad_version
+             with xfail_context(condition=cond,
+                                reason="https://pagure.io/freeipa/issue/9295"):
+@@ -1237,7 +1238,9 @@ class TestPosixAutoPrivateGroup(BaseTestTrust):
+         self.mod_idrange_auto_private_group(type)
+         if type == "true":
+             sssd_version = tasks.get_sssd_version(self.clients[0])
+-            with xfail_context(sssd_version >= tasks.parse_version("2.8.2"),
++            bad_version = (tasks.parse_version("2.8.2") <= sssd_version
++                           < tasks.parse_version("2.9.4"))
++            with xfail_context(bad_version,
+                  "https://pagure.io/freeipa/issue/9295"):
+                 (uid, gid) = self.get_user_id(self.clients[0], posixuser)
+                 assert uid == gid
+
+From 34d048ede0c439b3a53e02f8ace96ff91aa1609d Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mar 14 2023 16:50:25 +0000
+Subject: ipatests: adapt for new automembership fixup behavior
+
+
+The automembership fixup task now needs to be called
+with --cleanup argument when the user expects automember
+to remove user/hosts from automember groups.
+Update the test to call create a cleanup task equivalent to
+dsconf plugin automember fixup --cleanup
+when it is needed.
+
+Fixes: https://pagure.io/freeipa/issue/9313
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+
+---
+
+diff --git a/ipatests/test_integration/test_automember.py b/ipatests/test_integration/test_automember.py
+index 7acd0d7..8b27f4d 100644
+--- a/ipatests/test_integration/test_automember.py
++++ b/ipatests/test_integration/test_automember.py
+@@ -4,6 +4,7 @@
+ """This covers tests for automemberfeature."""
+ 
+ from __future__ import absolute_import
++import uuid
+ 
+ from ipapython.dn import DN
+ 
+@@ -211,11 +212,27 @@ class TestAutounmembership(IntegrationTest):
+             # Running automember-build so that user is part of correct group
+             result = self.master.run_command(['ipa', 'automember-rebuild',
+                                               '--users=%s' % user2])
++            assert msg in result.stdout_text
++
++            # The additional --cleanup argument is required
++            cleanup_ldif = (
++                "dn: cn={cn},cn=automember rebuild membership,"
++                "cn=tasks,cn=config\n"
++                "changetype: add\n"
++                "objectclass: top\n"
++                "objectclass: extensibleObject\n"
++                "basedn: cn=users,cn=accounts,{suffix}\n"
++                "filter: (uid={user})\n"
++                "cleanup: yes\n"
++                "scope: sub"
++            ).format(cn=str(uuid.uuid4()),
++                     suffix=str(self.master.domain.basedn),
++                     user=user2)
++            tasks.ldapmodify_dm(self.master, cleanup_ldif)
++
+             assert self.is_user_member_of_group(user2, group2)
+             assert not self.is_user_member_of_group(user2, group1)
+ 
+-            assert msg in result.stdout_text
+-
+         finally:
+             # testcase cleanup
+             self.remove_user_automember(user2, raiseonerr=False)
+@@ -248,11 +265,27 @@ class TestAutounmembership(IntegrationTest):
+             result = self.master.run_command(
+                 ['ipa', 'automember-rebuild', '--hosts=%s' % host2]
+             )
++            assert msg in result.stdout_text
++
++            # The additional --cleanup argument is required
++            cleanup_ldif = (
++                "dn: cn={cn},cn=automember rebuild membership,"
++                "cn=tasks,cn=config\n"
++                "changetype: add\n"
++                "objectclass: top\n"
++                "objectclass: extensibleObject\n"
++                "basedn: cn=computers,cn=accounts,{suffix}\n"
++                "filter: (fqdn={fqdn})\n"
++                "cleanup: yes\n"
++                "scope: sub"
++            ).format(cn=str(uuid.uuid4()),
++                     suffix=str(self.master.domain.basedn),
++                     fqdn=host2)
++            tasks.ldapmodify_dm(self.master, cleanup_ldif)
++
+             assert self.is_host_member_of_hostgroup(host2, hostgroup2)
+             assert not self.is_host_member_of_hostgroup(host2, hostgroup1)
+ 
+-            assert msg in result.stdout_text
+-
+         finally:
+             # testcase cleanup
+             self.remove_host_automember(host2, raiseonerr=False)
+
+From 9b777390fbb6d4c683bf7d3e5f74d5443209b1d5 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Fri, 24 Mar 2023 08:15:00 +0200
+Subject: [PATCH] test_xmlrpc: adopt to automember plugin message changes in
+ 389-ds
+
+Another change in automember plugin messaging that breaks FreeIPA tests.
+Use common substring to match.
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipatests/test_xmlrpc/xmlrpc_test.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ipatests/test_xmlrpc/xmlrpc_test.py b/ipatests/test_xmlrpc/xmlrpc_test.py
+index cf11721bfca..5fe1245dc65 100644
+--- a/ipatests/test_xmlrpc/xmlrpc_test.py
++++ b/ipatests/test_xmlrpc/xmlrpc_test.py
+@@ -64,7 +64,7 @@ def test(xs):
+ 
+ # Matches an automember task finish message
+ fuzzy_automember_message = Fuzzy(
+-    r'^Automember rebuild task finished\. Processed \(\d+\) entries\.$'
++    r'^Automember rebuild task finished\. Processed \(\d+\) entries'
+ )
+ 
+ # Matches trusted domain GUID, like u'463bf2be-3456-4a57-979e-120304f2a0eb'
+From 8e8b97a2251329aec9633a5c7c644bc5034bc8c2 Mon Sep 17 00:00:00 2001
+From: Sudhir Menon <sumenon@redhat.com>
+Date: Wed, 20 Mar 2024 14:29:46 +0530
+Subject: [PATCH] ipatests: Fixes for test_ipahealthcheck_ipansschainvalidation
+ testcases.
+
+Currently the test is using IPA_NSSDB_PWDFILE_TXT which is /etc/ipa/nssdb/pwdfile.txt
+which causes error in STIG mode.
+
+[root@master slapd-TESTRELM-TEST]# certutil -M -n 'TESTRELM.TEST IPA CA' -t ',,' -d . -f /etc/ipa/nssdb/pwdfile.txt
+Incorrect password/PIN entered.
+
+Hence modified the test to include paths.ETC_DIRSRV_SLAPD_INSTANCE_TEMPLATE/pwd.txt.
+
+Signed-off-by: Sudhir Menon <sumenon@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipatests/test_integration/test_ipahealthcheck.py | 11 ++++++-----
+ 1 file changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index 8aae9fad776..a96de7088aa 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -2731,17 +2731,18 @@ def remove_server_cert(self):
+         Fixture to remove Server cert and revert the change.
+         """
+         instance = realm_to_serverid(self.master.domain.realm)
++        instance_dir = paths.ETC_DIRSRV_SLAPD_INSTANCE_TEMPLATE % instance
+         self.master.run_command(
+             [
+                 "certutil",
+                 "-L",
+                 "-d",
+-                paths.ETC_DIRSRV_SLAPD_INSTANCE_TEMPLATE % instance,
++                instance_dir,
+                 "-n",
+                 "Server-Cert",
+                 "-a",
+                 "-o",
+-                paths.ETC_DIRSRV_SLAPD_INSTANCE_TEMPLATE % instance
++                instance_dir
+                 + "/Server-Cert.pem",
+             ]
+         )
+@@ -2760,15 +2761,15 @@ def remove_server_cert(self):
+             [
+                 "certutil",
+                 "-d",
+-                paths.ETC_DIRSRV_SLAPD_INSTANCE_TEMPLATE % instance,
++                instance_dir,
+                 "-A",
+                 "-i",
+-                paths.ETC_DIRSRV_SLAPD_INSTANCE_TEMPLATE % instance
++                instance_dir
+                 + "/Server-Cert.pem",
+                 "-t",
+                 "u,u,u",
+                 "-f",
+-                paths.IPA_NSSDB_PWDFILE_TXT,
++                "%s/pwdfile.txt" % instance_dir,
+                 "-n",
+                 "Server-Cert",
+             ]

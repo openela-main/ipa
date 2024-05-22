@@ -81,7 +81,8 @@
 
 # Fix for TLS 1.3 PHA, RHBZ#1775158
 %global httpd_version 2.4.37-21
-%global bind_version 9.11.20-6
+# Fix for RHEL-25649
+%global bind_version 9.11.36-14
 
 %else
 # Fedora
@@ -189,7 +190,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        8%{?rc_version:.%rc_version}%{?dist}
+Release:        9%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPLv3+
@@ -232,6 +233,8 @@ Patch0021:      0021-kra-set-RSA-OAEP-as-default-wrapping-algo-when-FIPS-.patch
 Patch0022:      0022-ipa-kdb-Fix-double-free-in-ipadb_reinit_mspac.patch
 Patch0023:      0023-rpcserver-validate-Kerberos-principal-name-before-running-kinit_rhel#26153.patch
 Patch0024:      0024-Vault-add-additional-fallback-to-RSA-OAEP-wrapping-algo_rhel#28259.patch
+Patch0025:      0025-dcerpc-invalidate-forest-trust-intfo-cache-when-filtering-out-realm-domains_rhel#28559.patch
+Patch0026:      0026-backport-test-fixes_rhel#29908.patch
 %if 0%{?rhel} >= 8
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
@@ -1747,6 +1750,17 @@ fi
 %endif
 
 %changelog
+* Fri Apr 12 2024 Rafael Jeffman <rjeffman@redhat.com> - 9.4.13-9
+- dcerpc: invalidate forest trust intfo cache when filtering out realm domains
+  Resolves: RHEL-28559
+- Backport latests test fixes in python3-tests
+  ipatests: add xfail for autoprivate group test with override
+  ipatests: remove xfail thanks to sssd 2.9.4
+  ipatests: adapt for new automembership fixup behavior
+  ipatests: Fixes for test_ipahealthcheck_ipansschainvalidation testcases
+  test_xmlrpc: adopt to automember plugin message changes in 389-ds
+  Resolves: RHEL-29908
+
 * Thu Mar 07 2024 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-8
 - rpcserver: validate Kerberos principal name before running kinit
   Resolves: RHEL-26153
