@@ -1,4 +1,4 @@
-From 333d05b02f02d5cdd0d6535b69a08cc7ae14bc51 Mon Sep 17 00:00:00 2001
+From c3ac69e9cf8dfcc31ed11fc988c37bd99d3ec3cf Mon Sep 17 00:00:00 2001
 From: Julien Rische <jrische@redhat.com>
 Date: Wed, 14 Feb 2024 17:47:00 +0100
 Subject: [PATCH] ipa-kdb: Rework ipadb_reinit_mspac()
@@ -28,10 +28,10 @@ Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
  7 files changed, 218 insertions(+), 169 deletions(-)
 
 diff --git a/daemons/ipa-kdb/ipa_kdb.c b/daemons/ipa-kdb/ipa_kdb.c
-index 93563536c..f92d2dba9 100644
+index 0c6325df9..fcadb8ee7 100644
 --- a/daemons/ipa-kdb/ipa_kdb.c
 +++ b/daemons/ipa-kdb/ipa_kdb.c
-@@ -394,6 +394,7 @@ int ipadb_get_connection(struct ipadb_context *ipactx)
+@@ -443,6 +443,7 @@ int ipadb_get_connection(struct ipadb_context *ipactx)
      struct timeval tv = { 5, 0 };
      LDAPMessage *res = NULL;
      LDAPMessage *first;
@@ -39,7 +39,7 @@ index 93563536c..f92d2dba9 100644
      int ret;
      int v3;
  
-@@ -473,16 +474,9 @@ int ipadb_get_connection(struct ipadb_context *ipactx)
+@@ -522,16 +523,9 @@ int ipadb_get_connection(struct ipadb_context *ipactx)
      }
  
      /* get adtrust options using default refresh interval */
@@ -60,7 +60,7 @@ index 93563536c..f92d2dba9 100644
      ret = 0;
  
 diff --git a/daemons/ipa-kdb/ipa_kdb.h b/daemons/ipa-kdb/ipa_kdb.h
-index bd4b6de2a..98d019528 100644
+index 5de5ea7a5..7baf4697f 100644
 --- a/daemons/ipa-kdb/ipa_kdb.h
 +++ b/daemons/ipa-kdb/ipa_kdb.h
 @@ -352,7 +352,9 @@ krb5_error_code ipadb_v9_issue_pac(krb5_context context, unsigned int flags,
@@ -75,7 +75,7 @@ index bd4b6de2a..98d019528 100644
  void ipadb_mspac_struct_free(struct ipadb_mspac **mspac);
  krb5_error_code ipadb_check_transited_realms(krb5_context kcontext,
 diff --git a/daemons/ipa-kdb/ipa_kdb_mspac.c b/daemons/ipa-kdb/ipa_kdb_mspac.c
-index 3a0ccf6ea..c4229d13d 100644
+index 886ed7785..deed513b9 100644
 --- a/daemons/ipa-kdb/ipa_kdb_mspac.c
 +++ b/daemons/ipa-kdb/ipa_kdb_mspac.c
 @@ -793,16 +793,16 @@ static krb5_error_code ipadb_fill_info3(struct ipadb_context *ipactx,

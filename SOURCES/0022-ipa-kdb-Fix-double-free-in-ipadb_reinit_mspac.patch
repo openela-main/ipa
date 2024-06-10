@@ -1,4 +1,4 @@
-From 4b669594f5ef8e8c52303b7a734cb6d9592750f4 Mon Sep 17 00:00:00 2001
+From a8e433f7c8d844d9f337a34db09b0197f2dbc5af Mon Sep 17 00:00:00 2001
 From: Julien Rische <jrische@redhat.com>
 Date: Tue, 20 Feb 2024 15:14:24 +0100
 Subject: [PATCH] ipa-kdb: Fix double free in ipadb_reinit_mspac()
@@ -13,7 +13,7 @@ Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
  1 file changed, 1 insertion(+)
 
 diff --git a/daemons/ipa-kdb/ipa_kdb_mspac.c b/daemons/ipa-kdb/ipa_kdb_mspac.c
-index c4229d13d..ebe98b19a 100644
+index deed513b9..0964d112a 100644
 --- a/daemons/ipa-kdb/ipa_kdb_mspac.c
 +++ b/daemons/ipa-kdb/ipa_kdb_mspac.c
 @@ -3084,6 +3084,7 @@ ipadb_reinit_mspac(struct ipadb_context *ipactx, bool force_reinit,

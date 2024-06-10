@@ -1,7 +1,8 @@
-From fc932e8dac8a70015d2e5042275b2c9e2039dda1 Mon Sep 17 00:00:00 2001
+From 44a762413c83f9637399afeb61b1e4b1ac111260 Mon Sep 17 00:00:00 2001
 From: Florence Blanc-Renaud <flo@redhat.com>
-Date: Tue, 13 Feb 2024 13:30:15 +0100
-Subject: [PATCH] ipatests: fix tasks.wait_for_replication method
+Date: Feb 14 2024 12:24:48 +0000
+Subject: ipatests: fix tasks.wait_for_replication method
+
 
 With the fix for https://pagure.io/freeipa/issue/9171, the
 method entry.single_value['nsds5replicaupdateinprogress'] now
@@ -14,13 +15,11 @@ Fixes: https://pagure.io/freeipa/issue/9530
 
 Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
 Reviewed-By: Rob Crittenden <rcritten@redhat.com>
-(cherry picked from commit e5bb0f392a5f0a6e49c92b2da953b12c5cd66ffc)
+
 ---
- ipatests/pytest_ipa/integration/tasks.py | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/ipatests/pytest_ipa/integration/tasks.py b/ipatests/pytest_ipa/integration/tasks.py
-index 9068ba62c..952c9e648 100755
+index 9068ba6..952c9e6 100755
 --- a/ipatests/pytest_ipa/integration/tasks.py
 +++ b/ipatests/pytest_ipa/integration/tasks.py
 @@ -1510,7 +1510,7 @@ def wait_for_replication(ldap, timeout=30,
@@ -32,6 +31,4 @@ index 9068ba62c..952c9e648 100755
              msg = 'Replication not finished'
              logger.debug(msg)
          elif wrong_statuses:
--- 
-2.43.0
 

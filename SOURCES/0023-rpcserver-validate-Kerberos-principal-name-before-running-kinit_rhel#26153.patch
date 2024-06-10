@@ -1,0 +1,392 @@
+From b039f3087a13de3f34b230dbe29a7cfb1965700d Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Feb 23 2024 09:49:27 +0000
+Subject: rpcserver: validate Kerberos principal name before running kinit
+
+
+Do minimal validation of the Kerberos principal name when passing it to
+kinit command line tool. Also pass it as the final argument to prevent
+option injection.
+
+Accepted Kerberos principals are:
+ - user names, using the following regexp
+   (username with optional @realm, no spaces or slashes in the name):
+   "(?!^[0-9]+$)^[a-zA-Z0-9_.][a-zA-Z0-9_.-]*[a-zA-Z0-9_.$-]?@?[a-zA-Z0-9.-]*$"
+
+ - service names (with slash in the name but no spaces). Validation of
+   the hostname is done. There is no validation of the service name.
+
+The regular expression above also covers cases where a principal name
+starts with '-'. This prevents option injection as well.
+
+This fixes CVE-2024-1481
+
+Fixes: https://pagure.io/freeipa/issue/9541
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+
+---
+
+diff --git a/ipalib/install/kinit.py b/ipalib/install/kinit.py
+index cc839ec..4ad4eaa 100644
+--- a/ipalib/install/kinit.py
++++ b/ipalib/install/kinit.py
+@@ -6,12 +6,16 @@ from __future__ import absolute_import
+ 
+ import logging
+ import os
++import re
+ import time
+ 
+ import gssapi
+ 
+ from ipaplatform.paths import paths
+ from ipapython.ipautil import run
++from ipalib.constants import PATTERN_GROUPUSER_NAME
++from ipalib.util import validate_hostname
++from ipalib import api
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -21,6 +25,40 @@ KRB5_KDC_UNREACH = 2529639068
+ # A service is not available that s required to process the request
+ KRB5KDC_ERR_SVC_UNAVAILABLE = 2529638941
+ 
++PATTERN_REALM = '@?([a-zA-Z0-9.-]*)$'
++PATTERN_PRINCIPAL = '(' + PATTERN_GROUPUSER_NAME[:-1] + ')' + PATTERN_REALM
++PATTERN_SERVICE = '([a-zA-Z0-9.-]+)/([a-zA-Z0-9.-]+)' + PATTERN_REALM
++
++user_pattern = re.compile(PATTERN_PRINCIPAL)
++service_pattern = re.compile(PATTERN_SERVICE)
++
++
++def validate_principal(principal):
++    if not isinstance(principal, str):
++        raise RuntimeError('Invalid principal: not a string')
++    if ('/' in principal) and (' ' in principal):
++        raise RuntimeError('Invalid principal: bad spacing')
++    else:
++        realm = None
++        match = user_pattern.match(principal)
++        if match is None:
++            match = service_pattern.match(principal)
++            if match is None:
++                raise RuntimeError('Invalid principal: cannot parse')
++            else:
++                # service = match[1]
++                hostname = match[2]
++                realm = match[3]
++                try:
++                    validate_hostname(hostname)
++                except ValueError as e:
++                    raise RuntimeError(str(e))
++        else:  # user match, validate realm
++            # username = match[1]
++            realm = match[2]
++        if realm and 'realm' in api.env and realm != api.env.realm:
++            raise RuntimeError('Invalid principal: realm mismatch')
++
+ 
+ def kinit_keytab(principal, keytab, ccache_name, config=None, attempts=1):
+     """
+@@ -29,6 +67,7 @@ def kinit_keytab(principal, keytab, ccache_name, config=None, attempts=1):
+     The optional parameter 'attempts' specifies how many times the credential
+     initialization should be attempted in case of non-responsive KDC.
+     """
++    validate_principal(principal)
+     errors_to_retry = {KRB5KDC_ERR_SVC_UNAVAILABLE,
+                        KRB5_KDC_UNREACH}
+     logger.debug("Initializing principal %s using keytab %s",
+@@ -65,6 +104,7 @@ def kinit_keytab(principal, keytab, ccache_name, config=None, attempts=1):
+ 
+         return None
+ 
++
+ def kinit_password(principal, password, ccache_name, config=None,
+                    armor_ccache_name=None, canonicalize=False,
+                    enterprise=False, lifetime=None):
+@@ -73,8 +113,9 @@ def kinit_password(principal, password, ccache_name, config=None,
+     web-based authentication, use armor_ccache_path to specify http service
+     ccache.
+     """
++    validate_principal(principal)
+     logger.debug("Initializing principal %s using password", principal)
+-    args = [paths.KINIT, principal, '-c', ccache_name]
++    args = [paths.KINIT, '-c', ccache_name]
+     if armor_ccache_name is not None:
+         logger.debug("Using armor ccache %s for FAST webauth",
+                      armor_ccache_name)
+@@ -91,6 +132,7 @@ def kinit_password(principal, password, ccache_name, config=None,
+         logger.debug("Using enterprise principal")
+         args.append('-E')
+ 
++    args.extend(['--', principal])
+     env = {'LC_ALL': 'C'}
+     if config is not None:
+         env['KRB5_CONFIG'] = config
+@@ -154,6 +196,7 @@ def kinit_pkinit(
+ 
+     :raises: CalledProcessError if PKINIT fails
+     """
++    validate_principal(principal)
+     logger.debug(
+         "Initializing principal %s using PKINIT %s", principal, user_identity
+     )
+@@ -168,7 +211,7 @@ def kinit_pkinit(
+             assert pkinit_anchor.startswith(("FILE:", "DIR:", "ENV:"))
+             args.extend(["-X", f"X509_anchors={pkinit_anchor}"])
+     args.extend(["-X", f"X509_user_identity={user_identity}"])
+-    args.append(principal)
++    args.extend(['--', principal])
+ 
+     # this workaround enables us to capture stderr and put it
+     # into the raised exception in case of unsuccessful authentication
+diff --git a/ipaserver/rpcserver.py b/ipaserver/rpcserver.py
+index 3555014..60bfa61 100644
+--- a/ipaserver/rpcserver.py
++++ b/ipaserver/rpcserver.py
+@@ -1134,10 +1134,6 @@ class login_password(Backend, KerberosSession):
+                 canonicalize=True,
+                 lifetime=self.api.env.kinit_lifetime)
+ 
+-            if armor_path:
+-                logger.debug('Cleanup the armor ccache')
+-                ipautil.run([paths.KDESTROY, '-A', '-c', armor_path],
+-                            env={'KRB5CCNAME': armor_path}, raiseonerr=False)
+         except RuntimeError as e:
+             if ('kinit: Cannot read password while '
+                     'getting initial credentials') in str(e):
+@@ -1155,6 +1151,11 @@ class login_password(Backend, KerberosSession):
+                 raise KrbPrincipalWrongFAST(principal=principal)
+             raise InvalidSessionPassword(principal=principal,
+                                          message=unicode(e))
++        finally:
++            if armor_path:
++                logger.debug('Cleanup the armor ccache')
++                ipautil.run([paths.KDESTROY, '-A', '-c', armor_path],
++                            env={'KRB5CCNAME': armor_path}, raiseonerr=False)
+ 
+ 
+ class change_password(Backend, HTTP_Status):
+diff --git a/ipatests/prci_definitions/gating.yaml b/ipatests/prci_definitions/gating.yaml
+index 91be057..400a248 100644
+--- a/ipatests/prci_definitions/gating.yaml
++++ b/ipatests/prci_definitions/gating.yaml
+@@ -310,3 +310,15 @@ jobs:
+         template: *ci-ipa-4-9-latest
+         timeout: 3600
+         topology: *master_1repl_1client
++
++  fedora-latest-ipa-4-9/test_ipalib_install:
++    requires: [fedora-latest-ipa-4-9/build]
++    priority: 100
++    job:
++      class: RunPytest
++      args:
++        build_url: '{fedora-latest-ipa-4-9/build_url}'
++        test_suite: test_ipalib_install/test_kinit.py
++        template: *ci-ipa-4-9-latest
++        timeout: 600
++        topology: *master_1repl
+diff --git a/ipatests/prci_definitions/nightly_ipa-4-9_latest.yaml b/ipatests/prci_definitions/nightly_ipa-4-9_latest.yaml
+index b2ab765..7c03a48 100644
+--- a/ipatests/prci_definitions/nightly_ipa-4-9_latest.yaml
++++ b/ipatests/prci_definitions/nightly_ipa-4-9_latest.yaml
+@@ -1801,3 +1801,15 @@ jobs:
+         template: *ci-ipa-4-9-latest
+         timeout: 5000
+         topology: *master_2repl_1client
++
++  fedora-latest-ipa-4-9/test_ipalib_install:
++    requires: [fedora-latest-ipa-4-9/build]
++    priority: 50
++    job:
++      class: RunPytest
++      args:
++        build_url: '{fedora-latest-ipa-4-9/build_url}'
++        test_suite: test_ipalib_install/test_kinit.py
++        template: *ci-ipa-4-9-latest
++        timeout: 600
++        topology: *master_1repl
+diff --git a/ipatests/prci_definitions/nightly_ipa-4-9_latest_selinux.yaml b/ipatests/prci_definitions/nightly_ipa-4-9_latest_selinux.yaml
+index b7b3d3b..802bd2a 100644
+--- a/ipatests/prci_definitions/nightly_ipa-4-9_latest_selinux.yaml
++++ b/ipatests/prci_definitions/nightly_ipa-4-9_latest_selinux.yaml
+@@ -1944,3 +1944,16 @@ jobs:
+         template: *ci-ipa-4-9-latest
+         timeout: 5000
+         topology: *master_2repl_1client
++
++  fedora-latest-ipa-4-9/test_ipalib_install:
++    requires: [fedora-latest-ipa-4-9/build]
++    priority: 50
++    job:
++      class: RunPytest
++      args:
++        build_url: '{fedora-latest-ipa-4-9/build_url}'
++        selinux_enforcing: True
++        test_suite: test_ipalib_install/test_kinit.py
++        template: *ci-ipa-4-9-latest
++        timeout: 600
++        topology: *master_1repl
+diff --git a/ipatests/prci_definitions/nightly_ipa-4-9_previous.yaml b/ipatests/prci_definitions/nightly_ipa-4-9_previous.yaml
+index eb3849e..1e1adb8 100644
+--- a/ipatests/prci_definitions/nightly_ipa-4-9_previous.yaml
++++ b/ipatests/prci_definitions/nightly_ipa-4-9_previous.yaml
+@@ -1801,3 +1801,15 @@ jobs:
+         template: *ci-ipa-4-9-previous
+         timeout: 5000
+         topology: *master_2repl_1client
++
++  fedora-previous-ipa-4-9/test_ipalib_install:
++    requires: [fedora-previous-ipa-4-9/build]
++    priority: 50
++    job:
++      class: RunPytest
++      args:
++        build_url: '{fedora-previous-ipa-4-9/build_url}'
++        test_suite: test_ipalib_install/test_kinit.py
++        template: *ci-ipa-4-9-previous
++        timeout: 600
++        topology: *master_1repl
+diff --git a/ipatests/setup.py b/ipatests/setup.py
+index 6217a1b..0aec4a7 100644
+--- a/ipatests/setup.py
++++ b/ipatests/setup.py
+@@ -41,6 +41,7 @@ if __name__ == '__main__':
+             "ipatests.test_integration",
+             "ipatests.test_ipaclient",
+             "ipatests.test_ipalib",
++            "ipatests.test_ipalib_install",
+             "ipatests.test_ipaplatform",
+             "ipatests.test_ipapython",
+             "ipatests.test_ipaserver",
+diff --git a/ipatests/test_ipalib_install/__init__.py b/ipatests/test_ipalib_install/__init__.py
+new file mode 100644
+index 0000000..e69de29
+--- /dev/null
++++ b/ipatests/test_ipalib_install/__init__.py
+diff --git a/ipatests/test_ipalib_install/test_kinit.py b/ipatests/test_ipalib_install/test_kinit.py
+new file mode 100644
+index 0000000..f89ea17
+--- /dev/null
++++ b/ipatests/test_ipalib_install/test_kinit.py
+@@ -0,0 +1,29 @@
++#
++# Copyright (C) 2024  FreeIPA Contributors see COPYING for license
++#
++"""Tests for ipalib.install.kinit module
++"""
++
++import pytest
++
++from ipalib.install.kinit import validate_principal
++
++
++# None means no exception is expected
++@pytest.mark.parametrize('principal, exception', [
++    ('testuser', None),
++    ('testuser@EXAMPLE.TEST', None),
++    ('test/ipa.example.test', None),
++    ('test/ipa.example.test@EXAMPLE.TEST', None),
++    ('test/ipa@EXAMPLE.TEST', RuntimeError),
++    ('test/-ipa.example.test@EXAMPLE.TEST', RuntimeError),
++    ('test/ipa.1example.test@EXAMPLE.TEST', RuntimeError),
++    ('test /ipa.example,test', RuntimeError),
++    ('testuser@OTHER.TEST', RuntimeError),
++    ('test/ipa.example.test@OTHER.TEST', RuntimeError),
++])
++def test_validate_principal(principal, exception):
++    try:
++        validate_principal(principal)
++    except Exception as e:
++        assert e.__class__ == exception
+
+From 96a478bbedd49c31e0f078f00f2d1cb55bb952fd Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Feb 23 2024 09:49:27 +0000
+Subject: validate_principal: Don't try to verify that the realm is known
+
+
+The actual value is less important than whether it matches the
+regular expression. A number of legal but difficult to know in
+context realms could be passed in here (trust for example).
+
+This fixes CVE-2024-1481
+
+Fixes: https://pagure.io/freeipa/issue/9541
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+
+---
+
+diff --git a/ipalib/install/kinit.py b/ipalib/install/kinit.py
+index 4ad4eaa..d5fb56b 100644
+--- a/ipalib/install/kinit.py
++++ b/ipalib/install/kinit.py
+@@ -15,7 +15,6 @@ from ipaplatform.paths import paths
+ from ipapython.ipautil import run
+ from ipalib.constants import PATTERN_GROUPUSER_NAME
+ from ipalib.util import validate_hostname
+-from ipalib import api
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -39,7 +38,9 @@ def validate_principal(principal):
+     if ('/' in principal) and (' ' in principal):
+         raise RuntimeError('Invalid principal: bad spacing')
+     else:
+-        realm = None
++        # For a user match in the regex
++        # username = match[1]
++        # realm = match[2]
+         match = user_pattern.match(principal)
+         if match is None:
+             match = service_pattern.match(principal)
+@@ -48,16 +49,11 @@ def validate_principal(principal):
+             else:
+                 # service = match[1]
+                 hostname = match[2]
+-                realm = match[3]
++                # realm = match[3]
+                 try:
+                     validate_hostname(hostname)
+                 except ValueError as e:
+                     raise RuntimeError(str(e))
+-        else:  # user match, validate realm
+-            # username = match[1]
+-            realm = match[2]
+-        if realm and 'realm' in api.env and realm != api.env.realm:
+-            raise RuntimeError('Invalid principal: realm mismatch')
+ 
+ 
+ def kinit_keytab(principal, keytab, ccache_name, config=None, attempts=1):
+diff --git a/ipatests/test_ipalib_install/test_kinit.py b/ipatests/test_ipalib_install/test_kinit.py
+index f89ea17..8289c4b 100644
+--- a/ipatests/test_ipalib_install/test_kinit.py
++++ b/ipatests/test_ipalib_install/test_kinit.py
+@@ -17,13 +17,16 @@ from ipalib.install.kinit import validate_principal
+     ('test/ipa.example.test@EXAMPLE.TEST', None),
+     ('test/ipa@EXAMPLE.TEST', RuntimeError),
+     ('test/-ipa.example.test@EXAMPLE.TEST', RuntimeError),
+-    ('test/ipa.1example.test@EXAMPLE.TEST', RuntimeError),
++    ('test/ipa.1example.test@EXAMPLE.TEST', None),
+     ('test /ipa.example,test', RuntimeError),
+-    ('testuser@OTHER.TEST', RuntimeError),
+-    ('test/ipa.example.test@OTHER.TEST', RuntimeError),
++    ('testuser@OTHER.TEST', None),
++    ('test/ipa.example.test@OTHER.TEST', None)
+ ])
+ def test_validate_principal(principal, exception):
+     try:
+         validate_principal(principal)
+     except Exception as e:
+         assert e.__class__ == exception
++    else:
++        if exception is not None:
++            raise RuntimeError('Test should have failed')
+

@@ -1,4 +1,4 @@
-From 2eaf1d1ce8d27788293c06cd0b96e39fb09f0b11 Mon Sep 17 00:00:00 2001
+From b56a80581ef388e19d5761020454e51463036cd6 Mon Sep 17 00:00:00 2001
 From: Alexander Bokovoy <abokovoy@redhat.com>
 Date: Tue, 23 Jan 2024 14:47:50 +0200
 Subject: [PATCH] sidgen: ignore staged users when generating SIDs
@@ -23,7 +23,6 @@ Fixes: https://pagure.io/freeipa/issue/9517
 Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
 Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
 Reviewed-By: Thierry Bordaz <tbordaz@redhat.com>
-(cherry picked from commit b56a80581ef388e19d5761020454e51463036cd6)
 ---
  daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h    |  2 ++
  .../ipa-slapi-plugins/ipa-sidgen/ipa_sidgen_common.c | 12 ++++++++++++
@@ -80,5 +79,31 @@ index 6f784804c..cb763ebf8 100644
      slapi_pblock_destroy(mod_pb);
      slapi_mods_free(&smods);
 -- 
-2.41.0
+2.43.0
+
+From 07150b71537744f491d022c737ef04775c72a10a Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Tue, 23 Jan 2024 14:53:39 +0200
+Subject: [PATCH] sidgen: fix missing prototypes
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Thierry Bordaz <tbordaz@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h
+index bd46982d0..aec862796 100644
+--- a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h
++++ b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h
+@@ -106,3 +106,6 @@ int find_sid_for_ldap_entry(struct slapi_entry *entry,
+                             const char *base_dn,
+                             const char *dom_sid,
+                             struct range_info **ranges);
++
++int sidgen_task_init(Slapi_PBlock *pb);
++int ipa_sidgen_init(Slapi_PBlock *pb);
+-- 
+2.43.0
 

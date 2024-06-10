@@ -1,7 +1,8 @@
-From c82f5a6fb56fd27ff1b8a0102d1f26f105bb0be1 Mon Sep 17 00:00:00 2001
+From bac601b7f35827236a106f7137f378e4888260da Mon Sep 17 00:00:00 2001
 From: Julien Rische <jrische@redhat.com>
-Date: Wed, 24 Jan 2024 15:50:17 +0100
-Subject: [PATCH] ipa-kdb: Fix memory leak during PAC verification
+Date: Jan 30 2024 15:17:44 +0000
+Subject: ipa-kdb: Fix memory leak during PAC verification
+
 
 Commit 0022bd70d93708d325855d5271516d6cd894d6e8 introduced a memory leak
 during the copy of some PAC buffers, because of an unfreed memory
@@ -11,13 +12,11 @@ Fixes: https://pagure.io/freeipa/issue/9520
 
 Signed-off-by: Julien Rische <jrische@redhat.com>
 Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
-(cherry picked from commit bac601b7f35827236a106f7137f378e4888260da)
+
 ---
- daemons/ipa-kdb/ipa_kdb_mspac.c | 28 +++++++++++++---------------
- 1 file changed, 13 insertions(+), 15 deletions(-)
 
 diff --git a/daemons/ipa-kdb/ipa_kdb_mspac.c b/daemons/ipa-kdb/ipa_kdb_mspac.c
-index 823eacb96..3b5c95060 100644
+index a18beff..9e1431c 100644
 --- a/daemons/ipa-kdb/ipa_kdb_mspac.c
 +++ b/daemons/ipa-kdb/ipa_kdb_mspac.c
 @@ -2316,6 +2316,7 @@ krb5_error_code ipadb_common_verify_pac(krb5_context context,
@@ -87,6 +86,4 @@ index 823eacb96..3b5c95060 100644
      krb5_free_data_contents(context, &pac_blob);
      free(types);
      return kerr;
--- 
-2.41.0
 

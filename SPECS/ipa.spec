@@ -81,7 +81,8 @@
 
 # Fix for TLS 1.3 PHA, RHBZ#1775158
 %global httpd_version 2.4.37-21
-%global bind_version 9.11.20-6
+# Fix for RHEL-25649
+%global bind_version 9.11.36-14
 
 %else
 # Fedora
@@ -176,7 +177,7 @@
 
 # Work-around fact that RPM SPEC parser does not accept
 # "Version: @VERSION@" in freeipa.spec.in used for Autoconf string replacement
-%define IPA_VERSION 4.9.12
+%define IPA_VERSION 4.9.13
 # Release candidate version -- uncomment with one percent for RC versions
 #%%global rc_version %%nil
 %define AT_SIGN @
@@ -189,7 +190,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        14%{?rc_version:.%rc_version}%{?dist}
+Release:        10%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPLv3+
@@ -208,37 +209,35 @@ Source1:        https://releases.pagure.org/freeipa/freeipa-%{version}%{?rc_vers
 
 # RHEL spec file only: START
 %if %{NON_DEVELOPER_BUILD}
+Patch0001:      0001-Handle-samba-exception-type-change_rhel#17623.patch
+Patch0002:      0002-Check-the-HTTP-Referer-header-on-all-requests.patch
+Patch0003:      0003-Integration-tests-for-verifying-Referer-header-in-th.patch
+Patch0004:      0004-ipa-kdb-Detect-and-block-Bronze-Bit-attacks.patch
+Patch0005:      0005-Improve-server-affinity-for-ca-less-deployments_rhel#22283.patch
+Patch0006:      0006-host-update-System-Manage-Host-Keytab-permission_rhel#22286.patch
+Patch0007:      0007-adtrustinstance-make-sure-NetBIOS-name-defaults-are-set-properly_rhel#21938.patch
+Patch0008:      0008-ipatests-Fix-healthcheck-report-when-nsslapd-accesslog-logbuffering-is-set-to-off_rhel#19672.patch
+Patch0009:      0009-kdb-PAC-generator-do-not-fail-if-canonical-principal-is-missing_rhel#23630.patch
+Patch0010:      0010-ipa-kdb-Fix-memory-leak-during-PAC-verification_rhel#22644.patch
+Patch0011:      0011-Fix-session-cookie-access_rhel#23622.patch
+Patch0012:      0012-Do-not-ignore-staged-users-in-sidgen-plugin_rhel#23626.patch
+Patch0013:      0013-ipa-kdb-Disable-Bronze-Bit-check-if-PAC-not-available_rhel#22313.patch
+Patch0014:      0014-krb5kdc-Fix-start-when-pkinit-and-otp-auth-type-are-enabled_rhel#4874.patch
+Patch0015:      0015-hbactest-was-not-collecting-or-returning-messages_rhel#12780.patch
+Patch0016:      0016-ipatests-wait-for-replica-update-in-test_dns_locatio.patch
+Patch0017:      0017-ipa-kdb-Rework-ipadb_reinit_mspac.patch
+Patch0018:      0018-ipatests-fix-tasks-wait_for_replication-method_rhel#25708.patch
+Patch0019:      0019-Vault-add-support-for-RSA-OAEP-wrapping-algo.patch
+Patch0020:      0020-Vault-improve-vault-server-archival-retrieval-calls-.patch
+Patch0021:      0021-kra-set-RSA-OAEP-as-default-wrapping-algo-when-FIPS-.patch
+Patch0022:      0022-ipa-kdb-Fix-double-free-in-ipadb_reinit_mspac.patch
+Patch0023:      0023-rpcserver-validate-Kerberos-principal-name-before-running-kinit_rhel#26153.patch
+Patch0024:      0024-Vault-add-additional-fallback-to-RSA-OAEP-wrapping-algo_rhel#28259.patch
+Patch0025:      0025-dcerpc-invalidate-forest-trust-intfo-cache-when-filtering-out-realm-domains_rhel#28559.patch
+Patch0026:      0026-backport-test-fixes_rhel#29908.patch
+Patch0027:      0027-kdb-fix-vulnerability-in-GCD-rules-handling.patch
+Patch0028:      0028-kdb-apply-combinatorial-logic-for-ticket-flags.patch
 %if 0%{?rhel} >= 8
-Patch0001:      0001-user-or-group-name-explain-the-supported-format_rhbz#2150217.patch
-Patch0002:      0002-Use-the-python-cryptography-parser-directly-in-cert-find_rhbz#2164349.patch
-Patch0003:      0003-Upgrade-add-PKI-drop-in-file-if-missing_rhbz#2215336.patch
-Patch0004:      0004-Upgrade-fix-replica-agreement_rhbz#2216551.patch
-Patch0005:      0005-OTP-fix-data-type-to-avoid-endianness-issue_rhbz#2218293.patch
-Patch0006:      0006-Backport-test-updates-8-9-release_rhbz#2218847.patch
-Patch0007:      0007-ipa-kdb-fix-error-handling-of-is_master_host_rhbz#2214638.patch
-Patch0008:      0008-ipatests-enable-firewall-rule-for-http-service-on-acme-client_rhbz#2230256.patch
-Patch0009:      0009-User-plugin-improve-error-related-to-non-existing-idp_rhbz#2224572.patch
-Patch0010:      0010-Prevent-admin-user-from-being-deleted_rhbz#1921181.patch
-Patch0011:      0011-Fix-memory-leak-in-the-OTP-last-token-plugin_rhbz#2227783.patch
-Patch0012:      0012-ipatests-fix-test_topology_rhbz#2232351.patch
-Patch0013:      0013-Installer-activate-nss-and-pam-services-in-sssd.conf_rhbz#2216532.patch
-Patch0014:      0014-ipa-kdb-Make-AD-SIGNEDPATH-optional-with-krb5-DAL-8.patch
-Patch0015:      0015-CVE-2023-5455.patch
-Patch0016:      0016-ipa-kdb-Detect-and-block-Bronze-Bit-attacks.patch
-Patch0017:      0017-adtrustinstance-make-sure-NetBIOS-name-defaults-are-.patch
-Patch0018:      0018-ipatests-wait-for-replica-update-in-test_dns_locatio.patch
-Patch0019:      0019-ipa-kdb-Disable-Bronze-Bit-check-if-PAC-not-availabl.patch
-Patch0020:      0020-ipapython-Clean-up-krb5_error.patch
-Patch0021:      0021-ipapython-Correct-return-type-of-krb5_free_cred_cont.patch
-Patch0022:      0022-ipapython-Propagate-KRB5Error-exceptions-on-iteratin.patch
-Patch0023:      0023-ipa-kdb-Fix-memory-leak-during-PAC-verification.patch
-Patch0024:      0024-sidgen-ignore-staged-users-when-generating-SIDs.patch
-Patch0025:      0025-sidgen-fix-missing-prototypes.patch
-Patch0026:      0026-kdb-PAC-generator-do-not-fail-if-canonical-principal.patch
-Patch0027:      0027-ipd-kdb-Fix-some-mistakes-in-ipadb_check_for_bronze_.patch
-Patch0028:      0028-ipa-kdb-Rework-ipadb_reinit_mspac.patch
-Patch0029:      0029-ipatests-fix-tasks.wait_for_replication-method.patch
-Patch0030:      0030-ipa-kdb-Fix-double-free-in-ipadb_reinit_mspac.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
 Patch1003:      1003-webui-IdP-Remove-arrow-notation-due-to-uglify-js-lim.patch
@@ -1753,47 +1752,87 @@ fi
 %endif
 
 %changelog
-* Tue Feb 20 2024 Julien Rische <jrische@redhat.com> - 4.9.12-14
+* Thu May 23 2024 Julien Rische <jrische@redhat.com> - 4.9.13-10
+- kdb: apply combinatorial logic for ticket flags (CVE-2024-3183)
+  Resolves: RHEL-29927
+- kdb: fix vulnerability in GCD rules handling (CVE-2024-2698)
+  Resolves: RHEL-29692
+
+* Fri Apr 12 2024 Rafael Jeffman <rjeffman@redhat.com> - 9.4.13-9
+- dcerpc: invalidate forest trust intfo cache when filtering out realm domains
+  Resolves: RHEL-28559
+- Backport latests test fixes in python3-tests
+  ipatests: add xfail for autoprivate group test with override
+  ipatests: remove xfail thanks to sssd 2.9.4
+  ipatests: adapt for new automembership fixup behavior
+  ipatests: Fixes for test_ipahealthcheck_ipansschainvalidation testcases
+  test_xmlrpc: adopt to automember plugin message changes in 389-ds
+  Resolves: RHEL-29908
+
+* Thu Mar 07 2024 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-8
+- rpcserver: validate Kerberos principal name before running kinit
+  Resolves: RHEL-26153
+- Vault: add additional fallback to RSA-OAEP wrapping algo
+  Resolves: RHEL-28259
+
+* Tue Feb 20 2024 Julien Rische <jrische@redhat.com> - 4.9.13-7
 - ipa-kdb: Fix double free in ipadb_reinit_mspac()
-  Resolves: RHEL-25745
+  Resolves: RHEL-25742
+- kra: set RSA-OAEP as default wrapping algo when FIPS is enabled
+  Resolves: RHEL-12153
+- Vault: improve vault server archival/retrieval calls error handling
+  Resolves: RHEL-12153
+- Vault: add support for RSA-OAEP wrapping algo
+  Resolves: RHEL-12153
 
-* Fri Feb 16 2024 Julien Rische <jrische@redhat.com> - 4.9.12-13
-- ipatests: fix tasks.wait_for_replication method
-  Resolves: RHEL-25711
-
-* Thu Feb 15 2024 Julien Rische <jrische@redhat.com> - 4.9.12-12
+* Fri Feb 16 2024 Julien Rische <jrische@redhat.com> - 4.9.13-6
 - ipa-kdb: Rework ipadb_reinit_mspac()
-  Resolves: RHEL-25745
-- kdb: PAC generator: do not fail if canonical principal is missing
-  Resolves: RHEL-24356
-- sidgen: fix missing prototypes
-  Resolves: RHEL-24380
-- sidgen: ignore staged users when generating SIDs
-  Resolves: RHEL-24380
-- ipa-kdb: Fix memory leak during PAC verification
-  Resolves: RHEL-24384
-- ipapython: Propagate KRB5Error exceptions on iterating ccache
-  Resolves: RHEL-24387
-- ipapython: Correct return type of krb5_free_cred_contents
-  Resolves: RHEL-24387
-- ipapython: Clean up krb5_error
-  Resolves: RHEL-24387
-- ipa-kdb: Disable Bronze-Bit check if PAC not available
-  Resolves: RHEL-24390
+  Resolves: RHEL-25742
 - ipatests: wait for replica update in test_dns_locations
-  Resolves: RHEL-24395
+  Resolves: RHEL-22373
+- ipatests: fix tasks.wait_for_replication() method
+  Resolves: RHEL-25708
+
+* Tue Feb 13 2024 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-5
+- kdb: PAC generator: do not fail if canonical principal is missing
+  Resolves: RHEL-23630
+- ipa-kdb: Fix memory leak during PAC verification
+  Resolves: RHEL-22644
+- Fix session cookie access
+  Resolves: RHEL-23622
+- Do not ignore staged users in sidgen plugin
+  Resovlves: RHEL-23626
+- ipa-kdb: Disable Bronze-Bit check if PAC not available
+  Resolves: RHEL-22313
+- krb5kdc: Fix start when pkinit and otp auth type are enabled
+  Resolves: RHEL-4874
+- hbactest was not collecting or returning messages
+  Resolves: RHEL-12780
+
+
+* Tue Jan 23 2024 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-4
+- Improve server affinity for CA-less deployments
+  Resolves: RHEL-22283
+- host: update system: Manage Host Keytab permission
+  Resolves: RHEL-22286
 - adtrustinstance: make sure NetBIOS name defaults are set properly
-  Resolves: RHEL-24399
+  Resolves: RHEL-21938
+- ipatests: Fix healthcheck report when nsslapd accesslog logbuffering is set to off
+  Resolves: RHEL-19672
 
-* Fri Dec 01 2023 Julien Rische <jrische@redhat.com> - 4.9.12-11
-- Generate Kerberos PAC as soon as server installation completed
-  Resolves: RHEL-16532
-
-* Thu Nov 16 2023 Julien Rische <jrische@redhat.com> - 4.9.12-10
+* Wed Jan 10 2024 Julien Rische <jrische@redhat.com> - 4.9.13-3
 - ipa-kdb: Detect and block Bronze-Bit attacks
-  Resolves: RHEL-16532
+  Resolves: RHEL-9984
 - Fix for CVE-2023-5455
-  Resolves: RHEL-12577
+  Resolves: RHEL-12578
+
+* Thu Nov 30 2023 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-2
+- Handle new samba exception types.
+  Resolves: RHEL-17623
+
+* Tue Nov 21 2023 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-1
+- Rebase ipa to 4.9.13
+  Resolves: RHEL-16936
 
 * Wed Oct 04 2023 Julien Rische <jrische@redhat.com> - 4.9.12-9
 - ipa-kdb: Make AD-SIGNEDPATH optional with krb5 DAL 8 and older

@@ -1,4 +1,4 @@
-From d5770bc16fa29f3e96db6e62e90dc45ee9e9351d Mon Sep 17 00:00:00 2001
+From 16a739e0260f97705827f972d53c828809dbfdb2 Mon Sep 17 00:00:00 2001
 From: Masahiro Matsuya <mmatsuya@redhat.com>
 Date: Tue, 9 Jan 2024 23:12:11 +0900
 Subject: [PATCH] ipatests: wait for replica update in test_dns_locations
@@ -39,5 +39,5 @@ index 44900af80..89a310892 100644
              self._test_SRV_rec_against_server(
                      ip, self.domain, expected_servers,
 -- 
-2.41.0
+2.43.0
 

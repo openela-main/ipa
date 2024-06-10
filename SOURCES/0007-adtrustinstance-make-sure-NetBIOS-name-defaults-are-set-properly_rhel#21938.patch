@@ -1,8 +1,8 @@
-From 0cc3a0606424c575258e99d21623caa06f1eb5d6 Mon Sep 17 00:00:00 2001
+From 2f17319df6147832dceff7c06154363f8d58b194 Mon Sep 17 00:00:00 2001
 From: Alexander Bokovoy <abokovoy@redhat.com>
-Date: Wed, 17 Jan 2024 12:27:26 +0200
-Subject: [PATCH] adtrustinstance: make sure NetBIOS name defaults are set
- properly
+Date: Jan 18 2024 09:07:31 +0000
+Subject: adtrustinstance: make sure NetBIOS name defaults are set properly
+
 
 Some tools may pass None as NetBIOS name if not put explicitly by a
 user. This meant to use default NetBIOS name generator based on the
@@ -13,13 +13,11 @@ Fixes: https://pagure.io/freeipa/issue/9514
 
 Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
 Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
-(cherry picked from commit 2f17319df6147832dceff7c06154363f8d58b194)
+
 ---
- ipaserver/install/adtrustinstance.py | 2 ++
- 1 file changed, 2 insertions(+)
 
 diff --git a/ipaserver/install/adtrustinstance.py b/ipaserver/install/adtrustinstance.py
-index bf0cc3b09..bb5b61ab3 100644
+index bf0cc3b..bb5b61a 100644
 --- a/ipaserver/install/adtrustinstance.py
 +++ b/ipaserver/install/adtrustinstance.py
 @@ -189,6 +189,8 @@ class ADTRUSTInstance(service.Service):
@@ -31,6 +29,4 @@ index bf0cc3b09..bb5b61ab3 100644
  
          self.suffix = ipautil.realm_to_suffix(self.realm)
          self.ldapi_socket = "%%2fvar%%2frun%%2fslapd-%s.socket" % \
--- 
-2.41.0
 

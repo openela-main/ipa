@@ -1,4 +1,4 @@
-From 214ee14f8f3426f6e79ca1c3582454f3665213b8 Mon Sep 17 00:00:00 2001
+From 013be398bced31f567ef01ac2471cb7529789b4a Mon Sep 17 00:00:00 2001
 From: Julien Rische <jrische@redhat.com>
 Date: Mon, 9 Oct 2023 15:47:03 +0200
 Subject: [PATCH] ipa-kdb: Detect and block Bronze-Bit attacks
@@ -242,10 +242,10 @@ index 83cb9914d..b4e22d431 100644
 +    return kerr;
 +}
 diff --git a/ipaserver/install/server/install.py b/ipaserver/install/server/install.py
-index 91e6c6a33..b7d35c7eb 100644
+index 4e4076410..bfbb83bcb 100644
 --- a/ipaserver/install/server/install.py
 +++ b/ipaserver/install/server/install.py
-@@ -978,6 +978,14 @@ def install(installer):
+@@ -981,6 +981,14 @@ def install(installer):
      # Set the admin user kerberos password
      ds.change_admin_password(admin_password)
  

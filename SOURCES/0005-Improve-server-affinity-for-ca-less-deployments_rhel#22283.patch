@@ -1,0 +1,212 @@
+From 3add9ba03a0af913d03b1f5ecaa8e48e46a93f91 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Jan 15 2024 13:42:08 +0000
+Subject: Server affinity: Retain user-requested remote server
+
+
+We want to avoid splitting a replica server installation between
+two hosts where possible so if a CA or KRA is requested then
+we only try to install against a remote server that also provides
+those capabilities. This avoids race conditions.
+
+If a CA or KRA is not requested and the user has provided a
+server to install against then use that instead of overriding it.
+
+Extend the logic of picking the remote Custodia mode
+(KRA, CA, *MASTER*) to include considering whether the
+CA and KRA services are requested. If the service(s) are
+not requested the the associated hostname may not be
+reliable.
+
+Fixes: https://pagure.io/freeipa/issue/9491
+Related: https://pagure.io/freeipa/issue/9289
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+
+---
+
+diff --git a/ipaserver/install/server/replicainstall.py b/ipaserver/install/server/replicainstall.py
+index 27fbdef..8096b6a 100644
+--- a/ipaserver/install/server/replicainstall.py
++++ b/ipaserver/install/server/replicainstall.py
+@@ -782,6 +782,7 @@ def promotion_check_host_principal_auth_ind(conn, hostdn):
+ 
+ 
+ def remote_connection(config):
++    logger.debug("Creating LDAP connection to %s", config.master_host_name)
+     ldapuri = 'ldaps://%s' % ipautil.format_netloc(config.master_host_name)
+     xmlrpc_uri = 'https://{}/ipa/xml'.format(
+         ipautil.format_netloc(config.master_host_name))
+@@ -1087,7 +1088,7 @@ def promote_check(installer):
+             'CA', conn, preferred_cas
+         )
+         if ca_host is not None:
+-            if config.master_host_name != ca_host:
++            if options.setup_ca and config.master_host_name != ca_host:
+                 conn.disconnect()
+                 del remote_api
+                 config.master_host_name = ca_host
+@@ -1096,8 +1097,7 @@ def promote_check(installer):
+                 conn = remote_api.Backend.ldap2
+                 conn.connect(ccache=installer._ccache)
+             config.ca_host_name = ca_host
+-            config.master_host_name = ca_host
+-            ca_enabled = True
++            ca_enabled = True  # There is a CA somewhere in the topology
+             if options.dirsrv_cert_files:
+                 logger.error("Certificates could not be provided when "
+                              "CA is present on some master.")
+@@ -1135,7 +1135,7 @@ def promote_check(installer):
+             'KRA', conn, preferred_kras
+         )
+         if kra_host is not None:
+-            if config.master_host_name != kra_host:
++            if options.setup_kra and config.master_host_name != kra_host:
+                 conn.disconnect()
+                 del remote_api
+                 config.master_host_name = kra_host
+@@ -1143,10 +1143,9 @@ def promote_check(installer):
+                 installer._remote_api = remote_api
+                 conn = remote_api.Backend.ldap2
+                 conn.connect(ccache=installer._ccache)
+-            config.kra_host_name = kra_host
+-            config.ca_host_name = kra_host
+-            config.master_host_name = kra_host
+-            kra_enabled = True
++                config.kra_host_name = kra_host
++                config.ca_host_name = kra_host
++            kra_enabled = True  # There is a KRA somewhere in the topology
+             if options.setup_kra and options.server and \
+                kra_host != options.server:
+                 # Installer was provided with a specific master
+@@ -1372,10 +1371,10 @@ def install(installer):
+     otpd.create_instance('OTPD', config.host_name,
+                          ipautil.realm_to_suffix(config.realm_name))
+ 
+-    if kra_enabled:
++    if options.setup_kra and kra_enabled:
+         # A KRA peer always provides a CA, too.
+         mode = custodiainstance.CustodiaModes.KRA_PEER
+-    elif ca_enabled:
++    elif options.setup_ca and ca_enabled:
+         mode = custodiainstance.CustodiaModes.CA_PEER
+     else:
+         mode = custodiainstance.CustodiaModes.MASTER_PEER
+
+From 701339d4fed539713eb1a13495992879f56a6daa Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Jan 18 2024 14:53:28 +0000
+Subject: Server affinity: Don't rely just on [ca|kra]_enabled for installs
+
+
+ca_enable and kra_enabled are intended to be used to identify that
+a CA or KRA is available in the topology. It was also being used
+to determine whether a CA or KRA service is desired on a replica
+install, rather than options.setup_[ca|kra]
+
+Fixes: https://pagure.io/freeipa/issue/9510
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+
+---
+
+diff --git a/ipaserver/install/server/replicainstall.py b/ipaserver/install/server/replicainstall.py
+index 8096b6a..191913d 100644
+--- a/ipaserver/install/server/replicainstall.py
++++ b/ipaserver/install/server/replicainstall.py
+@@ -1143,7 +1143,8 @@ def promote_check(installer):
+                 installer._remote_api = remote_api
+                 conn = remote_api.Backend.ldap2
+                 conn.connect(ccache=installer._ccache)
+-                config.kra_host_name = kra_host
++            config.kra_host_name = kra_host
++            if options.setup_kra:  # only reset ca_host if KRA is requested
+                 config.ca_host_name = kra_host
+             kra_enabled = True  # There is a KRA somewhere in the topology
+             if options.setup_kra and options.server and \
+@@ -1381,7 +1382,7 @@ def install(installer):
+     custodia = custodiainstance.get_custodia_instance(config, mode)
+     custodia.create_instance()
+ 
+-    if ca_enabled:
++    if options.setup_ca and ca_enabled:
+         options.realm_name = config.realm_name
+         options.domain_name = config.domain_name
+         options.host_name = config.host_name
+@@ -1397,7 +1398,7 @@ def install(installer):
+     service.print_msg("Finalize replication settings")
+     ds.finalize_replica_config()
+ 
+-    if kra_enabled:
++    if options.setup_kra and kra_enabled:
+         kra.install(api, config, options, custodia=custodia)
+ 
+     service.print_msg("Restarting the KDC")
+
+From e6014a5c1996528b255480b67fe2937203bff81b Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Jan 23 2024 15:32:58 +0000
+Subject: Server affinity: call ca.install() if there is a CA in the topology
+
+
+This should not have been gated on options.setup_ca because we need
+the RA agent on all servers if there is a CA in the topology otherwise
+the non-CA servers won't be able to communicate with the CA.
+
+Fixes: https://pagure.io/freeipa/issue/9510
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+
+---
+
+diff --git a/ipaserver/install/ca.py b/ipaserver/install/ca.py
+index c93ae1f..187f803 100644
+--- a/ipaserver/install/ca.py
++++ b/ipaserver/install/ca.py
+@@ -387,9 +387,10 @@ def install_step_0(standalone, replica_config, options, custodia):
+         promote = False
+     else:
+         cafile = os.path.join(replica_config.dir, 'cacert.p12')
+-        custodia.get_ca_keys(
+-            cafile,
+-            replica_config.dirman_password)
++        if replica_config.setup_ca:
++            custodia.get_ca_keys(
++                cafile,
++                replica_config.dirman_password)
+ 
+         ca_signing_algorithm = None
+         ca_type = None
+diff --git a/ipaserver/install/server/replicainstall.py b/ipaserver/install/server/replicainstall.py
+index f8d4733..4c1c07c 100644
+--- a/ipaserver/install/server/replicainstall.py
++++ b/ipaserver/install/server/replicainstall.py
+@@ -1359,11 +1359,13 @@ def install(installer):
+     custodia = custodiainstance.get_custodia_instance(config, mode)
+     custodia.create_instance()
+ 
+-    if options.setup_ca and ca_enabled:
++    if ca_enabled:
+         options.realm_name = config.realm_name
+         options.domain_name = config.domain_name
+         options.host_name = config.host_name
+         options.dm_password = config.dirman_password
++        # Always call ca.install() if there is a CA in the topology
++        # to ensure the RA agent is present.
+         ca.install(False, config, options, custodia=custodia)
+ 
+     # configure PKINIT now that all required services are in place
+@@ -1375,7 +1377,8 @@ def install(installer):
+     service.print_msg("Finalize replication settings")
+     ds.finalize_replica_config()
+ 
+-    if options.setup_kra and kra_enabled:
++    if kra_enabled:
++        # The KRA installer checks for itself the status of setup_kra
+         kra.install(api, config, options, custodia=custodia)
+ 
+     service.print_msg("Restarting the KDC")
+
