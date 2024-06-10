@@ -223,7 +223,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        10%{?rc_version:.%rc_version}%{?dist}
+Release:        15%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -314,6 +314,8 @@ Patch0064:      0064-ipa-pwd-extop-add-MFA-note-in-case-of-a-successful-L.patch
 Patch0065:      0065-ipa-pwd-extop-declare-operation-notes-support-from-3.patch
 Patch0066:      0066-dcerpc-invalidate-forest-trust-info-cache-when-filte.patch
 Patch0067:      0067-ipatests-Fixes-for-test_ipahealthcheck_ipansschainva.patch
+Patch0068:      0068-kdb-fix-vulnerability-in-GCD-rules-handling.patch
+Patch0069:      0069-kdb-apply-combinatorial-logic-for-ticket-flags.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -1806,6 +1808,10 @@ fi
 %endif
 
 %changelog
+* Tue May 21 2024 Julien Rische <jrische@redhat.com> - 4.11.0-15
+- Resolves: RHEL-32231 CVE-2024-3183 ipa: freeipa: user can obtain a hash of the passwords of all domain users and perform offline brute force
+- Resolves: RHEL-31409 CVE-2024-2698 ipa: freeipa: delegation rules allow a proxy service to impersonate any user to access another target service
+
 * Fri Mar 29 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-10
 - Resolves: RHEL-23377 Enforce OTP for ldap bind (in some scenarios)
 - Resolves: RHEL-29745 Unable to re-add broken AD trust - NT_STATUS_INVALID_PARAMETER
