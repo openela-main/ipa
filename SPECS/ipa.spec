@@ -190,7 +190,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        9%{?rc_version:.%rc_version}%{?dist}
+Release:        12%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPLv3+
@@ -235,6 +235,13 @@ Patch0023:      0023-rpcserver-validate-Kerberos-principal-name-before-running-k
 Patch0024:      0024-Vault-add-additional-fallback-to-RSA-OAEP-wrapping-algo_rhel#28259.patch
 Patch0025:      0025-dcerpc-invalidate-forest-trust-intfo-cache-when-filtering-out-realm-domains_rhel#28559.patch
 Patch0026:      0026-backport-test-fixes_rhel#29908.patch
+Patch0027:      0027-kdb-fix-vulnerability-in-GCD-rules-handling.patch
+Patch0028:      0028-kdb-apply-combinatorial-logic-for-ticket-flags.patch
+Patch0029:      0029-Allow_the_admin_user_to_be_disabled_rhel#34756.patch
+Patch0030:      0030-ipa-otptoken-import-open-the-key-file-in-binary-mode_rhel#39616.patch
+Patch0031:      0031-ipa-crlgen-manage-manage-the-cert-status-task-execution-time_rhel#30280.patch
+Patch0032:      0032-idrange-add-add-a-warning-because-389ds-restart-is-required_rhel#28996.patch
+Patch0033:      0033-PKINIT-certificate-fix-renewal-on-hidden-replica_rhel#4913.patch
 %if 0%{?rhel} >= 8
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
@@ -1750,6 +1757,28 @@ fi
 %endif
 
 %changelog
+* Wed Jul 17 2024 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-9
+- Allow the admin user to be disabled
+  Resolves: RHEL-34756
+- ipa-otptoken-import: open the key file in binary mode
+  Resolves: RHEL-39616
+- ipa-crlgen-manage: manage the cert status task execution time
+  Resolves: RHEL-30280
+- idrange-add: add a warning because 389ds restart is required
+  Resolves: RHEL-28996
+- PKINIT certificate: fix renewal on hidden replica
+  Resolves: RHEL-4913, RHEL-45908
+
+* Wed Jun 12 2024 Julien Rische <jrische@redhat.com> - 4.9.13-11
+- Add missing part of backported CVE-2024-3183 fix
+  Resolves: RHEL-29927
+
+* Tue Apr 30 2024 Julien Rische <jrische@redhat.com> - 4.9.13-10
+- kdb: apply combinatorial logic for ticket flags (CVE-2024-3183)
+  Resolves: RHEL-29927
+- kdb: fix vulnerability in GCD rules handling (CVE-2024-2698)
+  Resolves: RHEL-29692
+
 * Fri Apr 12 2024 Rafael Jeffman <rjeffman@redhat.com> - 9.4.13-9
 - dcerpc: invalidate forest trust intfo cache when filtering out realm domains
   Resolves: RHEL-28559
