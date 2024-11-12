@@ -70,7 +70,7 @@
 %global krb5_kdb_version 9.0
 # 0.7.16: https://github.com/drkjam/netaddr/issues/71
 %global python_netaddr_version 0.7.19
-%global samba_version 4.17.4-101
+%global samba_version 4.20.0-103
 %global slapi_nis_version 0.56.4
 %global python_ldap_version 3.1.0-1
 %if 0%{?rhel} < 9
@@ -78,8 +78,8 @@
 %global ds_version 1.4.3.16-12
 %global selinux_policy_version 3.14.3-107
 %else
-# DNA interval enabled
-%global ds_version 2.0.5-1
+# version supporting LMDB and lib389.cli_ctl.dblib.run_dbscan utility
+%global ds_version 2.1.0
 %global selinux_policy_version 38.1.1-1
 %endif
 
@@ -124,10 +124,11 @@
 
 # Make sure to use 389-ds-base versions that fix https://github.com/389ds/389-ds-base/issues/4700
 # and has DNA interval enabled
+# version supporting LMDB and lib389.cli_ctl.dblib.run_dbscan utility
 %if 0%{?fedora} < 34
 %global ds_version 1.4.4.16-1
 %else
-%global ds_version 2.0.7-1
+%global ds_version 2.1.0
 %endif
 
 # Fix for TLS 1.3 PHA, RHBZ#1775146
@@ -173,7 +174,7 @@
 %endif
 
 # RHEL 8.3+, F32+ has 0.79.13
-%global certmonger_version 0.79.7-3
+%global certmonger_version 0.79.17-1
 
 # RHEL 8.2+, F32+ has 3.58
 %global nss_version 3.44.0-4
@@ -210,7 +211,7 @@
 
 # Work-around fact that RPM SPEC parser does not accept
 # "Version: @VERSION@" in freeipa.spec.in used for Autoconf string replacement
-%define IPA_VERSION 4.11.0
+%define IPA_VERSION 4.12.2
 # Release candidate version -- uncomment with one percent for RC versions
 #%%global rc_version %%nil
 %define AT_SIGN @
@@ -223,7 +224,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        15%{?rc_version:.%rc_version}%{?dist}
+Release:        1%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -247,75 +248,8 @@ Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
 %endif
 %if 0%{?rhel} == 9
-Patch0001:      0001-ipatests-fix-healthcheck-test-without-DNS.patch
-Patch0002:      0002-ipatests-fix-healthcheck-test-for-indent-option.patch
-Patch0003:      0003-ipatests-fix-test_ipactl_scenario_check.patch
-Patch0004:      0004-ipalib-fix-the-IPACertificate-validity-dates.patch
-Patch0005:      0005-Allow-password-policy-minlength-to-be-removed-like-o.patch
-Patch0006:      0006-ipatests-Skip-the-test-failing-due-to-FIPS-policy.patch
-Patch0007:      0007-The-PKI-JSON-API-the-revocation-reason-key-may-be-ca.patch
-Patch0008:      0008-WIP-Get-the-PKI-version-from-the-remote-to-determine.patch
-Patch0009:      0009-ipatests-fix-expected-output-for-ipahealthcheck.meta.patch
-Patch0010:      0010-ipatests-ignore-nsslapd-accesslog-logbuffering-WARN-.patch
-Patch0011:      0011-ipatests-fix-expected-output-for-ipahealthcheck.ipa..patch
-Patch0012:      0012-group-add-member-fails-with-an-external-member.patch
-Patch0013:      0013-Handle-samba-changes-in-samba.security.dom_sid.patch
-Patch0014:      0014-test_install-restart-services-after-date-change.patch
-Patch0015:      0015-Issue-9497-Add-new-password-policy-logging-function.patch
-Patch0016:      0016-Issue-9497-Update-logging-in-ipa_enrollment.patch
-Patch0017:      0017-Issue-9497-update-debug-logging-in-ipa_graceperiod.patch
-Patch0018:      0018-Issue-9497-update-debug-logging-in-ipa_lockout.patch
-Patch0019:      0019-Issue-9497-update-debug-logging-in-ipa_modrdn.patch
-Patch0020:      0020-Issue-9497-update-debug-logging-in-ipa_otp_counter.patch
-Patch0021:      0021-Issue-9497-update-debug-logging-in-ipa_otp_lasttoken.patch
-Patch0022:      0022-Issue-9497-update-debug-logging-in-ipa-pwd-extop.patch
-Patch0023:      0023-Issue-9497-update-debug-logging-in-ipa_uuid.patch
-Patch0024:      0024-hbactest-was-not-collecting-or-returning-messages.patch
-Patch0025:      0025-ipatests-Verify-that-hbactest-will-return-messages.patch
-Patch0026:      0026-ipa-kdb-add-better-detection-of-allowed-user-auth-ty.patch
-Patch0027:      0027-ipa-kdb-when-applying-ticket-policy-do-not-deny-PKIN.patch
-Patch0028:      0028-ipa-kdb-clarify-user-auth-table-mapping-use-of-_AUTH.patch
-Patch0029:      0029-ipatests-make-sure-PKINIT-enrollment-works-with-a-st.patch
-Patch0030:      0030-Check-the-HTTP-Referer-header-on-all-requests.patch
-Patch0031:      0031-Integration-tests-for-verifying-Referer-header-in-th.patch
-Patch0032:      0032-ipatests-Skip-ds_encryption-tests-on-RHEL9-SUT.patch
-Patch0033:      0033-ACME-Don-t-treat-pki-server-ca-config-show-failures-.patch
-Patch0034:      0034-Fix-ipa-client-automount-install-uninstall-with-new-.patch
-Patch0035:      0035-ipatests-Test-client-install-uninstall-with-automoun.patch
-Patch0036:      0036-ipa-client-automount-Don-t-use-deprecated-ipadiscove.patch
-Patch0037:      0037-Server-affinity-Retain-user-requested-remote-server.patch
-Patch0038:      0038-get_directive-don-t-error-out-on-substring-mismatch.patch
-Patch0039:      0039-host-update-System-Manage-Host-Keytab-permission.patch
-Patch0040:      0040-adtrustinstance-make-sure-NetBIOS-name-defaults-are-.patch
-Patch0041:      0041-Server-affinity-Don-t-rely-just-on-ca-kra-_enabled-f.patch
-Patch0042:      0042-ipatests-wait-for-replica-update-in-test_dns_locatio.patch
-Patch0043:      0043-Server-affinity-call-ca.install-if-there-is-a-CA-in-.patch
-Patch0044:      0044-ipapython-Clean-up-krb5_error.patch
-Patch0045:      0045-ipapython-Correct-return-type-of-krb5_free_cred_cont.patch
-Patch0046:      0046-ipapython-Propagate-KRB5Error-exceptions-on-iteratin.patch
-Patch0047:      0047-ipa-kdb-Fix-memory-leak-during-PAC-verification.patch
-Patch0048:      0048-sidgen-ignore-staged-users-when-generating-SIDs.patch
-Patch0049:      0049-sidgen-fix-missing-prototypes.patch
-Patch0050:      0050-kdb-PAC-generator-do-not-fail-if-canonical-principal.patch
-Patch0051:      0051-ipatests-Skip-tests-for-ipahealtcheck-tests-for-spec.patch
-Patch0052:      0052-ipatests-remove-xfail-thanks-to-sssd-2.9.4.patch
-Patch0053:      0053-ipatests-add-xfail-for-autoprivate-group-test-with-o.patch
-Patch0054:      0054-ipatests-fix-tasks.wait_for_replication-method.patch
-Patch0055:      0055-ipa-kdb-Rework-ipadb_reinit_mspac.patch
-Patch0056:      0056-Vault-add-support-for-RSA-OAEP-wrapping-algo.patch
-Patch0057:      0057-Vault-improve-vault-server-archival-retrieval-calls-.patch
-Patch0058:      0058-kra-set-RSA-OAEP-as-default-wrapping-algo-when-FIPS-.patch
-Patch0059:      0059-ipa-kdb-Fix-double-free-in-ipadb_reinit_mspac.patch
-Patch0060:      0060-rpcserver-validate-Kerberos-principal-name-before-ru.patch
-Patch0061:      0061-validate_principal-Don-t-try-to-verify-that-the-real.patch
-Patch0062:      0062-Vault-add-additional-fallback-to-RSA-OAEP-wrapping-a.patch
-Patch0063:      0063-ipa-pwd-extop-allow-enforcing-2FA-only-over-LDAP-bin.patch
-Patch0064:      0064-ipa-pwd-extop-add-MFA-note-in-case-of-a-successful-L.patch
-Patch0065:      0065-ipa-pwd-extop-declare-operation-notes-support-from-3.patch
-Patch0066:      0066-dcerpc-invalidate-forest-trust-info-cache-when-filte.patch
-Patch0067:      0067-ipatests-Fixes-for-test_ipahealthcheck_ipansschainva.patch
-Patch0068:      0068-kdb-fix-vulnerability-in-GCD-rules-handling.patch
-Patch0069:      0069-kdb-apply-combinatorial-logic-for-ticket-flags.patch
+Patch0001:      0001-Revert-Replace-netifaces-with-ifaddr.patch
+Patch0002:      0002-Revert-custodia-do-not-use-deprecated-jwcrypto-wrapp.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -349,6 +283,7 @@ BuildRequires:  gettext
 BuildRequires:  gettext-devel
 BuildRequires:  python3-devel
 BuildRequires:  python3-setuptools
+BuildRequires:  python3-argcomplete
 BuildRequires:  systemd >= %{systemd_version}
 # systemd-tmpfiles which is executed from make install requires apache user
 BuildRequires:  httpd
@@ -770,7 +705,7 @@ Requires: oddjob-mkhomedir
 Requires: libsss_autofs
 Requires: autofs
 Requires: libnfsidmap
-Requires: nfs-utils
+Requires: (nfs-utils or nfsv4-client-utils)
 Requires: sssd-tools >= %{sssd_version}
 Requires(post): policycoreutils
 
@@ -929,6 +864,7 @@ Requires: %{name}-common = %{version}-%{release}
 Requires(pre): python3-ldap >= %{python_ldap_version}
 Requires: gnupg2
 Requires: keyutils
+Requires: python3-argcomplete
 Requires: python3-cffi
 Requires: python3-cryptography >= 1.6
 Requires: python3-dateutil
@@ -954,6 +890,7 @@ Requires: python3-setuptools
 %endif
 # For urllib3.util.ssl_match_hostname
 Requires: python3-urllib3 >= 1.25.8
+Requires: python3-systemd
 
 %description -n python3-ipalib
 IPA is an integrated solution to provide centrally managed Identity (users,
@@ -1045,6 +982,26 @@ Requires(post):      selinux-policy-%{selinuxtype}
 
 %description selinux
 Custom SELinux policy module for FreeIPA
+
+%package selinux-nfast
+Summary:             FreeIPA SELinux policy for nCipher nfast HSMs
+BuildArch:           noarch
+Requires:            selinux-policy-%{selinuxtype}
+Requires(post):      selinux-policy-%{selinuxtype}
+%{?selinux_requires}
+
+%description selinux-nfast
+Custom SELinux policy module for nCipher nfast HSMs
+
+%package selinux-luna
+Summary:             FreeIPA SELinux policy for Thales Luna HSMs
+BuildArch:           noarch
+Requires:            selinux-policy-%{selinuxtype}
+Requires(post):      selinux-policy-%{selinuxtype}
+%{?selinux_requires}
+
+%description selinux-luna
+Custom SELinux policy module for Thales Luna HSMs
 # with selinux
 %endif
 
@@ -1126,6 +1083,17 @@ rm -f %{buildroot}%{_usr}/share/ipa/ui/images/product-name.png
 %endif
 # RHEL spec file only: END
 
+%if ! %{ONLY_CLIENT}
+%if 0%{?fedora} >= 38
+# Register CLI tools for bash completion (fedora only)
+for clitool in ipa-migrate
+do
+    register-python-argcomplete "${clitool}" > "${clitool}"
+    install -p -m 0644 -D -t '%{buildroot}%{bash_completions_dir}' "${clitool}"
+done
+%endif
+%endif
+
 %find_lang %{gettext_domain}
 
 %if ! %{ONLY_CLIENT}
@@ -1189,6 +1157,10 @@ fi
 /bin/systemctl reload-or-try-restart oddjobd
 
 %tmpfiles_create ipa.conf
+%journal_catalog_update
+
+%postun server
+%journal_catalog_update
 
 %posttrans server
 # don't execute upgrade and restart of IPA when server is not installed
@@ -1325,13 +1297,23 @@ if [ $1 -gt 1 ] ; then
             cp /etc/ipa/ca.crt /var/lib/ipa-client/pki/kdc-ca-bundle.pem
             cp /etc/ipa/ca.crt /var/lib/ipa-client/pki/ca-bundle.pem
         fi
-
         %{__python3} -c 'from ipaclient.install.client import configure_krb5_snippet; configure_krb5_snippet()' >>/var/log/ipaupgrade.log 2>&1
         %{__python3} -c 'from ipaclient.install.client import update_ipa_nssdb; update_ipa_nssdb()' >>/var/log/ipaupgrade.log 2>&1
         chmod 0600 /var/log/ipaupgrade.log
         SSH_CLIENT_SYSTEM_CONF="/etc/ssh/ssh_config"
         if [ -f "$SSH_CLIENT_SYSTEM_CONF" ]; then
-            sed -E --in-place=.orig 's/^(HostKeyAlgorithms ssh-rsa,ssh-dss)$/# disabled by ipa-client update\n# \1/' "$SSH_CLIENT_SYSTEM_CONF"
+            if grep -E -q '^HostKeyAlgorithms ssh-rsa,ssh-dss' $SSH_CLIENT_SYSTEM_CONF 2>/dev/null; then
+                sed -E --in-place=.orig 's/^(HostKeyAlgorithms ssh-rsa,ssh-dss)$/# disabled by ipa-client update\n# \1/' "$SSH_CLIENT_SYSTEM_CONF"
+            fi
+            # https://pagure.io/freeipa/issue/9536
+            # replace sss_ssh_knownhostsproxy with sss_ssh_knownhosts
+            if [ -f '/usr/bin/sss_ssh_knownhosts' ]; then
+                if grep -E -q 'Include' $SSH_CLIENT_SYSTEM_CONF  2>/dev/null ; then
+                    SSH_CLIENT_SYSTEM_CONF="/etc/ssh/ssh_config.d/04-ipa.conf"
+                fi
+                sed -E --in-place=.orig 's/^(GlobalKnownHostsFile \/var\/lib\/sss\/pubconf\/known_hosts)$/# disabled by ipa-client update\n# \1/' $SSH_CLIENT_SYSTEM_CONF
+                sed -E --in-place=.orig 's/(ProxyCommand \/usr\/bin\/sss_ssh_knownhostsproxy -p \%p \%h)/# replaced by ipa-client update\n    KnownHostsCommand \/usr\/bin\/sss_ssh_knownhosts \%H/' $SSH_CLIENT_SYSTEM_CONF
+            fi
         fi
     fi
 fi
@@ -1347,10 +1329,26 @@ fi
 semodule -d ipa_custodia &> /dev/null || true;
 %selinux_modules_install -s %{selinuxtype} %{_datadir}/selinux/packages/%{selinuxtype}/%{modulename}.pp.bz2
 
+%post selinux-nfast
+%selinux_modules_install -s %{selinuxtype} %{_datadir}/selinux/packages/%{selinuxtype}/%{modulename}-nfast.pp.bz2
+
+%post selinux-luna
+%selinux_modules_install -s %{selinuxtype} %{_datadir}/selinux/packages/%{selinuxtype}/%{modulename}-luna.pp.bz2
+
 %postun selinux
 if [ $1 -eq 0 ]; then
     %selinux_modules_uninstall -s %{selinuxtype} %{modulename}
     semodule -e ipa_custodia &> /dev/null || true;
+fi
+
+%postun selinux-nfast
+if [ $1 -eq 0 ]; then
+    %selinux_modules_uninstall -s %{selinuxtype} %{modulename}-nfast
+fi
+
+%postun selinux-luna
+if [ $1 -eq 0 ]; then
+    %selinux_modules_uninstall -s %{selinuxtype} %{modulename}-luna
 fi
 
 %posttrans selinux
@@ -1358,6 +1356,49 @@ fi
 # with_selinux
 %endif
 
+%triggerin client -- sssd-common < 2.10
+# Has the client been configured?
+restore=0
+test -f '/var/lib/ipa-client/sysrestore/sysrestore.index' && restore=$(wc -l '/var/lib/ipa-client/sysrestore/sysrestore.index' | awk '{print $1}')
+
+if [ -f '/etc/ssh/sshd_config' -a $restore -ge 2 ]; then
+    SSH_CLIENT_SYSTEM_CONF="/etc/ssh/ssh_config"
+    if [ -f "$SSH_CLIENT_SYSTEM_CONF" ]; then
+        # https://pagure.io/freeipa/issue/9536
+        # downgrade sss_ssh_knownhosts with sss_ssh_knownhostsproxy
+        if [ -f '/usr/bin/sss_ssh_knownhosts' ]; then
+            if grep -E -q 'Include' $SSH_CLIENT_SYSTEM_CONF  2>/dev/null ; then
+                SSH_CLIENT_SYSTEM_CONF="/etc/ssh/ssh_config.d/04-ipa.conf"
+            fi
+            GLOBALKNOWNHOSTFILE="GlobalKnownHostsFile /var/lib/sss/pubconf/known_hosts/"
+            grep -qF '$GLOBALKNOWNHOSTFILE' $SSH_CLIENT_SYSTEM_CONF
+            if [ $? -ne 0 ]; then
+                sed -E --in-place=.orig '/(# IPA-related configuration changes to ssh_config)/a # added by ipa-client update\n'"$GLOBALKNOWNHOSTFILE"'' $SSH_CLIENT_SYSTEM_CONF
+            fi
+            sed -E --in-place=.orig 's/(KnownHostsCommand \/usr\/bin\/sss_ssh_knownhosts \%H)/ProxyCommand \/usr\/bin\/sss_ssh_knownhostsproxy -p \%p \%h/' $SSH_CLIENT_SYSTEM_CONF
+        fi
+    fi
+fi
+
+%triggerin client -- sssd-common >= 2.10
+# Has the client been configured?
+restore=0
+test -f '/var/lib/ipa-client/sysrestore/sysrestore.index' && restore=$(wc -l '/var/lib/ipa-client/sysrestore/sysrestore.index' | awk '{print $1}')
+
+if [ -f '/etc/ssh/sshd_config' -a $restore -ge 2 ]; then
+    SSH_CLIENT_SYSTEM_CONF="/etc/ssh/ssh_config"
+    if [ -f "$SSH_CLIENT_SYSTEM_CONF" ]; then
+        # https://pagure.io/freeipa/issue/9536
+        # upgrade sss_ssh_knownhostsproxy with sss_ssh_knownhosts
+        if [ -f '/usr/bin/sss_ssh_knownhosts' ]; then
+            if grep -E -q 'Include' $SSH_CLIENT_SYSTEM_CONF  2>/dev/null ; then
+                SSH_CLIENT_SYSTEM_CONF="/etc/ssh/ssh_config.d/04-ipa.conf"
+            fi
+            sed -E --in-place=.orig 's/^(GlobalKnownHostsFile \/var\/lib\/sss\/pubconf\/known_hosts)$/# disabled by ipa-client update\n# \1/' $SSH_CLIENT_SYSTEM_CONF
+            sed -E --in-place=.orig 's/(ProxyCommand \/usr\/bin\/sss_ssh_knownhostsproxy -p \%p \%h)/# replaced by ipa-client update\n    KnownHostsCommand \/usr\/bin\/sss_ssh_knownhosts \%H/' $SSH_CLIENT_SYSTEM_CONF
+        fi
+    fi
+fi
 
 %triggerin client -- openssh-server < 8.2
 # Has the client been configured?
@@ -1456,6 +1497,10 @@ fi
 %{_sbindir}/ipa-crlgen-manage
 %{_sbindir}/ipa-cert-fix
 %{_sbindir}/ipa-acme-manage
+%{_sbindir}/ipa-migrate
+%if 0%{?fedora} >= 38
+%{bash_completions_dir}/ipa-migrate
+%endif
 %{_libexecdir}/certmonger/dogtag-ipa-ca-renew-agent-submit
 %{_libexecdir}/certmonger/ipa-server-guard
 %dir %{_libexecdir}/ipa
@@ -1488,6 +1533,7 @@ fi
 %attr(644,root,root) %{_unitdir}/ipa-otpd@.service
 %attr(644,root,root) %{_unitdir}/ipa-ccache-sweep.service
 %attr(644,root,root) %{_unitdir}/ipa-ccache-sweep.timer
+%attr(644,root,root) %{_journalcatalogdir}/ipa.catalog
 # END
 %attr(755,root,root) %{plugin_dir}/libipa_pwd_extop.so
 %attr(755,root,root) %{plugin_dir}/libipa_enrollment_extop.so
@@ -1530,6 +1576,7 @@ fi
 %{_mandir}/man1/ipa-crlgen-manage.1*
 %{_mandir}/man1/ipa-cert-fix.1*
 %{_mandir}/man1/ipa-acme-manage.1*
+%{_mandir}/man1/ipa-migrate.1*
 
 
 %files -n python3-ipaserver
@@ -1804,13 +1851,74 @@ fi
 %files selinux
 %{_datadir}/selinux/packages/%{selinuxtype}/%{modulename}.pp.*
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
+
+%files selinux-nfast
+%{_datadir}/selinux/packages/%{selinuxtype}/%{modulename}-nfast.pp.*
+%ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}-nfast
+
+%files selinux-luna
+%{_datadir}/selinux/packages/%{selinuxtype}/%{modulename}-luna.pp.*
+%ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}-luna
 # with selinux
 %endif
 
 %changelog
-* Tue May 21 2024 Julien Rische <jrische@redhat.com> - 4.11.0-15
-- Resolves: RHEL-32231 CVE-2024-3183 ipa: freeipa: user can obtain a hash of the passwords of all domain users and perform offline brute force
-- Resolves: RHEL-31409 CVE-2024-2698 ipa: freeipa: delegation rules allow a proxy service to impersonate any user to access another target service
+* Wed Aug 21 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-1
+- Resolves: RHEL-54546 Covscan issues: Resource Leak
+- Resolves: RHEL-49602 misleading warning for missing ipa-selinux-nfast package on luna hsm h/w
+- Resolves: RHEL-40359 With unreachable AD, ipa trust returns an internal error
+
+* Thu Aug 8 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.0-7
+- Resolves: RHEL-53500 adtrustinstance only prints issues in check_inst() and does not log them
+- Resolves: RHEL-52306 Unconditionally add MS-PAC to global config
+- Resolves: RHEL-52300 RFE - Keep the configured value for the "nsslapd-ignore-time-skew" after a "force-sync"
+- Resolves: RHEL-52222 ipa-replica/server-install with softhsm needs to check permission/ownership of /var/lib/softhsm/tokens to avoid install failure
+- Resolves: RHEL-51944 Include latest fixes in python3-ipatests packages
+- Resolves: RHEL-50804 ipa-migrate -Z with invalid cert options fails with 'ValueError: option error'
+- Resolves: RHEL-49602 misleading warning for missing ipa-selinux-nfast package on luna hsm h/w
+- Resolves: RHEL-27856 'Unable to log in as uid=admin-replica.testrealm.test,ou=people,o=ipaca' during replica install
+
+* Thu Jul 18 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.0-6
+- Resolves: RHEL-47292 Include latest fixes in python3-ipatests packages
+- Resolves: RHEL-47146 Syntax error uninstalling the selinux-luna subpackage
+- Resolves: RHEL-46009 ipa-migrate with -Z option fails with ValueError: option error
+- Resolves: RHEL-46003 ipa-migrate -V options fails to display version
+- Resolves: RHEL-45463 ipa-migrate stage-mode is failing with error: Modifying a mapped attribute in a managed entry is not allowed
+- Resolves: RHEL-40890 ipa-server-install: token_password_file read in kra.install_check after calling hsm_validator in ca.install_check
+- Resolves: RHEL-40661 Adjust "ipa config-mod --addattr ipaconfigstring=EnforceLDAPOTP" to allow for non OTP users in some cases
+
+* Mon Jul 08 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.0-5
+- Resolves: RHEL-37285 IPA Web UI not showing replication agreement for non-admin users
+- Resolves: RHEL-42703 PSKC.xml issues with ipa_otptoken_import.py
+- Resolves: RHEL-41194 ipa-client rpm post script creates always ssh_config.orig even if nothing needs to be changed
+- Resolves: RHEL-39477 kdc.crt certificate not getting automatically renewed by certmonger in IPA Hidden replica
+- Resolves: RHEL-46559 Include latest fixes in python3-ipatests packages
+- Resolves: RHEL-22188 [RFE] Allow IPA SIDgen task to continue if it finds an entity that SID can't be assigned to
+
+* Mon Jun 10 2024 Julien Rische <jrische@redhat.com> - 4.12.0-4
+- Resolves: RHEL-29928 CVE-2024-3183 freeipa: user can obtain a hash of the passwords of all domain users and perform offline brute force
+- Resolves: RHEL-29691 CVE-2024-2698 freeipa: delegation rules allow a proxy service to impersonate any user to access another target service
+
+* Wed Jun 05 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.0-3
+- Related: RHEL-34809
+temporarily revert a commit that depends on newer version of python-jwcrypto
+
+* Tue Jun 04 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.0-2
+- Resolves: RHEL-39950 ipa-client can't be installed because of a missing dependency
+
+* Wed May 29 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.0-1
+- Resolves: RHEL-39140 Rebase ipa to the latest 4.12 version for RHEL 9.5
+- Resolves: RHEL-34757 The change for preventing deletion of the admin user caused a regression in disable
+- Resolves: RHEL-30553 Depend on nfsv4-client-utils or nfs-utils
+- Resolves: RHEL-29762 IPA sidgen fails to create SID for manually set ID for a new range [rhel-9.5.0]
+- Resolves: RHEL-26261 Fix replica connection check for use with AD administrator
+- Resolves: RHEL-18062 ipa ca-show NAME --certificate-out=file creates empty file when NAME does not exist
+- Resolves: RHEL-12149 traceback in ipaserver/dcerpc.py
+- Resolves: RHEL-4810 [RFE] FreeIPA-to-FreeIPA migration
+- Resolves: RHEL-4807 [RFE] Support in IPA for HSM boxes
+
+* Tue Apr 30 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-11
+- Resolves: RHEL-33645 - Update samba to version 4.20.0
 
 * Fri Mar 29 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.11.0-10
 - Resolves: RHEL-23377 Enforce OTP for ldap bind (in some scenarios)

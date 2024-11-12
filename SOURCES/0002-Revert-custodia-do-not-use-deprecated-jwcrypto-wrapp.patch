@@ -1,0 +1,91 @@
+From bf6653418aa772b47e53f1af092382df5810661c Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Wed, 5 Jun 2024 15:03:54 +0200
+Subject: [PATCH] Revert "custodia: do not use deprecated jwcrypto wrappers"
+
+This reverts commit 536812080502baa51818d9a33ea6533675800b30.
+---
+ install/tools/ipa-custodia-check.in |  4 ++--
+ ipaserver/custodia/message/kem.py   | 14 +++++++-------
+ 2 files changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/install/tools/ipa-custodia-check.in b/install/tools/ipa-custodia-check.in
+index f3bbf8e7f0eca6e35080fb6770c9d4b1887384ea..4f526b433f872fa7d94e827df0bb206b78a9b58d 100644
+--- a/install/tools/ipa-custodia-check.in
++++ b/install/tools/ipa-custodia-check.in
+@@ -192,10 +192,10 @@ class IPACustodiaTester:
+                 usage, IPA_CUSTODIA_KEYFILE
+             ))
+ 
+-        if pkey.get('kid') != self.host_spn:
++        if pkey.key_id != self.host_spn:
+             raise self.error(  # pylint: disable=raising-bad-type, #4772
+                 "KID '{}' != host service principal name '{}' "
+-                "(usage: {})".format(pkey.get('kid'), self.host_spn, usage),
++                "(usage: {})".format(pkey.key_id, self.host_spn, usage),
+                 fatal=True
+             )
+         else:
+diff --git a/ipaserver/custodia/message/kem.py b/ipaserver/custodia/message/kem.py
+index c2996bc921aeac0241111d95194977f9aa630cae..fbbc3fe46f60d25fe1754af70b18bb769c127fa2 100644
+--- a/ipaserver/custodia/message/kem.py
++++ b/ipaserver/custodia/message/kem.py
+@@ -85,7 +85,7 @@ class KEMKeysStore(SimplePathAuthz):
+         if self._alg is None:
+             alg = self.config.get('signing_algorithm', None)
+             if alg is None:
+-                ktype = self.server_keys[KEY_USAGE_SIG]['kty']
++                ktype = self.server_keys[KEY_USAGE_SIG].key_type
+                 if ktype == 'RSA':
+                     alg = 'RS256'
+                 elif ktype == 'EC':
+@@ -125,9 +125,9 @@ class KEMHandler(MessageHandler):
+         if 'kid' not in header:
+             raise InvalidMessage("Missing key identifier")
+ 
+-        key = self.kkstore.find_key(header.get('kid'), usage)
++        key = self.kkstore.find_key(header['kid'], usage)
+         if key is None:
+-            raise UnknownPublicKey('Key found [kid:%s]' % header.get('kid'))
++            raise UnknownPublicKey('Key found [kid:%s]' % header['kid'])
+         return json_decode(key)
+ 
+     def parse(self, msg, name):
+@@ -179,14 +179,14 @@ class KEMHandler(MessageHandler):
+         self.msg_type = 'kem'
+ 
+         return {'type': self.msg_type,
+-                'value': {'kid': self.client_keys[KEY_USAGE_ENC].get('kid'),
++                'value': {'kid': self.client_keys[KEY_USAGE_ENC].key_id,
+                           'claims': claims}}
+ 
+     def reply(self, output):
+         if self.client_keys is None:
+             raise UnknownPublicKey("Peer key not defined")
+ 
+-        ktype = self.client_keys[KEY_USAGE_ENC]['kty']
++        ktype = self.client_keys[KEY_USAGE_ENC].key_type
+         if ktype == 'RSA':
+             enc = ('RSA-OAEP', 'A256CBC-HS512')
+         else:
+@@ -224,7 +224,7 @@ class KEMClient:
+ 
+ 
+ def make_sig_kem(name, value, key, alg):
+-    header = {'kid': key.get('kid'), 'alg': alg}
++    header = {'kid': key.key_id, 'alg': alg}
+     claims = {'sub': name, 'exp': int(time.time() + (5 * 60))}
+     if value is not None:
+         claims['value'] = value
+@@ -235,7 +235,7 @@ def make_sig_kem(name, value, key, alg):
+ 
+ def make_enc_kem(name, value, sig_key, alg, enc_key, enc):
+     plaintext = make_sig_kem(name, value, sig_key, alg)
+-    eprot = {'kid': enc_key.get('kid'), 'alg': enc[0], 'enc': enc[1]}
++    eprot = {'kid': enc_key.key_id, 'alg': enc[0], 'enc': enc[1]}
+     jwe = JWE(plaintext, json_encode(eprot))
+     jwe.add_recipient(enc_key)
+     return jwe.serialize(compact=True)
+-- 
+2.45.1
+

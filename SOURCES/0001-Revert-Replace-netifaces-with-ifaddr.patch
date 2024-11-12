@@ -1,0 +1,238 @@
+From dfeb01d5e4e8934bae8f495bbbd5b6570f3dc862 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Tue, 4 Jun 2024 13:56:56 +0200
+Subject: [PATCH] Revert "Replace netifaces with ifaddr"
+
+This reverts commit 6c6b9354b5f970983655ca5423c726763d9015fa.
+---
+ doc/requirements.txt        |  1 -
+ freeipa.spec.in             |  4 +--
+ ipaclient/install/client.py | 43 ++++++++++++++-----------------
+ ipapython/ipautil.py        | 51 ++++++++++++++++++++-----------------
+ ipapython/setup.py          |  2 +-
+ ipasetup.py.in              |  2 +-
+ pylintrc                    |  1 +
+ 7 files changed, 52 insertions(+), 52 deletions(-)
+
+diff --git a/doc/requirements.txt b/doc/requirements.txt
+index 8d91b893fbcb5de784f5abdf802b976c6b2ae277..cdaa42658c73e495379d87b7c50195fbd79533ee 100644
+--- a/doc/requirements.txt
++++ b/doc/requirements.txt
+@@ -11,7 +11,6 @@ m2r2
+ ## ipa dependencies
+ dnspython
+ jwcrypto
+-ifaddr
+ netaddr
+ qrcode
+ six
+diff --git a/freeipa.spec.in b/freeipa.spec.in
+index 6803de752bc122bf6e1eafd610d399cde994cad5..a532fe85c34a523519187b6fd1297c198d9f4a4e 100755
+--- a/freeipa.spec.in
++++ b/freeipa.spec.in
+@@ -403,7 +403,7 @@ BuildRequires:  python3-libipa_hbac
+ BuildRequires:  python3-libsss_nss_idmap
+ BuildRequires:  python3-lxml
+ BuildRequires:  python3-netaddr >= %{python_netaddr_version}
+-BuildRequires:  python3-ifaddr
++BuildRequires:  python3-netifaces
+ BuildRequires:  python3-pki >= %{pki_version}
+ BuildRequires:  python3-polib
+ BuildRequires:  python3-pyasn1
+@@ -885,7 +885,7 @@ Requires: python3-gssapi >= 1.2.0
+ Requires: python3-jwcrypto >= 0.4.2
+ Requires: python3-libipa_hbac
+ Requires: python3-netaddr >= %{python_netaddr_version}
+-Requires: python3-ifaddr
++Requires: python3-netifaces >= 0.10.4
+ Requires: python3-pyasn1 >= 0.3.2-2
+ Requires: python3-pyasn1-modules >= 0.3.2-2
+ Requires: python3-pyusb
+diff --git a/ipaclient/install/client.py b/ipaclient/install/client.py
+index 29aff5f413e7f27136e236382031171f068284c5..263dc8e302cccd76412c294e0740af9744a2c62d 100644
+--- a/ipaclient/install/client.py
++++ b/ipaclient/install/client.py
+@@ -18,7 +18,7 @@ import logging
+ import dns
+ import getpass
+ import gssapi
+-import ifaddr
++import netifaces
+ import os
+ import re
+ import SSSDConfig
+@@ -1374,36 +1374,31 @@ def unconfigure_nisdomain(statestore):
+ 
+ 
+ def get_iface_from_ip(ip_addr):
+-    for adapter in ifaddr.get_adapters():
+-        for ips in adapter.ips:
+-            # IPv6 is reported as a tuple, IPv4 is reported as str
+-            if ip_addr in (ips.ip[0], ips.ip):
+-                return adapter.name
++    for interface in netifaces.interfaces():
++        if_addrs = netifaces.ifaddresses(interface)
++        for family in [netifaces.AF_INET, netifaces.AF_INET6]:
++            for ip in if_addrs.get(family, []):
++                if ip['addr'] == ip_addr:
++                    return interface
+     raise RuntimeError("IP %s not assigned to any interface." % ip_addr)
+ 
+ 
+-def __get_ifaddr_adapters(iface=None):
++def get_local_ipaddresses(iface=None):
+     if iface:
+-        interfaces = set(iface if isinstance(iface, (list, tuple)) else [iface])
++        interfaces = [iface]
+     else:
+-        interfaces = set(adapter.name for adapter in ifaddr.get_adapters())
+-    return [
+-        adapter
+-        for adapter in ifaddr.get_adapters()
+-        if adapter.name in interfaces or adapter.nice_name in interfaces
+-    ]
++        interfaces = netifaces.interfaces()
+ 
+-
+-def get_local_ipaddresses(iface=None):
+     ips = []
+-    for adapter in __get_ifaddr_adapters(iface):
+-        for ifip in adapter.ips:
+-            try:
+-                ip_addr = ifip.ip[0] if isinstance(ifip.ip, tuple) else ifip.ip
+-                ips.append(ipautil.CheckedIPAddress(ip_addr))
+-                logger.debug('IP check successful: %s', ip_addr)
+-            except ValueError as e:
+-                logger.debug('IP check failed: %s', e)
++    for interface in interfaces:
++        if_addrs = netifaces.ifaddresses(interface)
++        for family in [netifaces.AF_INET, netifaces.AF_INET6]:
++            for ip in if_addrs.get(family, []):
++                try:
++                    ips.append(ipautil.CheckedIPAddress(ip['addr']))
++                    logger.debug('IP check successful: %s', ip['addr'])
++                except ValueError as e:
++                    logger.debug('IP check failed: %s', e)
+     return ips
+ 
+ 
+diff --git a/ipapython/ipautil.py b/ipapython/ipautil.py
+index b02d58839ed74215d7253fc23be94846d689f91e..6802dde574d179b2d4bf868a2c38546cc01fc46b 100644
+--- a/ipapython/ipautil.py
++++ b/ipapython/ipautil.py
+@@ -48,9 +48,9 @@ import six
+ from six.moves import input
+ 
+ try:
+-    import ifaddr
++    import netifaces
+ except ImportError:
+-    ifaddr = None
++    netifaces = None
+ 
+ from ipapython.dn import DN
+ from ipaplatform.paths import paths
+@@ -203,37 +203,42 @@ class CheckedIPAddress(UnsafeIPAddress):
+         :return: InterfaceDetails named tuple or None if no interface has
+         this address
+         """
+-        if ifaddr is None:
+-            raise ImportError("ifaddr")
++        if netifaces is None:
++            raise ImportError("netifaces")
+         logger.debug("Searching for an interface of IP address: %s", self)
+-
+         if self.version == 4:
+-            family_ips = (
+-                (ip.ip, ip.network_prefix, ip.nice_name)
+-                for ips in [a.ips for a in ifaddr.get_adapters()]
+-                for ip in ips if not isinstance(ip.ip, tuple)
+-            )
++            family = netifaces.AF_INET
+         elif self.version == 6:
+-            family_ips = (
+-                (ip.ip[0], ip.network_prefix, ip.nice_name)
+-                for ips in [a.ips for a in ifaddr.get_adapters()]
+-                for ip in ips if isinstance(ip.ip, tuple)
+-            )
++            family = netifaces.AF_INET6
+         else:
+             raise ValueError(
+                 "Unsupported address family ({})".format(self.version)
+             )
+ 
+-        for ip, prefix, ifname in family_ips:
+-            ifaddrmask = "{ip}/{prefix}".format(ip=ip, prefix=prefix)
+-            logger.debug(
+-                "Testing local IP address: %s (interface: %s)",
+-                ifaddrmask, ifname)
+-            ifnet = netaddr.IPNetwork(ifaddrmask)
++        for interface in netifaces.interfaces():
++            for ifdata in netifaces.ifaddresses(interface).get(family, []):
++
++                # link-local addresses contain '%suffix' that causes parse
++                # errors in IPNetwork
++                ifaddr = ifdata['addr'].split(u'%', 1)[0]
++
++                # newer versions of netifaces provide IPv6 netmask in format
++                # 'ffff:ffff:ffff:ffff::/64'. We have to split and use prefix
++                # or the netmask with older versions
++                ifmask = ifdata['netmask'].split(u'/')[-1]
++
++                ifaddrmask = '{addr}/{netmask}'.format(
++                    addr=ifaddr,
++                    netmask=ifmask
++                )
++                logger.debug(
++                    "Testing local IP address: %s (interface: %s)",
++                    ifaddrmask, interface)
+ 
+-            if ifnet.ip == self:
+-                return InterfaceDetails(ifname, ifnet)
++                ifnet = netaddr.IPNetwork(ifaddrmask)
+ 
++                if ifnet.ip == self:
++                    return InterfaceDetails(interface, ifnet)
+         return None
+ 
+     def set_ip_net(self, ifnet):
+diff --git a/ipapython/setup.py b/ipapython/setup.py
+index b7b25c8b480f0dc80ae20c4027554b27fe6d87b3..ea55f5c729e8ba65a4436ebf3eb4898870558648 100644
+--- a/ipapython/setup.py
++++ b/ipapython/setup.py
+@@ -48,6 +48,6 @@ if __name__ == '__main__':
+         extras_require={
+             "ldap": ["python-ldap"],  # ipapython.ipaldap
+             # CheckedIPAddress.get_matching_interface
+-            "ifaddr": ["ifaddr"],
++            "netifaces": ["netifaces"],
+         },
+     )
+diff --git a/ipasetup.py.in b/ipasetup.py.in
+index 56a1f3b066c70385949c86d0d35ce393331ad1c5..25eac3b214b4e6443fe29dd3d656c2fdbe84343a 100644
+--- a/ipasetup.py.in
++++ b/ipasetup.py.in
+@@ -75,7 +75,7 @@ PACKAGE_VERSION = {
+     'ipaserver': 'ipaserver == {}'.format(VERSION),
+     'jwcrypto': 'jwcrypto >= 0.4.2',
+     'kdcproxy': 'kdcproxy >= 0.3',
+-    'ifaddr': 'ifaddr >= 0.1.7',
++    'netifaces': 'netifaces >= 0.10.4',
+     'python-ldap': 'python-ldap >= 3.0.0',
+     'python-yubico': 'python-yubico >= 1.2.3',
+     'qrcode': 'qrcode >= 5.0',
+diff --git a/pylintrc b/pylintrc
+index 50278cc76031af68959a138f6ea185c4288c7155..22053a9b55e9dc8e71c1835a63c9393e8ad6803d 100644
+--- a/pylintrc
++++ b/pylintrc
+@@ -13,6 +13,7 @@ extension-pkg-allow-list=
+     _ldap,
+     cryptography,
+     gssapi,
++    netifaces,
+     lxml.etree,
+     pysss_murmur,
+ 
+-- 
+2.45.1
+
