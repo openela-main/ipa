@@ -1,0 +1,13 @@
+diff --git a/ipaserver/install/ipa_otptoken_import.py b/ipaserver/install/ipa_otptoken_import.py
+index b3f9347..75e8680 100644
+--- a/ipaserver/install/ipa_otptoken_import.py
++++ b/ipaserver/install/ipa_otptoken_import.py
+@@ -539,7 +539,7 @@ class OTPTokenImport(admintool.AdminTool):
+ 
+             # Load the keyfile.
+             keyfile = self.safe_options.keyfile
+-            with open(keyfile) as f:
++            with open(keyfile, "rb") as f:
+                 self.doc.setKey(f.read())
+ 
+     def run(self):

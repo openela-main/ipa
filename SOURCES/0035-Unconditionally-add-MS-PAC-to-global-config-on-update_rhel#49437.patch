@@ -1,0 +1,87 @@
+diff --git a/install/updates/50-krbenctypes.update b/install/updates/50-krbenctypes.update
+index 1058a92..1bf2bf3 100644
+--- a/install/updates/50-krbenctypes.update
++++ b/install/updates/50-krbenctypes.update
+@@ -7,3 +7,5 @@ add: krbSupportedEncSaltTypes: aes128-sha2:normal
+ add: krbSupportedEncSaltTypes: aes128-sha2:special
+ add: krbSupportedEncSaltTypes: aes256-sha2:normal
+ add: krbSupportedEncSaltTypes: aes256-sha2:special
++remove: krbDefaultEncSaltTypes: des3-hmac-sha1:special
++remove: krbDefaultEncSaltTypes: arcfour-hmac:special
+diff --git a/install/updates/60-trusts.update b/install/updates/60-trusts.update
+index 56e3920..b2fdcca 100644
+--- a/install/updates/60-trusts.update
++++ b/install/updates/60-trusts.update
+@@ -54,4 +54,4 @@ add:aci: (target="ldap:///krbprincipalname=cifs/($$dn),cn=services,cn=accounts,$
+ 
+ # Add the default PAC type to configuration
+ dn: cn=ipaConfig,cn=etc,$SUFFIX
+-addifnew: ipaKrbAuthzData: MS-PAC
++add: ipaKrbAuthzData: MS-PAC
+diff --git a/ipatests/test_integration/test_installation.py b/ipatests/test_integration/test_installation.py
+index d41c1ee..ef0727e 100644
+--- a/ipatests/test_integration/test_installation.py
++++ b/ipatests/test_integration/test_installation.py
+@@ -1188,6 +1188,21 @@ class TestInstallMaster(IntegrationTest):
+                 expected_stdout=f'href="https://{self.master.hostname}/'
+             )
+ 
++    def test_pac_configuration_enabled(self):
++        """
++        This testcase checks that the default PAC type
++        is added to configuration.
++        """
++        base_dn = str(self.master.domain.basedn)
++        dn = DN(
++            ("cn", "ipaConfig"),
++            ("cn", "etc"),
++            base_dn
++        )
++        result = tasks.ldapsearch_dm(self.master, str(dn),
++                                     ["ipaKrbAuthzData"])
++        assert 'ipaKrbAuthzData: MS-PAC' in result.stdout_text
++
+     def test_hostname_parameter(self, server_cleanup):
+         """
+         Test that --hostname parameter is respected in interactive mode.
+diff --git a/ipatests/test_integration/test_upgrade.py b/ipatests/test_integration/test_upgrade.py
+index 182e3b5..8465cf9 100644
+--- a/ipatests/test_integration/test_upgrade.py
++++ b/ipatests/test_integration/test_upgrade.py
+@@ -165,7 +165,6 @@ class TestUpgrade(IntegrationTest):
+                 ldap.update_entry(location_krb_rec)
+ 
+         yield _setup_locations
+-
+         ldap = self.master.ldap_connect()
+ 
+         modified = False
+@@ -477,3 +476,28 @@ class TestUpgrade(IntegrationTest):
+         self.master.run_command(['ipa-server-upgrade'])
+         assert self.master.transport.file_exists(
+             paths.SYSTEMD_PKI_TOMCAT_IPA_CONF)
++
++    def test_mspac_attribute_set(self):
++        """
++        This testcase deletes the already existing attribute
++        'ipaKrbAuthzData: MS-PAC'.
++        The test then runs ipa-server-upgrade and checks that
++        the attribute 'ipaKrbAuthzData: MS-PAC' is added again.
++        """
++        base_dn = str(self.master.domain.basedn)
++        dn = DN(
++            ("cn", "ipaConfig"),
++            ("cn", "etc"),
++            base_dn
++        )
++        ldif = textwrap.dedent("""
++             dn: cn=ipaConfig,cn=etc,{}
++             changetype: modify
++             delete: ipaKrbAuthzData
++        """).format(base_dn)
++        tasks.ldapmodify_dm(self.master, ldif)
++        tasks.kinit_admin(self.master)
++        self.master.run_command(['ipa-server-upgrade'])
++        result = tasks.ldapsearch_dm(self.master, str(dn),
++                                     ["ipaKrbAuthzData"])
++        assert 'ipaKrbAuthzData: MS-PAC' in result.stdout_text

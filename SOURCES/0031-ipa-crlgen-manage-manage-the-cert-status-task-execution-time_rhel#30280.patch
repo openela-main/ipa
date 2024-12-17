@@ -1,0 +1,114 @@
+diff --git a/ipaserver/install/cainstance.py b/ipaserver/install/cainstance.py
+index 38693c9..35cec89 100644
+--- a/ipaserver/install/cainstance.py
++++ b/ipaserver/install/cainstance.py
+@@ -1327,6 +1327,8 @@ class CAInstance(DogtagInstance):
+         generation master:
+         - in CS.cfg ca.crl.MasterCRL.enableCRLCache=true
+         - in CS.cfg ca.crl.MasterCRL.enableCRLUpdates=true
++        - in CS.cfg ca.listenToCloneModifications=true
++        - in CS.cfg ca.certStatusUpdateInterval != 0
+         - in /etc/httpd/conf.d/ipa-pki-proxy.conf the RewriteRule
+         ^/ipa/crl/MasterCRL.bin is disabled (commented or removed)
+ 
+@@ -1342,15 +1344,30 @@ class CAInstance(DogtagInstance):
+             updates = directivesetter.get_directive(
+                 self.config, 'ca.crl.MasterCRL.enableCRLUpdates', '=')
+             enableCRLUpdates = updates.lower() == 'true'
++            listen = directivesetter.get_directive(
++                self.config, 'ca.listenToCloneModifications', '=')
++            enableToClone = listen.lower() == 'true'
++            updateinterval = directivesetter.get_directive(
++                self.config, 'ca.certStatusUpdateInterval', '=')
+ 
+             # If the values are different, the config is inconsistent
+-            if enableCRLCache != enableCRLUpdates:
++            if not (enableCRLCache == enableCRLUpdates == enableToClone):
+                 raise InconsistentCRLGenConfigException(
+                     "Configuration is inconsistent, please check "
+-                    "ca.crl.MasterCRL.enableCRLCache and "
+-                    "ca.crl.MasterCRL.enableCRLUpdates in {} and "
++                    "ca.crl.MasterCRL.enableCRLCache, "
++                    "ca.crl.MasterCRL.enableCRLUpdates and "
++                    "ca.listenToCloneModifications in {} and "
+                     "run ipa-crlgen-manage [enable|disable] to repair".format(
+                         self.config))
++            # If they are the same then we are the CRL renewal master. Ensure
++            # the update task is configured.
++            if enableCRLCache and updateinterval == '0':
++                raise InconsistentCRLGenConfigException(
++                    "Configuration is inconsistent, please check "
++                    "ca.certStatusUpdateInterval in {}. It should "
++                    "be either not present or not zero. Run "
++                    "ipa-crlgen-manage [enable|disable] to repair".format(
++                        self.config))
+         except IOError:
+             raise RuntimeError(
+                 "Unable to read {}".format(self.config))
+@@ -1407,6 +1424,11 @@ class CAInstance(DogtagInstance):
+             str_value = str(setup_crlgen).lower()
+             ds.set('ca.crl.MasterCRL.enableCRLCache', str_value)
+             ds.set('ca.crl.MasterCRL.enableCRLUpdates', str_value)
++            ds.set('ca.listenToCloneModifications', str_value)
++            if setup_crlgen:
++                ds.set('ca.certStatusUpdateInterval', None)
++            else:
++                ds.set('ca.certStatusUpdateInterval', '0')
+ 
+         # Start pki-tomcat
+         logger.info("Starting %s", self.service_name)
+diff --git a/ipatests/test_integration/test_crlgen_manage.py b/ipatests/test_integration/test_crlgen_manage.py
+index 2a733bd..c6f41eb 100644
+--- a/ipatests/test_integration/test_crlgen_manage.py
++++ b/ipatests/test_integration/test_crlgen_manage.py
+@@ -61,6 +61,16 @@ def check_crlgen_status(host, rc=0, msg=None, enabled=True, check_crl=False):
+                         ext.value.crl_number)
+                     assert number_msg in result.stdout_text
+ 
++        try:
++            value = get_CS_cfg_value(host, 'ca.certStatusUpdateInterval')
++        except IOError:
++            return
++
++        if enabled:
++            assert value is None
++        else:
++            assert value == '0'
++
+ 
+ def check_crlgen_enable(host, rc=0, msg=None, check_crl=False):
+     """Check ipa-crlgen-manage enable command
+@@ -125,6 +135,23 @@ def break_crlgen_with_CS_cfg(host):
+     check_crlgen_status(host, rc=1, msg="Configuration is inconsistent")
+ 
+ 
++def get_CS_cfg_value(host, directive):
++    """Retrieve and return the a directive from the CA CS.cfg
++
++       This returns None if the directives is not found.
++    """
++    content = host.get_file_contents(paths.CA_CS_CFG_PATH,
++                                     encoding='utf-8')
++    value = None
++    for line in content.split('\n'):
++        l = line.lower()
++
++        if l.startswith(directive.lower()):
++            value = line.split('=', 1)[1]
++
++    return value
++
++
+ class TestCRLGenManage(IntegrationTest):
+     """Tests the ipa-crlgen-manage command.
+ 
+@@ -196,6 +223,9 @@ class TestCRLGenManage(IntegrationTest):
+ 
+         Install a CA clone and enable CRLgen"""
+         tasks.install_ca(self.replicas[0])
++        value = get_CS_cfg_value(self.replicas[0],
++                                 'ca.certStatusUpdateInterval')
++        assert value == '0'
+         check_crlgen_enable(
+             self.replicas[0], rc=0,
+             msg="make sure to have only a single CRL generation master",

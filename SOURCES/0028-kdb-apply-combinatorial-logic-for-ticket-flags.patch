@@ -611,5 +611,5 @@ index 7d2ebae98..d0280940a 100644
 + * src/lib/krb5/krb/libdef_parse.c:_krb5_conf_boolean() */
 +bool ipa_krb5_parse_bool(const char *str);
 -- 
-2.44.0
+2.45.1
 

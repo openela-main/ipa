@@ -190,7 +190,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        10%{?rc_version:.%rc_version}%{?dist}
+Release:        14%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPLv3+
@@ -237,6 +237,14 @@ Patch0025:      0025-dcerpc-invalidate-forest-trust-intfo-cache-when-filtering-o
 Patch0026:      0026-backport-test-fixes_rhel#29908.patch
 Patch0027:      0027-kdb-fix-vulnerability-in-GCD-rules-handling.patch
 Patch0028:      0028-kdb-apply-combinatorial-logic-for-ticket-flags.patch
+Patch0029:      0029-Allow_the_admin_user_to_be_disabled_rhel#34756.patch
+Patch0030:      0030-ipa-otptoken-import-open-the-key-file-in-binary-mode_rhel#39616.patch
+Patch0031:      0031-ipa-crlgen-manage-manage-the-cert-status-task-execution-time_rhel#30280.patch
+Patch0032:      0032-idrange-add-add-a-warning-because-389ds-restart-is-required_rhel#28996.patch
+Patch0033:      0033-PKINIT-certificate-fix-renewal-on-hidden-replica_rhel#4913.patch
+Patch0034:      0034-Add-ipa-idrange-fix_rhel#56920.patch
+Patch0035:      0035-Unconditionally-add-MS-PAC-to-global-config-on-update_rhel#49437.patch
+Patch0036:      0036-ipatests-Update-ipa-adtrust-install-test_rhel#40894.patch
 %if 0%{?rhel} >= 8
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
@@ -397,7 +405,7 @@ BuildRequires:  python3-pycodestyle
 BuildRequires:  python3-pylint
 BuildRequires:  python3-pytest-multihost
 BuildRequires:  python3-pytest-sourceorder
-BuildRequires:  python3-qrcode-core >= 5.0.0
+BuildRequires:  python3-qrcode-core >= 5.3
 BuildRequires:  python3-samba
 BuildRequires:  python3-six
 BuildRequires:  python3-sss
@@ -1398,6 +1406,7 @@ fi
 %{_sbindir}/ipa-pkinit-manage
 %{_sbindir}/ipa-crlgen-manage
 %{_sbindir}/ipa-cert-fix
+%{_sbindir}/ipa-idrange-fix
 %{_sbindir}/ipa-acme-manage
 %{_libexecdir}/certmonger/dogtag-ipa-ca-renew-agent-submit
 %{_libexecdir}/certmonger/ipa-server-guard
@@ -1472,6 +1481,7 @@ fi
 %{_mandir}/man1/ipa-pkinit-manage.1*
 %{_mandir}/man1/ipa-crlgen-manage.1*
 %{_mandir}/man1/ipa-cert-fix.1*
+%{_mandir}/man1/ipa-idrange-fix.1*
 %{_mandir}/man1/ipa-acme-manage.1*
 
 
@@ -1752,7 +1762,37 @@ fi
 %endif
 
 %changelog
-* Thu May 23 2024 Julien Rische <jrische@redhat.com> - 4.9.13-10
+* Wed Nov 27 2024 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-14
+- ipatests: Update ipa-adtrust-install test
+  Resolves: RHEL-40894
+
+* Thu Nov 14 2024 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-13
+- Add ipa-idrange-fix
+  Resolves: RHEL-56920
+- Unconditionally add MS-PAC to global config on update
+  Resolves: RHEL-49437
+- ipatests: Update ipa-adtrust-install test
+  Resolves: RHEL-40894
+- Require python-qrcode version 5.3 or later
+  Related: RHEL-15090
+
+* Wed Jul 17 2024 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-12
+- Allow the admin user to be disabled
+  Resolves: RHEL-34756
+- ipa-otptoken-import: open the key file in binary mode
+  Resolves: RHEL-39616
+- ipa-crlgen-manage: manage the cert status task execution time
+  Resolves: RHEL-30280
+- idrange-add: add a warning because 389ds restart is required
+  Resolves: RHEL-28996
+- PKINIT certificate: fix renewal on hidden replica
+  Resolves: RHEL-4913, RHEL-45908
+
+* Wed Jun 12 2024 Julien Rische <jrische@redhat.com> - 4.9.13-11
+- Add missing part of backported CVE-2024-3183 fix
+  Resolves: RHEL-29927
+
+* Tue Apr 30 2024 Julien Rische <jrische@redhat.com> - 4.9.13-10
 - kdb: apply combinatorial logic for ticket flags (CVE-2024-3183)
   Resolves: RHEL-29927
 - kdb: fix vulnerability in GCD rules handling (CVE-2024-2698)
