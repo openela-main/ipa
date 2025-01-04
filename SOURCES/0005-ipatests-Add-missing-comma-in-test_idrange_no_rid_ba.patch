@@ -1,0 +1,36 @@
+From 4fef80aeaaf017b286bd12ebfc30529f6a65a80e Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 2 Sep 2024 18:28:27 +0200
+Subject: [PATCH] ipatests: Add missing comma in
+ test_idrange_no_rid_bases_reversed
+
+The test is calling ipa idrange-add but is missing a comma in
+the arguments list.
+The resulting call is using "--rid-base 100300000--secondary-rid-base".
+Add the missing comma to build the command with
+"--rid-base 100300000 --secondary-rid-base"
+
+Fixes: https://pagure.io/freeipa/issue/9656
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ ipatests/test_integration/test_ipa_idrange_fix.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_ipa_idrange_fix.py b/ipatests/test_integration/test_ipa_idrange_fix.py
+index de3da9bfd221ce74f1d1bbb0dbe12e4db08b8daa..ff8fbdac9d028d26fc55f5e357f89af879a61723 100644
+--- a/ipatests/test_integration/test_ipa_idrange_fix.py
++++ b/ipatests/test_integration/test_ipa_idrange_fix.py
+@@ -72,7 +72,7 @@ class TestIpaIdrangeFix(IntegrationTest):
+             "idrange_reversed",
+             "--base-id", '50000',
+             "--range-size", '20000',
+-            "--rid-base", '100300000'
++            "--rid-base", '100300000',
+             "--secondary-rid-base", '301000'
+         ])
+ 
+-- 
+2.47.0
+

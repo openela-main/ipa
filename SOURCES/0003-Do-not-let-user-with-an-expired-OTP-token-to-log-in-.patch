@@ -1,0 +1,265 @@
+From 18303b94bea4e08a0c889fc357df6ba2f308fa0d Mon Sep 17 00:00:00 2001
+From: Mark Reynolds <mreynolds@redhat.com>
+Date: Wed, 2 Oct 2024 21:26:34 -0400
+Subject: [PATCH] Do not let user with an expired OTP token to log in if only
+ OTP is allowed
+
+If only OTP authentication is allowed, and a user tries to login with an
+expired token, do not let them log in with their password. Forcing the
+admin to intervene. If the user does not have an OTP token then allow
+them to log in with a password until an OTP token is configured
+
+Fixes: https://pagure.io/freeipa/issue/9387
+
+Signed-off-by: Mark Reynolds <mreynolds@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Julien Rische <jrische@redhat.com>
+---
+ daemons/ipa-kdb/ipa_kdb_principals.c          | 63 +++++++++++--
+ .../ipa-slapi-plugins/ipa-pwd-extop/prepost.c |  3 +-
+ ipatests/test_integration/test_otp.py         | 94 ++++++++++++++++++-
+ 3 files changed, 151 insertions(+), 9 deletions(-)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb_principals.c b/daemons/ipa-kdb/ipa_kdb_principals.c
+index 14603e528b43acb29234c425e97ad297ac6724a7..114957b884786dd3ca3b01c47f6bb82e8a040beb 100644
+--- a/daemons/ipa-kdb/ipa_kdb_principals.c
++++ b/daemons/ipa-kdb/ipa_kdb_principals.c
+@@ -107,7 +107,6 @@ static char *std_principal_obj_classes[] = {
+     "krbprincipal",
+     "krbprincipalaux",
+     "krbTicketPolicyAux",
+-
+     NULL
+ };
+ 
+@@ -338,14 +337,16 @@ static void ipadb_validate_otp(struct ipadb_context *ipactx,
+     if (dn == NULL)
+         return;
+     count = asprintf(&filter, ftmpl, dn, datetime, datetime);
+-    ldap_memfree(dn);
+-    if (count < 0)
++    if (count < 0) {
++        ldap_memfree(dn);
+         return;
++    }
+ 
+     /* Fetch the active token list. */
+     kerr = ipadb_simple_search(ipactx, ipactx->base, LDAP_SCOPE_SUBTREE,
+                                filter, (char**) attrs, &res);
+     free(filter);
++    filter = NULL;
+     if (kerr != 0 || res == NULL)
+         return;
+ 
+@@ -353,10 +354,60 @@ static void ipadb_validate_otp(struct ipadb_context *ipactx,
+     count = ldap_count_entries(ipactx->lcontext, res);
+     ldap_msgfree(res);
+ 
+-    /* If the user is configured for OTP, but has no active tokens, remove
+-     * OTP from the list since the user obviously can't log in this way. */
+-    if (count == 0)
++    /*
++     * If there are no valid tokens then we need to remove the OTP flag,
++     * unless OTP is the only auth type allowed...
++     */
++    if (count == 0) {
++        /* Remove the OTP flag for now */
+         *ua &= ~IPADB_USER_AUTH_OTP;
++
++        if (*ua == 0) {
++            /*
++             * Ok, we "only" allow OTP, so if there is an expired/disabled
++             * token then add back the OTP flag as the server will double
++             * check the validity and reject the entire bind. Otherwise, this
++             * is the first time the user is authenticating and the user
++             * should be allowed to bind using its password
++             */
++            static const char *expired_ftmpl = "(&"
++                "(objectClass=ipaToken)(ipatokenOwner=%s)"
++                "(|(ipatokenNotAfter<=%s)(!(ipatokenNotAfter=*))"
++                "(ipatokenDisabled=True))"
++            ")";
++            if (asprintf(&filter, expired_ftmpl, dn, datetime) < 0) {
++                ldap_memfree(dn);
++                return;
++            }
++
++            krb5_klog_syslog(LOG_INFO,
++                "Entry (%s) does not have a valid token and only OTP "
++                "authentication is supported, checking for expired tokens...",
++                dn);
++
++            kerr = ipadb_simple_search(ipactx, ipactx->base, LDAP_SCOPE_SUBTREE,
++                                       filter, (char**) attrs, &res);
++            free(filter);
++            if (kerr != 0 || res == NULL) {
++                ldap_memfree(dn);
++                return;
++            }
++
++            if (ldap_count_entries(ipactx->lcontext, res) > 0) {
++                /*
++                 * Ok we only allow OTP, and there are expired/disabled tokens
++                 * so add the OTP flag back, and the server will reject the
++                 * bind
++                 */
++                krb5_klog_syslog(LOG_INFO,
++                    "Entry (%s) does have an expired/disabled token so this "
++                    "user can not fall through to password auth", dn);
++                *ua |= IPADB_USER_AUTH_OTP;
++            }
++            ldap_msgfree(res);
++        }
++    }
++    ldap_memfree(dn);
+ }
+ 
+ static void ipadb_validate_radius(struct ipadb_context *ipactx,
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+index c967e2cfffbd920280639f3188783ec150523b47..1c1340e31ac30cb01412a7065ea339cb5461e839 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+@@ -1528,7 +1528,8 @@ static int ipapwd_pre_bind(Slapi_PBlock *pb)
+     if (!syncreq && (otpreq == OTP_IS_NOT_REQUIRED)) {
+         ret = ipapwd_gen_checks(pb, &errMesg, &krbcfg, IPAPWD_CHECK_ONLY_CONFIG);
+         if (ret != 0) {
+-            LOG_FATAL("ipapwd_gen_checks failed!?\n");
++            LOG_FATAL("ipapwd_gen_checks failed for '%s': %s\n",
++                      slapi_sdn_get_dn(sdn), errMesg);
+             slapi_entry_free(entry);
+             slapi_sdn_free(&sdn);
+             return 0;
+diff --git a/ipatests/test_integration/test_otp.py b/ipatests/test_integration/test_otp.py
+index 350371bfe1e4c1cc6dcc89f6584f813fcb0d32a0..878b4fb560ba8d7768ead54b065656462545babd 100644
+--- a/ipatests/test_integration/test_otp.py
++++ b/ipatests/test_integration/test_otp.py
+@@ -10,6 +10,7 @@ import re
+ import time
+ import textwrap
+ from urllib.parse import urlparse, parse_qs
++from paramiko import AuthenticationException
+ 
+ from cryptography.hazmat.backends import default_backend
+ from cryptography.hazmat.primitives import hashes
+@@ -83,7 +84,7 @@ def kinit_otp(host, user, *, password, otp, success=True):
+     )
+ 
+ 
+-def ssh_2f(hostname, username, answers_dict, port=22):
++def ssh_2f(hostname, username, answers_dict, port=22, unwanted_prompt=""):
+     """
+     :param hostname: hostname
+     :param username: username
+@@ -103,6 +104,10 @@ def ssh_2f(hostname, username, answers_dict, port=22):
+             logger.info("Prompt is: '%s'", prmpt_str)
+             logger.info(
+                 "Answer to ssh prompt is: '%s'", answers_dict[prmpt_str])
++            if unwanted_prompt and prmpt_str == unwanted_prompt:
++                # We should not see this prompt
++                raise ValueError("We got an unwanted prompt: "
++                                 + answers_dict[prmpt_str])
+         return resp
+ 
+     import paramiko
+@@ -193,7 +198,8 @@ class TestOTPToken(IntegrationTest):
+ 
+         # skipping too many OTP fails
+         otp1 = hotp.generate(10).decode("ascii")
+-        kinit_otp(self.master, USER, password=PASSWORD, otp=otp1, success=False)
++        kinit_otp(self.master, USER, password=PASSWORD, otp=otp1,
++                  success=False)
+         # Now the token is desynchronized
+         yield (otpuid, hotp)
+ 
+@@ -536,3 +542,87 @@ class TestOTPToken(IntegrationTest):
+         finally:
+             master.run_command(['ipa', 'pwpolicy-mod', '--minlife', '1'])
+             master.run_command(['ipa', 'user-del', USER1])
++
++    def test_totp_expired_ldap(self):
++        master = self.master
++        basedn = master.domain.basedn
++        USER1 = 'user-expired-otp'
++        TMP_PASSWORD = 'Secret1234509'
++        binddn = DN(f"uid={USER1},cn=users,cn=accounts,{basedn}")
++        controls = [
++            BooleanControl(
++                controlType="2.16.840.1.113730.3.8.10.7",
++                booleanValue=True)
++        ]
++
++        tasks.kinit_admin(master)
++        master.run_command(['ipa', 'pwpolicy-mod', '--minlife', '0'])
++        tasks.user_add(master, USER1, password=TMP_PASSWORD)
++        # Enforce use of OTP token for this user
++        master.run_command(['ipa', 'user-mod', USER1,
++                            '--user-auth-type=otp'])
++        try:
++            # Change initial password through the IPA endpoint
++            url = f'https://{master.hostname}/ipa/session/change_password'
++            master.run_command(['curl', '-d', f'user={USER1}',
++                                '-d', f'old_password={TMP_PASSWORD}',
++                                '-d', f'new_password={PASSWORD}',
++                                '--referer', f'https://{master.hostname}/ipa',
++                                url])
++            conn = master.ldap_connect()
++            # First, attempt authenticating with a password but without LDAP
++            # control to enforce OTP presence and without server-side
++            # enforcement of the OTP presence check.
++            conn.simple_bind(binddn, f"{PASSWORD}")
++
++            # Add an OTP token and then modify it to be expired
++            otpuid, totp = add_otptoken(master, USER1, otptype="totp")
++
++            # Make sure OTP auth is working
++            otpvalue = totp.generate(int(time.time())).decode("ascii")
++            conn = master.ldap_connect()
++            conn.simple_bind(binddn, f"{PASSWORD}{otpvalue}",
++                             client_controls=controls)
++            conn.unbind()
++
++            # Modfy token so that is now expired
++            args = [
++                "ipa",
++                "otptoken-mod",
++                otpuid,
++                "--not-after",
++                "20241001010000Z",
++            ]
++            master.run_command(args)
++
++            # Next, authenticate with Password+OTP again and with the LDAP
++            # control this operation should now fail
++            time.sleep(45)
++            otpvalue = totp.generate(int(time.time())).decode("ascii")
++
++            conn = master.ldap_connect()
++            with pytest.raises(errors.ACIError):
++                conn.simple_bind(binddn, f"{PASSWORD}{otpvalue}",
++                                 client_controls=controls)
++
++            # Sleep to make sure we are going to use a different token value
++            time.sleep(45)
++
++            # Use OTP token again but authenticate over ssh and make sure it
++            # doesn't fallthrough to asking for a password
++            otpvalue = totp.generate(int(time.time())).decode("ascii")
++            answers = {
++                'Enter first factor:': PASSWORD,
++                'Enter second factor:': otpvalue
++            }
++            with pytest.raises(AuthenticationException):
++                # ssh should fail and NOT ask for a password
++                ssh_2f(master.hostname, USER1, answers,
++                       unwanted_prompt="Password:")
++
++            # Remove token
++            del_otptoken(self.master, otpuid)
++
++        finally:
++            master.run_command(['ipa', 'pwpolicy-mod', '--minlife', '1'])
++            master.run_command(['ipa', 'user-del', USER1])
+-- 
+2.47.0
+

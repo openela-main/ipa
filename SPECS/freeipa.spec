@@ -224,7 +224,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        1%{?rc_version:.%rc_version}%{?dist}
+Release:        1%{?rc_version:.%rc_version}%{?dist}.2
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -250,6 +250,10 @@ Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
 %if 0%{?rhel} == 9
 Patch0001:      0001-Revert-Replace-netifaces-with-ifaddr.patch
 Patch0002:      0002-Revert-custodia-do-not-use-deprecated-jwcrypto-wrapp.patch
+Patch0003:      0003-Do-not-let-user-with-an-expired-OTP-token-to-log-in-.patch
+Patch0004:      0004-Add-ipa-idrange-fix.patch
+Patch0005:      0005-ipatests-Add-missing-comma-in-test_idrange_no_rid_ba.patch
+Patch0006:      0006-ipatests-Fixes-for-ipa-idrange-fix-testsuite.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -1496,6 +1500,7 @@ fi
 %{_sbindir}/ipa-pkinit-manage
 %{_sbindir}/ipa-crlgen-manage
 %{_sbindir}/ipa-cert-fix
+%{_sbindir}/ipa-idrange-fix
 %{_sbindir}/ipa-acme-manage
 %{_sbindir}/ipa-migrate
 %if 0%{?fedora} >= 38
@@ -1575,6 +1580,7 @@ fi
 %{_mandir}/man1/ipa-pkinit-manage.1*
 %{_mandir}/man1/ipa-crlgen-manage.1*
 %{_mandir}/man1/ipa-cert-fix.1*
+%{_mandir}/man1/ipa-idrange-fix.1*
 %{_mandir}/man1/ipa-acme-manage.1*
 %{_mandir}/man1/ipa-migrate.1*
 
@@ -1863,6 +1869,12 @@ fi
 %endif
 
 %changelog
+* Wed Nov 27 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-1.2
+- Resolves: RHEL-69294 add a tool to quickly detect and fix issues with IPA ID ranges
+
+* Fri Nov 08 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-1.1
+- Resolves: RHEL-66173 Last expired OTP token would be considered as still assigned to the user
+
 * Wed Aug 21 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-1
 - Resolves: RHEL-54546 Covscan issues: Resource Leak
 - Resolves: RHEL-49602 misleading warning for missing ipa-selinux-nfast package on luna hsm h/w
