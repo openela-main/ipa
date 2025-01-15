@@ -224,7 +224,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        1%{?rc_version:.%rc_version}%{?dist}.2
+Release:        1%{?rc_version:.%rc_version}%{?dist}.3
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -254,6 +254,11 @@ Patch0003:      0003-Do-not-let-user-with-an-expired-OTP-token-to-log-in-.patch
 Patch0004:      0004-Add-ipa-idrange-fix.patch
 Patch0005:      0005-ipatests-Add-missing-comma-in-test_idrange_no_rid_ba.patch
 Patch0006:      0006-ipatests-Fixes-for-ipa-idrange-fix-testsuite.patch
+Patch0007:      0007-ipalib-x509-support-PyCA-44.0.patch
+Patch0008:      0008-pyca-adapt-import-paths-for-TripleDES-cipher.patch
+Patch0009:      0009-ipa-pwd-extop-clarify-OTP-use-over-LDAP-binds.patch
+Patch0010:      0010-adtrust-add-missing-ipaAllowedOperations-objectclass.patch
+Patch0011:      0011-CVE-2024-11029.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -1869,6 +1874,12 @@ fi
 %endif
 
 %changelog
+* Tue Dec 17 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-1.3
+- Resolves: RHEL-69928 add support for python cryptography 44.0.0
+- Resolves: RHEL-70258 Upgrade to ipa-server-4.12.2-1.el9 OTP-based bind to LDAP without enforceldapotp is broken
+- Resolves: RHEL-70482 ipa-server-upgrade fails after established trust with ad
+- Resolves: RHEL-67192 CVE-2024-11029 ipa: Administrative user data leaked through systemd journal
+
 * Wed Nov 27 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-1.2
 - Resolves: RHEL-69294 add a tool to quickly detect and fix issues with IPA ID ranges
 
