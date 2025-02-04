@@ -224,7 +224,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        1%{?rc_version:.%rc_version}%{?dist}.3
+Release:        1%{?rc_version:.%rc_version}%{?dist}.4
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -259,6 +259,8 @@ Patch0008:      0008-pyca-adapt-import-paths-for-TripleDES-cipher.patch
 Patch0009:      0009-ipa-pwd-extop-clarify-OTP-use-over-LDAP-binds.patch
 Patch0010:      0010-adtrust-add-missing-ipaAllowedOperations-objectclass.patch
 Patch0011:      0011-CVE-2024-11029.patch
+Patch0012:      0012-ipa-otpd-do-not-pass-OIDC-client-secret-if-there-is-.patch
+Patch0013:      0013-Migrate-Keycloak-tests-to-JDK-21-and-Keycloak-26.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -1874,6 +1876,9 @@ fi
 %endif
 
 %changelog
+* Thu Jan 23 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-1.4
+- Resolves: RHEL-76011 kinit with external idp user is failing
+
 * Tue Dec 17 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-1.3
 - Resolves: RHEL-69928 add support for python cryptography 44.0.0
 - Resolves: RHEL-70258 Upgrade to ipa-server-4.12.2-1.el9 OTP-based bind to LDAP without enforceldapotp is broken
