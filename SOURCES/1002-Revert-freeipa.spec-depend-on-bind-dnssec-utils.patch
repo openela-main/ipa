@@ -32,7 +32,7 @@ diff --git a/ipaplatform/base/paths.py b/ipaplatform/base/paths.py
 index 7d21367ec..42a47f1df 100644
 --- a/ipaplatform/base/paths.py
 +++ b/ipaplatform/base/paths.py
-@@ -259,7 +259,6 @@ class BasePathNamespace:
+@@ -258,8 +258,7 @@ class BasePathNamespace:
      IPA_PKI_RETRIEVE_KEY = "/usr/libexec/ipa/ipa-pki-retrieve-key"
      IPA_HTTPD_PASSWD_READER = "/usr/libexec/ipa/ipa-httpd-pwdreader"
      IPA_PKI_WAIT_RUNNING = "/usr/libexec/ipa/ipa-pki-wait-running"
@@ -41,6 +41,7 @@ index 7d21367ec..42a47f1df 100644
 -    DNSSEC_KEYFROMLABEL_9_17 = "/usr/bin/dnssec-keyfromlabel"
      GETSEBOOL = "/usr/sbin/getsebool"
      GROUPADD = "/usr/sbin/groupadd"
+     USERMOD = "/usr/sbin/usermod"
 diff --git a/ipaplatform/fedora/paths.py b/ipaplatform/fedora/paths.py
 index 4e993c063..92a948966 100644
 --- a/ipaplatform/fedora/paths.py

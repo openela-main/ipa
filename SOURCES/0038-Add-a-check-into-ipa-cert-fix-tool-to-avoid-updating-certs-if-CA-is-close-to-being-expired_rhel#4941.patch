@@ -1,0 +1,82 @@
+From ac6eee670d8a753e66ba69a65eff55447fff2822 Mon Sep 17 00:00:00 2001
+From: Aleksandr Sharov <asharov@redhat.com>
+Date: Mar 25 2025 09:33:06 +0000
+Subject: Add a check into ipa-cert-fix tool to avoid updating certs if CA is close to being expired.
+
+
+Fixes: https://pagure.io/freeipa/issue/9760
+Signed-off-by: Aleksandr Sharov <asharov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+
+---
+
+diff --git a/ipaserver/install/ipa_cert_fix.py b/ipaserver/install/ipa_cert_fix.py
+index 8e02d1e..960d7b9 100644
+--- a/ipaserver/install/ipa_cert_fix.py
++++ b/ipaserver/install/ipa_cert_fix.py
+@@ -69,6 +69,7 @@ logger = logging.getLogger(__name__)
+ 
+ 
+ cert_nicknames = {
++    'ca_issuing': 'caSigningCert cert-pki-ca',
+     'sslserver': 'Server-Cert cert-pki-ca',
+     'subsystem': 'subsystemCert cert-pki-ca',
+     'ca_ocsp_signing': 'ocspSigningCert cert-pki-ca',
+@@ -137,6 +138,16 @@ class IPACertFix(AdminTool):
+             print("Nothing to do.")
+             return 0
+ 
++        if any(key == 'ca_issuing' for key, _ in certs):
++            logger.debug("CA signing cert is expired, exiting!")
++            print(
++                "The CA signing certificate is expired or will expire within "
++                "the next two weeks.\n\nipa-cert-fix cannot proceed, please "
++                "refer to the ipa-cacert-manage tool to renew the CA "
++                "certificate before proceeding."
++            )
++            return 1
++
+         print(msg)
+ 
+         print_intentions(certs, extra_certs, non_renewed)
+
+From cdc03d7b6233f736c51c10aa07225aac9715e4c0 Mon Sep 17 00:00:00 2001
+From: Aleksandr Sharov <asharov@redhat.com>
+Date: Mar 25 2025 18:03:54 +0000
+Subject: Test fix for the update
+
+
+Fixes: https://pagure.io/freeipa/issue/9760
+Signed-off-by: Aleksandr Sharov <asharov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+
+---
+
+diff --git a/ipatests/test_integration/test_ipa_cert_fix.py b/ipatests/test_integration/test_ipa_cert_fix.py
+index 15d8a81..d11fd3d 100644
+--- a/ipatests/test_integration/test_ipa_cert_fix.py
++++ b/ipatests/test_integration/test_ipa_cert_fix.py
+@@ -301,13 +301,18 @@ class TestIpaCertFix(IntegrationTest):
+         valid. If CA cert expired, ipa-cert-fix won't work.
+ 
+         related: https://pagure.io/freeipa/issue/8721
++
++        If CA cert is close to expiry, there's no reason to issue new certs
++        with short validity period. So, ipa-cert-fix should fail in this case.
++
++        related: https://pagure.io/freeipa/issue/9760
+         """
+         result = self.master.run_command(['ipa-cert-fix', '-v'],
+                                          stdin_text='yes\n',
+                                          raiseonerr=False)
+         # check that pki-server cert-fix command fails
+-        err_msg = ("ERROR: CalledProcessError(Command "
+-                   "['pki-server', 'cert-fix'")
++        err_msg = ("CA signing cert is expired, exiting!")
++        assert result.returncode == 1
+         assert err_msg in result.stderr_text
+ 
+ 
+

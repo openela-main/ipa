@@ -40,12 +40,11 @@ index 06d511c76..dbb98dba6 100644
  #include "ipa_krb5.h"
  #include "ipa_hostname.h"
 +#include <kadm5/admin.h>
- 
+
  #define IPADB_GLOBAL_CONFIG_CACHE_TIME 60
- 
-@@ -207,6 +208,19 @@ static const struct {
+
+@@ -207,5 +208,18 @@ static const struct {
      { "idp", IPADB_USER_AUTH_IDP },
-     { "passkey", IPADB_USER_AUTH_PASSKEY },
      { }
 +},
 +  objclass_table[] = {
@@ -61,10 +60,10 @@ index 06d511c76..dbb98dba6 100644
 +    { KADM5_HIST_PRINCIPAL, IPADB_USER_AUTH_PASSWORD },
 +    { }
  };
- 
+
  void ipadb_parse_user_auth(LDAP *lcontext, LDAPMessage *le,
 @@ -217,17 +231,49 @@ void ipadb_parse_user_auth(LDAP *lcontext, LDAPMessage *le,
- 
+
      *userauth = IPADB_USER_AUTH_NONE;
      vals = ldap_get_values_len(lcontext, le, IPA_USER_AUTH_TYPE);
 -    if (!vals)
@@ -121,7 +120,7 @@ index 06d511c76..dbb98dba6 100644
      /* If password auth is enabled, enable hardened policy too. */
      if (*userauth & IPADB_USER_AUTH_PASSWORD) {
          *userauth |= IPADB_USER_AUTH_HARDENED;
--- 
+--
 2.43.0
 
 
@@ -163,7 +162,7 @@ index 436ee0e62..2802221c7 100644
              pol_limits = &(ied->pol_limits[IPADB_USER_AUTH_IDX_PKINIT]);
          } else if (strcmp(auth_indicator, "hardened") == 0) {
              valid_auth_indicators++;
--- 
+--
 2.43.0
 
 
@@ -188,14 +187,14 @@ index dbb98dba6..4e6cacf24 100644
 @@ -195,6 +195,9 @@ done:
      return base;
  }
- 
+
 +/* In this table all _AUTH_PASSWORD entries will be
 + * expanded to include _AUTH_HARDENED in ipadb_parse_user_auth()
 + * which means there is no need to explicitly add it here */
  static const struct {
      const char *name;
      enum ipadb_user_auth flag;
--- 
+--
 2.43.0
 
 
@@ -230,7 +229,7 @@ index caa0e6a34..5c2e7af02 100644
 @@ -23,6 +23,24 @@ class TestPkinitClientInstall(IntegrationTest):
      def install(cls, mh):
          tasks.install_master(cls.master)
- 
+
 +    def enforce_password_and_otp(self):
 +        """enforce otp by default and password for admin """
 +        self.master.run_command(
@@ -255,7 +254,7 @@ index caa0e6a34..5c2e7af02 100644
 @@ -86,6 +104,14 @@ class TestPkinitClientInstall(IntegrationTest):
          cabundle = self.master.get_file_contents(paths.KDC_CA_BUNDLE_PEM)
          client.put_file_contents(self.tmpbundle, cabundle)
- 
+
 +    def test_restart_krb5kdc(self):
 +        tasks.kinit_admin(self.master)
 +        self.enforce_password_and_otp()
@@ -267,6 +266,6 @@ index caa0e6a34..5c2e7af02 100644
      def test_client_install_pkinit(self):
          tasks.kinit_admin(self.master)
          self.add_certmaperule()
--- 
+--
 2.43.0
 

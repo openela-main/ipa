@@ -190,7 +190,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        12%{?rc_version:.%rc_version}%{?dist}
+Release:        16%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPLv3+
@@ -242,6 +242,11 @@ Patch0030:      0030-ipa-otptoken-import-open-the-key-file-in-binary-mode_rhel#3
 Patch0031:      0031-ipa-crlgen-manage-manage-the-cert-status-task-execution-time_rhel#30280.patch
 Patch0032:      0032-idrange-add-add-a-warning-because-389ds-restart-is-required_rhel#28996.patch
 Patch0033:      0033-PKINIT-certificate-fix-renewal-on-hidden-replica_rhel#4913.patch
+Patch0034:      0034-Add-ipa-idrange-fix_rhel#56920.patch
+Patch0035:      0035-Unconditionally-add-MS-PAC-to-global-config-on-update_rhel#49437.patch
+Patch0036:      0036-ipatests-Update-ipa-adtrust-install-test_rhel#40894.patch
+Patch0037:      0037-Replica-CA-installation-ignore-skew-during-initial-replication_rhel#80995.patch
+Patch0038:      0038-Add-a-check-into-ipa-cert-fix-tool-to-avoid-updating-certs-if-CA-is-close-to-being-expired_rhel#4941.patch
 %if 0%{?rhel} >= 8
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
@@ -402,7 +407,7 @@ BuildRequires:  python3-pycodestyle
 BuildRequires:  python3-pylint
 BuildRequires:  python3-pytest-multihost
 BuildRequires:  python3-pytest-sourceorder
-BuildRequires:  python3-qrcode-core >= 5.0.0
+BuildRequires:  python3-qrcode-core >= 5.3
 BuildRequires:  python3-samba
 BuildRequires:  python3-six
 BuildRequires:  python3-sss
@@ -1005,10 +1010,7 @@ for i in *.po ; do
 done
 popd
 
-for p in %patches ; do
-    %__patch -p1 -i $p
-    UpdateTimestamps -p1 $p
-done
+%autopatch -p1
 
 %build
 # PATH is workaround for https://bugzilla.redhat.com/show_bug.cgi?id=1005235
@@ -1403,6 +1405,7 @@ fi
 %{_sbindir}/ipa-pkinit-manage
 %{_sbindir}/ipa-crlgen-manage
 %{_sbindir}/ipa-cert-fix
+%{_sbindir}/ipa-idrange-fix
 %{_sbindir}/ipa-acme-manage
 %{_libexecdir}/certmonger/dogtag-ipa-ca-renew-agent-submit
 %{_libexecdir}/certmonger/ipa-server-guard
@@ -1477,6 +1480,7 @@ fi
 %{_mandir}/man1/ipa-pkinit-manage.1*
 %{_mandir}/man1/ipa-crlgen-manage.1*
 %{_mandir}/man1/ipa-cert-fix.1*
+%{_mandir}/man1/ipa-idrange-fix.1*
 %{_mandir}/man1/ipa-acme-manage.1*
 
 
@@ -1757,7 +1761,31 @@ fi
 %endif
 
 %changelog
-* Wed Jul 17 2024 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-9
+* Mon Mar 31 2025 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-16
+- Add a- heck into ipa-cert-fix tool to avoid updating certs if CA is close to expire
+  Resolves: RHEL-4941
+- Fix rpminspect's 'patches' warnings
+  Resolves: RHEL-22497
+
+* Mon Mar 10 2025 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-15
+- Replica CA installation: ignore skew during initial replication
+  Resolves RHEL-80995
+
+* Wed Nov 27 2024 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-14
+- ipatests: Update ipa-adtrust-install test
+  Resolves: RHEL-40894
+
+* Thu Nov 14 2024 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-13
+- Add ipa-idrange-fix
+  Resolves: RHEL-56920
+- Unconditionally add MS-PAC to global config on update
+  Resolves: RHEL-49437
+- ipatests: Update ipa-adtrust-install test
+  Resolves: RHEL-40894
+- Require python-qrcode version 5.3 or later
+  Related: RHEL-15090
+
+* Wed Jul 17 2024 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-12
 - Allow the admin user to be disabled
   Resolves: RHEL-34756
 - ipa-otptoken-import: open the key file in binary mode
@@ -1905,7 +1933,7 @@ fi
 
 * Thu May 25 2023 Rafael Jeffman <rjeffman@redhat.com> - 4.9.12-2
 - Use the OpenSSL certificate parser in cert-find
-  Resolves: RHBZ#2209947 
+  Resolves: RHBZ#2209947
 
 * Wed May 24 2023 Rafael Jeffman <rjeffman@redhat.com> - 4.9.12-1
 - Rebase ipa to 4.9.12
@@ -1938,7 +1966,7 @@ fi
   Resolves: RHBZ#2129895
 - Fix canonicalization issue in Web UI
   Resolves: RHBZ#2127035
-- Remove idnssoaserial argument from dns zone API. 
+- Remove idnssoaserial argument from dns zone API.
   Resolves: RHBZ#2108630
 - Warn for permissions with read/write/search/compare and no attrs
   Resolves: RHBZ#2098187

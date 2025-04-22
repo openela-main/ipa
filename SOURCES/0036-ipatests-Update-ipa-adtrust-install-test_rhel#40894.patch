@@ -1,0 +1,72 @@
+From f6645ebe5c0c0c030ec2e62e007d8dacd1b4e4cf Mon Sep 17 00:00:00 2001
+From: Erik Belko <ebelko@redhat.com>
+Date: Sep 03 2024 12:54:30 +0000
+Subject: ipatests: Update ipa-adtrust-install test
+
+
+update test_user_connects_smb_share_if_locked_specific_group with wait
+for SSSD to be online after ipa-adtrust-install command
+
+Related: https://pagure.io/freeipa/issue/9655
+
+Signed-off-by: Erik Belko <ebelko@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+
+---
+
+diff --git a/ipatests/test_integration/test_adtrust_install.py b/ipatests/test_integration/test_adtrust_install.py
+index 72e8d87..de252db 100644
+--- a/ipatests/test_integration/test_adtrust_install.py
++++ b/ipatests/test_integration/test_adtrust_install.py
+@@ -853,6 +853,8 @@ class TestIpaAdTrustInstall(IntegrationTest):
+              self.master.config.admin_password,
+              "-U"]
+         )
++        # Wait for SSSD to become online before doing any other check
++        tasks.wait_for_sssd_domain_status_online(self.master)
+         self.master.run_command(["mkdir", "/freeipa4234"])
+         self.master.run_command(
+             ["chcon", "-t", "samba_share_t",
+
+From 47920e78c81380c0a40986e55f05246aac132fbb Mon Sep 17 00:00:00 2001
+From: Erik Belko <ebelko@redhat.com>
+Date: May 21 2024 12:50:46 +0000
+Subject: ipatests: Update ipa-adtrust-install test
+
+
+update after change in implementation of `krb_utils.get_principal()` now using GSSAPI
+
+Related: https://pagure.io/freeipa/issue/9575
+
+Signed-off-by: Erik Belko <ebelko@redhat.com>
+Reviewed-By: Michal Polovka <mpolovka@redhat.com>
+
+---
+
+diff --git a/ipatests/test_integration/test_adtrust_install.py b/ipatests/test_integration/test_adtrust_install.py
+index 86d8d20..72e8d87 100644
+--- a/ipatests/test_integration/test_adtrust_install.py
++++ b/ipatests/test_integration/test_adtrust_install.py
+@@ -464,18 +464,15 @@ class TestIpaAdTrustInstall(IntegrationTest):
+         password
+         """
+         password = "wrong_pwd"
+-        msg = (
+-            "Must have Kerberos credentials to setup AD trusts on server: "
+-            "Major (458752): No credentials were supplied, or the credentials "
+-            "were unavailable or inaccessible, Minor (2529639053): "
+-            "No Kerberos credentials available (default cache: KCM:)\n"
++        expected_substring = (
++            "Must have Kerberos credentials to setup AD trusts on server:"
+         )
+         self.master.run_command(["kdestroy", "-A"])
+         result = self.master.run_command(
+             ["ipa-adtrust-install", "-A", "admin", "-a",
+              password, "-U"], raiseonerr=False
+         )
+-        assert msg in result.stderr_text
++        assert expected_substring in result.stderr_text
+         assert result.returncode != 0
+ 
+     def test_adtrust_install_with_invalid_rid_base_value(self):
+
