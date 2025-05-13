@@ -1,0 +1,30 @@
+From 6bdb8603054fc60e9479f6aaf8b6315dfe508891 Mon Sep 17 00:00:00 2001
+From: Mark Reynolds <mreynolds@redhat.com>
+Date: Tue, 22 Oct 2024 13:00:03 -0400
+Subject: [PATCH] ipa-migrate should migrate dns forward zones
+
+Fixes: https://pagure.io/freeipa/issue/9686
+
+Signed-off-by: Mark Reynolds <mreynolds@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipaserver/install/ipa_migrate_constants.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ipaserver/install/ipa_migrate_constants.py b/ipaserver/install/ipa_migrate_constants.py
+index 250f1b5b01bf066d316a98489ab6153b89615173..c140414ea6c607a93e35ef0705480d1002b7945e 100644
+--- a/ipaserver/install/ipa_migrate_constants.py
++++ b/ipaserver/install/ipa_migrate_constants.py
+@@ -993,7 +993,7 @@ DB_OBJECTS = {
+         'count': 0,
+     },
+     'dns_records': {
+-        'oc': ['idnsrecord', 'idnszone'],
++        'oc': ['idnsrecord', 'idnszone', 'idnsforwardzone'],
+         'subtree': ',cn=dns,$SUFFIX',
+         'label': 'DNS Records',
+         'mode': 'all',
+-- 
+2.47.0
+

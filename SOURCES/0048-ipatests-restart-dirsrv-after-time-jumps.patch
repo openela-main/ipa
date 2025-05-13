@@ -1,0 +1,35 @@
+From ec94ee72714296c86ba1227a5a945a7ed0bc7fac Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Thu, 16 Jan 2025 15:43:17 +0100
+Subject: [PATCH] ipatests: restart dirsrv after time jumps
+
+The test for ipa-healthcheck is moving the date in the future.
+Restart the dirsrv instance because the LDAP server is
+sensitive to large time jumps.
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipatests/test_integration/test_ipahealthcheck.py | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index 6b6f15aa433a423fe599118d2226e4c4ec62b13b..7c3f5857a477070d8a9b52c04d41f35ac580c97f 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -1634,6 +1634,11 @@ class TestIpaHealthCheck(IntegrationTest):
+             grace_date = datetime.strftime(grace_date, "%Y-%m-%d 00:00:01 Z")
+             self.master.run_command(['date', '-s', grace_date])
+ 
++            # Restart dirsrv as it doesn't like time jumps
++            instance = realm_to_serverid(self.master.domain.realm)
++            cmd = ["systemctl", "restart", "dirsrv@{}".format(instance)]
++            self.master.run_command(cmd)
++
+             for check in ("IPACertmongerExpirationCheck",
+                           "IPACertfileExpirationCheck",):
+                 execute_expiring_check(check)
+-- 
+2.47.1
+

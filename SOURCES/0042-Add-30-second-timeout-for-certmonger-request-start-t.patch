@@ -1,0 +1,45 @@
+From 2506d5de5a9dd8ebe6efc777c2eb76461f5b57e2 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Mon, 6 Jan 2025 10:12:15 -0500
+Subject: [PATCH] Add 30-second timeout for certmonger request/start tracking
+
+certmonger needs to validate that the PIN/password and/or token
+are valid and available. In the case of a very slow HSM this can
+take longer than the 5-second default timeout.
+
+We saw an HSM that took 18 seconds to start tracking the CA signing
+certificate so default to 30 to be safe.
+
+Fixes: https://pagure.io/freeipa/issue/9725
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ ipalib/install/certmonger.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/ipalib/install/certmonger.py b/ipalib/install/certmonger.py
+index 7b22295152f752b6ab4de0f3525d48c541677aff..efc1ba4f42eab98df5fac51bafa3acc83ae91831 100644
+--- a/ipalib/install/certmonger.py
++++ b/ipalib/install/certmonger.py
+@@ -477,7 +477,7 @@ def request_cert(
+         request_parameters['cert-perms'] = perms[0]
+         request_parameters['key-perms'] = perms[1]
+ 
+-    result = cm.obj_if.add_request(request_parameters)
++    result = cm.obj_if.add_request(request_parameters, timeout=30)
+     try:
+         if result[0]:
+             request = _cm_dbus_object(cm.bus, cm, result[1], DBUS_CM_REQUEST_IF,
+@@ -581,7 +581,7 @@ def start_tracking(
+     if nss_user:
+         params['nss-user'] = nss_user
+ 
+-    result = cm.obj_if.add_request(params)
++    result = cm.obj_if.add_request(params, timeout=30)
+     try:
+         if result[0]:
+             request = _cm_dbus_object(cm.bus, cm, result[1], DBUS_CM_REQUEST_IF,
+-- 
+2.47.1
+

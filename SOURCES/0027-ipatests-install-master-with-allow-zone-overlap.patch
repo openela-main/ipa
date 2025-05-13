@@ -1,0 +1,42 @@
+From baa9fc3e3e2f6b39db5ec465c92dc597cd5399b9 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Tue, 12 Nov 2024 16:44:46 +0100
+Subject: [PATCH] ipatests: install master with allow-zone-overlap
+
+In the IPA to IPA migration tests, install the destination master
+with --setup-dns --allow-zone-overlap to allow installation
+even if the zone is already served by the source master.
+
+Fixes: https://pagure.io/freeipa/issue/9697
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Sudhir Menon <sumenon@redhat.com>
+---
+ ipatests/test_integration/test_ipa_ipa_migration.py | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/ipatests/test_integration/test_ipa_ipa_migration.py b/ipatests/test_integration/test_ipa_ipa_migration.py
+index d852ca63a6b3a7e7118d66ce1cd9bb98e56f1a73..0c637a0141d95f34f951c60a9648adf8e87eaa63 100644
+--- a/ipatests/test_integration/test_ipa_ipa_migration.py
++++ b/ipatests/test_integration/test_ipa_ipa_migration.py
+@@ -345,7 +345,8 @@ class MigrationTest(IntegrationTest):
+         tasks.install_master(cls.master, setup_dns=True, setup_kra=True)
+         prepare_ipa_server(cls.master)
+         tasks.install_client(cls.master, cls.clients[0], nameservers=None)
+-        tasks.install_master(cls.replicas[0], setup_dns=True, setup_kra=True)
++        tasks.install_master(cls.replicas[0], setup_dns=True, setup_kra=True,
++                             extra_args=['--allow-zone-overlap'])
+ 
+ 
+ class TestIPAMigrateCLIOptions(MigrationTest):
+@@ -1211,7 +1212,7 @@ class TestIPAMigrationWithADtrust(IntegrationTest):
+         """
+         tasks.install_master(
+             self.replicas[0], setup_dns=True,
+-            extra_args=['--no-dnssec-validation']
++            extra_args=['--no-dnssec-validation', '--allow-zone-overlap']
+         )
+         tasks.install_adtrust(self.replicas[0])
+ 
+-- 
+2.47.0
+

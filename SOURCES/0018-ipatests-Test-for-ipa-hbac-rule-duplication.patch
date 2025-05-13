@@ -1,0 +1,61 @@
+From 7f4e7e1d6a2ae9d05a2dfcf620f4df07d09d9d2b Mon Sep 17 00:00:00 2001
+From: Sudhir Menon <sumenon@redhat.com>
+Date: Thu, 3 Oct 2024 18:45:31 +0530
+Subject: [PATCH] ipatests: Test for ipa hbac rule duplication
+
+This test checks that ipa-migrate is not creating duplicate default hbac rules
+for allow_all and allow_systemd-user rules.
+
+Related: https://pagure.io/freeipa/issue/9640
+
+Signed-off-by: Sudhir Menon <sumenon@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+---
+ .../test_ipa_ipa_migration.py                 | 26 +++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/ipatests/test_integration/test_ipa_ipa_migration.py b/ipatests/test_integration/test_ipa_ipa_migration.py
+index 288165e8a83a96e6f6bd4e52866f98617f497c56..70c268951a0d7e40806742b16e62b764b2bae37b 100644
+--- a/ipatests/test_integration/test_ipa_ipa_migration.py
++++ b/ipatests/test_integration/test_ipa_ipa_migration.py
+@@ -9,6 +9,7 @@ from __future__ import absolute_import
+ from ipatests.test_integration.base import IntegrationTest
+ from ipatests.pytest_ipa.integration import tasks
+ from ipaplatform.paths import paths
++from collections import Counter
+ 
+ import pytest
+ import textwrap
+@@ -920,3 +921,28 @@ class TestIPAMigrateScenario1(IntegrationTest):
+         )
+         assert result.returncode == 1
+         assert ERR_MSG in result.stderr_text
++
++    def test_ipa_hbac_rule_duplication(self):
++        """
++        This testcase checks that default hbac rules
++        are not duplicated on the local server when
++        ipa-migrate command is run.
++        """
++        run_migrate(
++            self.replicas[0],
++            "prod-mode",
++            self.master.hostname,
++            "cn=Directory Manager",
++            self.master.config.admin_password,
++            extra_args=['-n']
++        )
++        result = self.replicas[0].run_command(
++            ['ipa', 'hbacrule-find']
++        )
++        lines = result.stdout_text.splitlines()
++        line = []
++        for i in lines:
++            line.append(i.strip())
++        count = Counter(line)
++        assert count.get('Rule name: allow_all') < 2
++        assert count.get('Rule name: allow_systemd-user') < 2
+-- 
+2.46.2
+

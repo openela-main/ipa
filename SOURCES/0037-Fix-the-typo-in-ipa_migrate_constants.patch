@@ -1,0 +1,37 @@
+From 6a2310eda39b1341258211c7630ef4baf4555df5 Mon Sep 17 00:00:00 2001
+From: Sudhir Menon <sumenon@redhat.com>
+Date: Mon, 9 Dec 2024 23:03:56 +0530
+Subject: [PATCH] Fix the typo in ipa_migrate_constants.
+
+ipa-migrate.log displays Privileges migrated as Privledges
+due to typo in labelling i.e 'label': 'Privledges'
+Hence changed that to 'label': 'Privileges'
+
+---- LOG FILE ----
+INFO  - Privledges: 3
+------------------
+
+Fixes: https://pagure.io/freeipa/issue/9715
+
+Signed-off-by: Sudhir Menon <sumenon@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ ipaserver/install/ipa_migrate_constants.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ipaserver/install/ipa_migrate_constants.py b/ipaserver/install/ipa_migrate_constants.py
+index c140414ea6c607a93e35ef0705480d1002b7945e..e8192fb1aabae1c36669370eff242428a1f0355f 100644
+--- a/ipaserver/install/ipa_migrate_constants.py
++++ b/ipaserver/install/ipa_migrate_constants.py
+@@ -886,7 +886,7 @@ DB_OBJECTS = {
+     'pbac_priv': {
+         'oc': ['groupofnames'],
+         'subtree': ',cn=privileges,cn=pbac,$SUFFIX',
+-        'label': 'Privledges',
++        'label': 'Privileges',
+         'mode': 'all',
+         'count': 0,
+     },
+-- 
+2.47.1
+

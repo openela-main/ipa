@@ -1,4 +1,4 @@
-From 431a5804949417257b204125ff0a898b98dd2a90 Mon Sep 17 00:00:00 2001
+From 4e43dd7cd30042588a2264fca98b6e6b9d4d25bb Mon Sep 17 00:00:00 2001
 From: Alexander Bokovoy <abokovoy@redhat.com>
 Date: Fri, 17 Jan 2025 12:33:54 +0200
 Subject: [PATCH] Migrate Keycloak tests to JDK 21 and Keycloak 26
@@ -161,5 +161,5 @@ index 9708e9fa05a75cb2657c657b39b015249f3fd208..57c5a96bae986ee9721fc540d2be2cdc
                 "--password", kcadm_pass]
  
 -- 
-2.48.1
+2.47.1
 

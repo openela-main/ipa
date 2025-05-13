@@ -1,0 +1,422 @@
+From f9314562aaae03619eb89ae762bc24182174ad28 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Fri, 8 Nov 2024 14:59:20 +0200
+Subject: [PATCH] ipa tools: remove sensitive material from the commandline
+
+When command line tools accept passwords, remove them from the command
+line so that they don't get visible in '/proc/pid/commandline'.
+
+There is no common method to access the original ARGV vector and modify
+it from Python. Since this mostly affects Linux systems where IPA
+services run, we expect use of GNU libc and thus can rely on internal
+glibc symbols. If they aren't available, the code will skip removing
+passwords.
+
+Fixes: CVE-2024-11029
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ .../com.redhat.idm.trust-fetch-domains.in     |  5 ++-
+ install/tools/ipa-adtrust-install.in          |  3 +-
+ install/tools/ipa-ca-install.in               |  2 +
+ install/tools/ipa-compat-manage.in            |  6 ++-
+ install/tools/ipa-csreplica-manage.in         | 12 +++---
+ install/tools/ipa-managed-entries.in          |  5 ++-
+ install/tools/ipa-replica-conncheck.in        |  7 ++--
+ install/tools/ipa-replica-manage.in           | 10 +++--
+ ipapython/admintool.py                        | 40 +++++++++++++++++++
+ ipaserver/install/ipa_migrate.py              | 17 +++++++-
+ ipaserver/install/ipa_restore.py              |  2 +-
+ ipaserver/install/ipa_server_certinstall.py   |  2 +-
+ 12 files changed, 90 insertions(+), 21 deletions(-)
+
+diff --git a/install/oddjob/com.redhat.idm.trust-fetch-domains.in b/install/oddjob/com.redhat.idm.trust-fetch-domains.in
+index 45c1f1463d5849d753c2913aa0b86b845cfce784..b86be0212c462e82d9379f55d5d3198c1017d2e7 100644
+--- a/install/oddjob/com.redhat.idm.trust-fetch-domains.in
++++ b/install/oddjob/com.redhat.idm.trust-fetch-domains.in
+@@ -15,6 +15,7 @@ import six
+ import gssapi
+ 
+ from ipalib.install.kinit import kinit_keytab, kinit_password
++from ipapython.admintool import admin_cleanup_global_argv
+ 
+ if six.PY3:
+     unicode = str
+@@ -52,11 +53,13 @@ def parse_options():
+         "--password",
+         action="store",
+         dest="password",
+-        help="Display debugging information",
++        help="Password for Active Directory administrator",
++        sensitive=True
+     )
+ 
+     options, args = parser.parse_args()
+     safe_options = parser.get_safe_opts(options)
++    admin_cleanup_global_argv(parser, options, sys.argv)
+ 
+     # We only use first argument of the passed args but as D-BUS interface
+     # in oddjobd cannot expose optional, we fill in empty slots from IPA side
+diff --git a/install/tools/ipa-adtrust-install.in b/install/tools/ipa-adtrust-install.in
+index e7b0e369259da5d28d703558d9293ccfaf68f3ed..1efccdb678d17410667b1721670bf6bf79152109 100644
+--- a/install/tools/ipa-adtrust-install.in
++++ b/install/tools/ipa-adtrust-install.in
+@@ -35,7 +35,7 @@ from ipaserver.install.installutils import (
+     read_password,
+     check_server_configuration,
+     run_script)
+-from ipapython.admintool import ScriptError
++from ipapython.admintool import ScriptError, admin_cleanup_global_argv
+ from ipapython import version
+ from ipapython import ipautil
+ from ipalib import api, errors, krb_utils
+@@ -93,6 +93,7 @@ def parse_options():
+ 
+     options, _args = parser.parse_args()
+     safe_options = parser.get_safe_opts(options)
++    admin_cleanup_global_argv(parser, options, sys.argv)
+ 
+     return safe_options, options
+ 
+diff --git a/install/tools/ipa-ca-install.in b/install/tools/ipa-ca-install.in
+index 9f3d16669679a245b73e044622ff52321524fcde..b437e761f760ab715c27bc330ac0f2e66e72ef5b 100644
+--- a/install/tools/ipa-ca-install.in
++++ b/install/tools/ipa-ca-install.in
+@@ -42,6 +42,7 @@ from ipalib.constants import DOMAIN_LEVEL_1
+ from ipapython.config import IPAOptionParser
+ from ipapython.ipa_log_manager import standard_logging_setup
+ from ipaplatform.paths import paths
++from ipapython.admintool import admin_cleanup_global_argv
+ 
+ logger = logging.getLogger(os.path.basename(__file__))
+ 
+@@ -132,6 +133,7 @@ def parse_options():
+ 
+     options, args = parser.parse_args()
+     safe_options = parser.get_safe_opts(options)
++    admin_cleanup_global_argv(parser, options, sys.argv)
+ 
+     if args:
+         parser.error("Too many arguments provided")
+diff --git a/install/tools/ipa-compat-manage.in b/install/tools/ipa-compat-manage.in
+index 459f39fc826bbe6becd8be3517235af343d4b0d9..9650abd6f83ebc0a8ef347fee83989d4e9f13f09 100644
+--- a/install/tools/ipa-compat-manage.in
++++ b/install/tools/ipa-compat-manage.in
+@@ -24,13 +24,13 @@ from __future__ import print_function
+ import sys
+ from ipaplatform.paths import paths
+ try:
+-    from optparse import OptionParser  # pylint: disable=deprecated-module
+     from ipapython import ipautil, config
+     from ipaserver.install import installutils
+     from ipaserver.install.ldapupdate import LDAPUpdate
+     from ipalib import api, errors
+     from ipapython.ipa_log_manager import standard_logging_setup
+     from ipapython.dn import DN
++    from ipapython.admintool import admin_cleanup_global_argv
+ except ImportError as e:
+     print("""\
+ There was a problem importing one of the required Python modules. The
+@@ -46,7 +46,8 @@ nis_config_dn = DN(('cn', 'NIS Server'), ('cn', 'plugins'), ('cn', 'config'))
+ def parse_options():
+     usage = "%prog [options] <enable|disable|status>\n"
+     usage += "%prog [options]\n"
+-    parser = OptionParser(usage=usage, formatter=config.IPAFormatter())
++    parser = config.IPAOptionParser(usage=usage,
++                                    formatter=config.IPAFormatter())
+ 
+     parser.add_option("-d", "--debug", action="store_true", dest="debug",
+                       help="Display debugging information about the update(s)")
+@@ -55,6 +56,7 @@ def parse_options():
+ 
+     config.add_standard_options(parser)
+     options, args = parser.parse_args()
++    admin_cleanup_global_argv(parser, options, sys.argv)
+ 
+     return options, args
+ 
+diff --git a/install/tools/ipa-csreplica-manage.in b/install/tools/ipa-csreplica-manage.in
+index 6f248cc50f7f81b2014d629355f6f32d1d6ab7be..2fab27a94cfdbef8faadca82bc222bf96d212159 100644
+--- a/install/tools/ipa-csreplica-manage.in
++++ b/install/tools/ipa-csreplica-manage.in
+@@ -32,8 +32,8 @@ from ipaserver.install import (replication, installutils, bindinstance,
+ from ipalib import api, errors
+ from ipalib.constants import FQDN
+ from ipalib.util import has_managed_topology, print_replication_status
+-from ipapython import ipautil, ipaldap, version
+-from ipapython.admintool import ScriptError
++from ipapython import ipautil, ipaldap, version, config
++from ipapython.admintool import admin_cleanup_global_argv, ScriptError
+ from ipapython.dn import DN
+ 
+ logger = logging.getLogger(os.path.basename(__file__))
+@@ -54,11 +54,10 @@ commands = {
+ 
+ 
+ def parse_options():
+-    from optparse import OptionParser  # pylint: disable=deprecated-module
+-
+-    parser = OptionParser(version=version.VERSION)
++    parser = config.IPAOptionParser(version=version.VERSION)
+     parser.add_option("-H", "--host", dest="host", help="starting host")
+-    parser.add_option("-p", "--password", dest="dirman_passwd", help="Directory Manager password")
++    parser.add_option("-p", "--password", dest="dirman_passwd", sensitive=True,
++                      help="Directory Manager password")
+     parser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False,
+                       help="provide additional information")
+     parser.add_option("-f", "--force", dest="force", action="store_true", default=False,
+@@ -66,6 +65,7 @@ def parse_options():
+     parser.add_option("--from", dest="fromhost", help="Host to get data from")
+ 
+     options, args = parser.parse_args()
++    admin_cleanup_global_argv(parser, options, sys.argv)
+ 
+     valid_syntax = False
+ 
+diff --git a/install/tools/ipa-managed-entries.in b/install/tools/ipa-managed-entries.in
+index e3f121943eb3b18ca8f7f8bfeae7813cbc9bd753..ff2fd6a58ccb5b322f75008578fea81f561666fa 100644
+--- a/install/tools/ipa-managed-entries.in
++++ b/install/tools/ipa-managed-entries.in
+@@ -24,7 +24,6 @@ import logging
+ import os
+ import re
+ import sys
+-from optparse import OptionParser  # pylint: disable=deprecated-module
+ 
+ from ipaplatform.paths import paths
+ from ipapython import config
+@@ -32,6 +31,7 @@ from ipaserver.install import installutils
+ from ipalib import api, errors
+ from ipapython.ipa_log_manager import standard_logging_setup
+ from ipapython.dn import DN
++from ipapython.admintool import admin_cleanup_global_argv
+ 
+ logger = logging.getLogger(os.path.basename(__file__))
+ 
+@@ -51,9 +51,10 @@ def parse_options():
+                       action="store_true",
+                       help="List available Managed Entries")
+     parser.add_option("-p", "--password", dest="dirman_password",
+-                      help="Directory Manager password")
++                      sensitive=True, help="Directory Manager password")
+ 
+     options, args = parser.parse_args()
++    admin_cleanup_global_argv(parser, options, sys.argv)
+ 
+     return options, args
+ 
+diff --git a/install/tools/ipa-replica-conncheck.in b/install/tools/ipa-replica-conncheck.in
+index 8eee82483abc275cb37ad96ff272b6ee8192403f..81b7d13ac900031fa81356b894dc3eaaaee0f744 100644
+--- a/install/tools/ipa-replica-conncheck.in
++++ b/install/tools/ipa-replica-conncheck.in
+@@ -23,15 +23,15 @@ from __future__ import print_function
+ import logging
+ 
+ from ipapython import ipachangeconf
+-from ipapython.config import IPAOptionParser
++from ipapython.config import (IPAOptionParser, OptionGroup,
++                              OptionValueError)
++from ipapython.admintool import admin_cleanup_global_argv
+ from ipapython.dn import DN
+ from ipapython import version
+ from ipapython import ipautil, certdb
+ from ipalib import api, errors, x509
+ from ipalib.constants import FQDN
+ from ipaserver.install import installutils
+-# pylint: disable=deprecated-module
+-from optparse import OptionGroup, OptionValueError
+ # pylint: enable=deprecated-module
+ from ipapython.ipa_log_manager import standard_logging_setup
+ import copy
+@@ -189,6 +189,7 @@ def parse_options():
+ 
+     options, _args = parser.parse_args()
+     safe_options = parser.get_safe_opts(options)
++    admin_cleanup_global_argv(parser, options, sys.argv)
+ 
+     if options.master and options.replica:
+         parser.error("on-master and on-replica options are mutually exclusive!")
+diff --git a/install/tools/ipa-replica-manage.in b/install/tools/ipa-replica-manage.in
+index d6e6ef57c39af70f164d41662227af3dc2535f9c..7e5b31a598537f57c471729f22fdec4a5bedc03d 100644
+--- a/install/tools/ipa-replica-manage.in
++++ b/install/tools/ipa-replica-manage.in
+@@ -43,6 +43,7 @@ from ipalib.util import (
+     print_replication_status,
+     verify_host_resolvable,
+ )
++from ipapython.admintool import admin_cleanup_global_argv
+ from ipapython.ipa_log_manager import standard_logging_setup
+ from ipapython.dn import DN
+ from ipapython.config import IPAOptionParser
+@@ -84,7 +85,8 @@ class NoRUVsFound(Exception):
+ def parse_options():
+     parser = IPAOptionParser(version=version.VERSION)
+     parser.add_option("-H", "--host", dest="host", help="starting host")
+-    parser.add_option("-p", "--password", dest="dirman_passwd", help="Directory Manager password")
++    parser.add_option("-p", "--password", dest="dirman_passwd", sensitive=True,
++                      help="Directory Manager password")
+     parser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False,
+                       help="provide additional information")
+     parser.add_option("-d", "--debug", dest="debug", action="store_true", default=False,
+@@ -95,7 +97,7 @@ def parse_options():
+                       help="DANGER: clean up references to a ghost master")
+     parser.add_option("--binddn", dest="binddn", default=None, type="dn",
+                       help="Bind DN to use with remote server")
+-    parser.add_option("--bindpw", dest="bindpw", default=None,
++    parser.add_option("--bindpw", dest="bindpw", default=None, sensitive=True,
+                       help="Password for Bind DN to use with remote server")
+     parser.add_option("--winsync", dest="winsync", action="store_true", default=False,
+                       help="This is a Windows Sync Agreement")
+@@ -103,13 +105,15 @@ def parse_options():
+                       help="Full path and filename of CA certificate to use with TLS/SSL to the remote server")
+     parser.add_option("--win-subtree", dest="win_subtree", default=None,
+                       help="DN of Windows subtree containing the users you want to sync (default cn=Users,<domain suffix)")
+-    parser.add_option("--passsync", dest="passsync", default=None,
++    parser.add_option("--passsync", dest="passsync",
++                      default=None, sensitive=True,
+                       help="Password for the IPA system user used by the Windows PassSync plugin to synchronize passwords")
+     parser.add_option("--from", dest="fromhost", help="Host to get data from")
+     parser.add_option("--no-lookup", dest="nolookup", action="store_true", default=False,
+                       help="do not perform DNS lookup checks")
+ 
+     options, args = parser.parse_args()
++    admin_cleanup_global_argv(parser, options, sys.argv)
+ 
+     valid_syntax = False
+ 
+diff --git a/ipapython/admintool.py b/ipapython/admintool.py
+index dff9112eba4009d2fc1a6202756c6671ba4d909d..602223ef627c99f36a27d28fa712a6c196d7cb9f 100644
+--- a/ipapython/admintool.py
++++ b/ipapython/admintool.py
+@@ -39,6 +39,45 @@ SERVER_NOT_CONFIGURED = 2
+ logger = logging.getLogger(__name__)
+ 
+ 
++def admin_cleanup_global_argv(option_parser, options, argv):
++    """Takes option parser and generated options and scrubs sensitive arguments
++    from the global program arguments. Note that this only works for GNU GLIBC
++    as Python has no generic way to get access to the original argv values to
++    modify them in place.
++
++    The code assumes Python behavior, e.g. there are two additional args in the
++    list (/path/to/python -I ...) than what's passed as 'argv' here.
++    """
++    import ctypes
++    import ctypes.util
++    try:
++        _c = ctypes.CDLL(ctypes.util.find_library("c"))
++        if _c._name is None:
++            return
++        _argv = ctypes.POINTER(ctypes.c_voidp).in_dll(_c, "_dl_argv")
++        # since we run as 'python -I <executable> ...', add two args
++        _argc = len(argv) + 2
++        all_options = []
++        if '_get_all_options' in dir(option_parser):
++            # OptParse parser
++            all_options = option_parser._get_all_options()
++        elif '_actions' in dir(option_parser):
++            # ArgParse parser
++            all_options = option_parser._actions
++
++        for opt in all_options:
++            if getattr(opt, 'sensitive', False):
++                v = getattr(options, opt.dest)
++                for i in range(0, _argc):
++                    vi = ctypes.cast(_argv[i],
++                                     ctypes.c_char_p
++                                     ).value.decode('utf-8')
++                    if vi == v:
++                        ctypes.memset(_argv[i], ord('X'), len(v))
++    except Exception:
++        pass
++
++
+ class ScriptError(Exception):
+     """An exception that records an error message and a return value
+     """
+@@ -148,6 +187,7 @@ class AdminTool:
+             cls._option_parsers[cls] = cls.option_parser
+ 
+         options, args = cls.option_parser.parse_args(argv[1:])
++        admin_cleanup_global_argv(cls.option_parser, options, argv)
+ 
+         command_class = cls.get_command_class(options, args)
+         command = command_class(options, args)
+diff --git a/ipaserver/install/ipa_migrate.py b/ipaserver/install/ipa_migrate.py
+index f35629378490d3d45ca97f2aa5b4390c67d660ed..ece473bc8cb525e2d563356b5b274502d6b703e8 100644
+--- a/ipaserver/install/ipa_migrate.py
++++ b/ipaserver/install/ipa_migrate.py
+@@ -28,6 +28,7 @@ from ipaplatform.paths import paths
+ from ipapython.dn import DN
+ from ipapython.ipaldap import LDAPClient, LDAPEntry, realm_to_ldapi_uri
+ from ipapython.ipa_log_manager import standard_logging_setup
++from ipapython.admintool import admin_cleanup_global_argv
+ from ipaserver.install.ipa_migrate_constants import (
+     DS_CONFIG, DB_OBJECTS, DS_INDEXES, BIND_DN, LOG_FILE_NAME,
+     STRIP_OP_ATTRS, STRIP_ATTRS, STRIP_OC, PROD_ATTRS,
+@@ -284,6 +285,18 @@ class LDIFParser(ldif.LDIFParser):
+             self.mc.process_db_entry(entry_dn=dn, entry_attrs=entry_attrs)
+ 
+ 
++class SensitiveStoreAction(argparse._StoreAction):
++    def __init__(self, *, sensitive, **options):
++        super(SensitiveStoreAction, self).__init__(**options)
++        self.sensitive = sensitive
++
++    def _get_kwargs(self):
++        names = super(SensitiveStoreAction, self)._get_kwargs()
++        sensitive_name = 'sensitive'
++        names.extend((sensitive_name, getattr(self, sensitive_name)))
++        return names
++
++
+ #
+ # Migrate IPA to IPA Class
+ #
+@@ -344,7 +357,8 @@ class IPAMigrate():
+                             help='Password for the Bind DN.  If a password '
+                                  'is not provided then the user will be '
+                                  'prompted to enter it',
+-                            default=None)
++                            default=None, sensitive=True,
++                            action=SensitiveStoreAction)
+         parser.add_argument('-j', '--bind-pw-file',
+                             help='A text file containing the clear text '
+                                  'password for the Bind DN', default=None)
+@@ -2128,6 +2142,7 @@ class IPAMigrate():
+         parser = argparse.ArgumentParser(description=desc, allow_abbrev=True)
+         self.add_options(parser)
+         self.validate_options()
++        admin_cleanup_global_argv(parser, self.args, sys.argv)
+ 
+         # Check for dryrun mode
+         if self.args.dryrun or self.args.dryrun_record is not None:
+diff --git a/ipaserver/install/ipa_restore.py b/ipaserver/install/ipa_restore.py
+index 8d75a0e6beba09086bc2ce8c73f3bcfe81e52113..539501ab4f0c73571b680aeccf3854b511fd29dc 100644
+--- a/ipaserver/install/ipa_restore.py
++++ b/ipaserver/install/ipa_restore.py
+@@ -185,7 +185,7 @@ class Restore(admintool.AdminTool):
+         super(Restore, cls).add_options(parser, debug_option=True)
+ 
+         parser.add_option(
+-            "-p", "--password", dest="password",
++            "-p", "--password", dest="password", sensitive=True,
+             help="Directory Manager password")
+         parser.add_option(
+             "--gpg-keyring", dest="gpg_keyring",
+diff --git a/ipaserver/install/ipa_server_certinstall.py b/ipaserver/install/ipa_server_certinstall.py
+index e9f680b1d1e505f89fc1611b8dbb3f84768f6781..76ad37ca7bcc62364379d56b21ead43c5248f5f1 100644
+--- a/ipaserver/install/ipa_server_certinstall.py
++++ b/ipaserver/install/ipa_server_certinstall.py
+@@ -72,7 +72,7 @@ class ServerCertInstall(admintool.AdminTool):
+             help="Name of the certificate to install")
+         parser.add_option(
+             "-p", "--dirman-password",
+-            dest="dirman_password",
++            dest="dirman_password", sensitive=True,
+             help="Directory Manager password")
+ 
+     def validate_options(self):
+-- 
+2.47.1
+

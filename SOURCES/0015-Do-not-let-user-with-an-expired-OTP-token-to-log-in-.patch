@@ -261,5 +261,5 @@ index 350371bfe1e4c1cc6dcc89f6584f813fcb0d32a0..878b4fb560ba8d7768ead54b06565646
 +            master.run_command(['ipa', 'pwpolicy-mod', '--minlife', '1'])
 +            master.run_command(['ipa', 'user-del', USER1])
 -- 
-2.47.0
+2.46.2
 

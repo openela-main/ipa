@@ -70,7 +70,7 @@
 %global krb5_kdb_version 9.0
 # 0.7.16: https://github.com/drkjam/netaddr/issues/71
 %global python_netaddr_version 0.7.19
-%global samba_version 4.20.0-103
+%global samba_version 4.21.1
 %global slapi_nis_version 0.56.4
 %global python_ldap_version 3.1.0-1
 %if 0%{?rhel} < 9
@@ -85,10 +85,9 @@
 
 # Fix for TLS 1.3 PHA, RHBZ#1775158
 %global httpd_version 2.4.37-21
-%global bind_version 9.11.20-6
 
 # support for passkey
-%global sssd_version 2.9.0
+%global sssd_version 2.9.5
 
 %else
 # Fedora
@@ -135,11 +134,6 @@
 %global httpd_version 2.4.41-9
 
 # Fix for RHBZ#2117342
-%if 0%{?fedora} < 37
-%global bind_version 9.11.24-1
-%else
-%global bind_version 32:9.18.7-1
-%endif
 # Don't use Fedora's Python dependency generator on Fedora 30/rawhide yet.
 # Some packages don't provide new dist aliases.
 # https://docs.fedoraproject.org/en-US/packaging-guidelines/Python/
@@ -224,7 +218,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        1%{?rc_version:.%rc_version}%{?dist}.4
+Release:        14%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -250,17 +244,59 @@ Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
 %if 0%{?rhel} == 9
 Patch0001:      0001-Revert-Replace-netifaces-with-ifaddr.patch
 Patch0002:      0002-Revert-custodia-do-not-use-deprecated-jwcrypto-wrapp.patch
-Patch0003:      0003-Do-not-let-user-with-an-expired-OTP-token-to-log-in-.patch
-Patch0004:      0004-Add-ipa-idrange-fix.patch
-Patch0005:      0005-ipatests-Add-missing-comma-in-test_idrange_no_rid_ba.patch
-Patch0006:      0006-ipatests-Fixes-for-ipa-idrange-fix-testsuite.patch
-Patch0007:      0007-ipalib-x509-support-PyCA-44.0.patch
-Patch0008:      0008-pyca-adapt-import-paths-for-TripleDES-cipher.patch
-Patch0009:      0009-ipa-pwd-extop-clarify-OTP-use-over-LDAP-binds.patch
-Patch0010:      0010-adtrust-add-missing-ipaAllowedOperations-objectclass.patch
-Patch0011:      0011-CVE-2024-11029.patch
-Patch0012:      0012-ipa-otpd-do-not-pass-OIDC-client-secret-if-there-is-.patch
-Patch0013:      0013-Migrate-Keycloak-tests-to-JDK-21-and-Keycloak-26.patch
+Patch0003:      0003-ipatests-Check-Default-PAC-type-is-added-to-config.patch
+Patch0004:      0004-selinux-add-all-IPA-log-files-to-ipa_log_t-file-cont.patch
+Patch0005:      0005-Add-ipa-idrange-fix.patch
+Patch0006:      0006-ipatests-Add-missing-comma-in-test_idrange_no_rid_ba.patch
+Patch0007:      0007-ipatests-Update-ipa-adtrust-install-test.patch
+Patch0008:      0008-Installer-activate-ssh-service-in-sssd.conf.patch
+Patch0009:      0009-ipa-migrate-fix-migration-issues-with-entries-using-.patch
+Patch0010:      0010-ipa-migrate-fix-alternate-entry-search-filter.patch
+Patch0011:      0011-ipatests-provide-a-ccache-to-rpcclient-deletetrustdo.patch
+Patch0012:      0012-test_adtrust_install-add-use-krb5-ccache-to-smbclien.patch
+Patch0013:      0013-Don-t-rely-on-removing-the-CA-to-uninstall-the-ACME-.patch
+Patch0014:      0014-ipatests-Fixes-for-ipa-idrange-fix-testsuite.patch
+Patch0015:      0015-Do-not-let-user-with-an-expired-OTP-token-to-log-in-.patch
+Patch0016:      0016-ipatests-Activate-ssh-in-sssd.conf.patch
+Patch0017:      0017-ipa-migrate-man-page-fix-typos-and-errors.patch
+Patch0018:      0018-ipatests-Test-for-ipa-hbac-rule-duplication.patch
+Patch0019:      0019-ipatests-refactor-password-file-handling-in-TestHSMI.patch
+Patch0020:      0020-ipatests-2FA-test-cases.patch
+Patch0021:      0021-Small-fixup-to-determine-which-ACME-uninstaller-to-u.patch
+Patch0022:      0022-UnsafeIPAddress-pass-flag-0-to-IPNetwork.patch
+Patch0023:      0023-ipa-migrate-dryrun-write-updates-crashes-when-removi.patch
+Patch0024:      0024-ipa-migrate-should-migrate-dns-forward-zones.patch
+Patch0025:      0025-ipatests-Tests-for-ipa-migrate-tool.patch
+Patch0026:      0026-Fix-Organization-field-in-Okta-not-required.patch
+Patch0027:      0027-ipatests-install-master-with-allow-zone-overlap.patch
+Patch0028:      0028-selinux-allow-Cockpit-to-use-HTTP-keytab-on-IPA-serv.patch
+Patch0029:      0029-Minimal-test-for-Cockpit-integration-on-IPA-master.patch
+Patch0030:      0030-ipaserver-dcerpc-support-Samba-4.21.patch
+Patch0031:      0031-Allow-looking-up-constants.Group-by-gid-in-addition-.patch
+Patch0032:      0032-Pass-all-pkiuser-groups-as-suplementary-when-validat.patch
+Patch0033:      0033-ipalib-x509-support-PyCA-44.0.patch
+Patch0034:      0034-pyca-adapt-import-paths-for-TripleDES-cipher.patch
+Patch0035:      0035-ipa-pwd-extop-clarify-OTP-use-over-LDAP-binds.patch
+Patch0036:      0036-adtrust-add-missing-ipaAllowedOperations-objectclass.patch
+Patch0037:      0037-Fix-the-typo-in-ipa_migrate_constants.patch
+Patch0038:      0038-test_ipahealthcheck-skip-connectivity_and_data-check.patch
+Patch0039:      0039-ipatests-Fixes-for-ipa-ipa-migration-tool.patch
+Patch0040:      0040-Installation-test-KRA-on-replica-after-cert-renewal.patch
+Patch0041:      0041-KRA-cert-renewal-update-ca.connector.KRA.transportCe.patch
+Patch0042:      0042-Add-30-second-timeout-for-certmonger-request-start-t.patch
+Patch0043:      0043-Unify-use-of-option-parsers.patch
+Patch0044:      0044-ipa-tools-remove-sensitive-material-from-the-command.patch
+Patch0045:      0045-ipa-otpd-use-oidc_child-s-client-secret-stdin-option.patch
+Patch0046:      0046-Fix-pylint-issue-in-ipatests-i18n.py.patch
+Patch0047:      0047-ipatests-skip-test_ipahealthcheck_ds_configcheck-for.patch
+Patch0048:      0048-ipatests-restart-dirsrv-after-time-jumps.patch
+Patch0049:      0049-ipa-otpd-do-not-pass-OIDC-client-secret-if-there-is-.patch
+Patch0050:      0050-Migrate-Keycloak-tests-to-JDK-21-and-Keycloak-26.patch
+Patch0051:      0051-Apply-certmonger_timeout-to-start_tracking-and-reque.patch
+Patch0052:      0052-Add-DNS-over-TLS-support.patch
+Patch0053:      0053-Configure-the-pki-tomcatd-service-systemd-timeout.patch
+Patch0054:      0054-Align-startup_timeout-with-the-systemd-default-and-d.patch
+Patch0055:      0055-dns-only-disable-unbound-when-DoT-is-enabled.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -610,14 +646,14 @@ If you are installing an IPA server, you need to install this package.
 Summary: IPA integrated DNS server with support for automatic DNSSEC signing
 BuildArch: noarch
 Requires: %{name}-server = %{version}-%{release}
-Requires: bind-dyndb-ldap >= 11.2-2
-Requires: bind >= %{bind_version}
-Requires: bind-utils >= %{bind_version}
+Requires: bind-dyndb-ldap
+Requires: bind
+Requires: bind-utils
 # bind-dnssec-utils is required by the OpenDNSSec integration
 # https://pagure.io/freeipa/issue/9026
-Requires: bind-dnssec-utils >= %{bind_version}
+Requires: bind-dnssec-utils
 %if %{with bind_pkcs11}
-Requires: bind-pkcs11 >= %{bind_version}
+Requires: bind-pkcs11
 %else
 Requires: softhsm >= %{softhsm_version}
 Requires: openssl-pkcs11 >= %{openssl_pkcs11_version}
@@ -637,6 +673,20 @@ Obsoletes: %{name}-server <= 4.2.0
 %description server-dns
 IPA integrated DNS server with support for automatic DNSSEC signing.
 Integrated DNS server is BIND 9. OpenDNSSEC provides key management.
+
+
+%package server-encrypted-dns
+Summary: support for encrypted DNS in IPA integrated DNS server
+Requires: %{name}-client-encrypted-dns
+Requires: %{name}-server-dns
+Requires: bind9.18
+Requires: bind9.18-utils
+Requires: bind9.18-dnssec-utils
+Requires: bind9.18-dyndb-ldap
+
+%description server-encrypted-dns
+Provides support for enabling DNS over TLS in the IPA integrated DNS
+server.
 
 
 %package server-trust-ad
@@ -759,6 +809,15 @@ and integration with Active Directory based infrastructures (Trusts).
 If your network uses IPA for authentication, this package should be
 installed on every client machine.
 This package provides command-line tools for IPA administrators.
+
+%package client-encrypted-dns
+Summary: Enable encrypted DNS support for clients
+Requires: %{name}-client
+Requires: unbound
+
+%description client-encrypted-dns
+This package enables support for installing clients with encrypted DNS
+via DNS over TLS.
 
 %package client-samba
 Summary: Tools to configure Samba on IPA client
@@ -1707,6 +1766,10 @@ fi
 %attr(644,root,root) %{_unitdir}/ipa-ods-exporter.socket
 %attr(644,root,root) %{_unitdir}/ipa-ods-exporter.service
 
+%files server-encrypted-dns
+%doc README.md Contributors.txt
+%license COPYING
+
 %files server-trust-ad
 %doc README.md Contributors.txt
 %license COPYING
@@ -1765,6 +1828,10 @@ fi
 %attr(644,root,root) %{_unitdir}/ipa-epn.timer
 %attr(600,root,root) %config(noreplace) %{_sysconfdir}/ipa/epn.conf
 %attr(644,root,root) %config(noreplace) %{_sysconfdir}/ipa/epn/expire_msg.template
+
+%files client-encrypted-dns
+%doc README.md Contributors.txt
+%license COPYING
 
 %files -n python3-ipaclient
 %doc README.md Contributors.txt
@@ -1876,20 +1943,64 @@ fi
 %endif
 
 %changelog
-* Thu Jan 23 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-1.4
-- Resolves: RHEL-76011 kinit with external idp user is failing
+* Thu Mar 20 2025 Thomas Woerner <twoerner@redhat.com> - 4.12.2-14
+- Resolves: RHEL-80345 Use new bind9.18-dyndb-ldap and bind9.18 only for DNS over TLS with the ipa-server-encrypted-dns package
 
-* Tue Dec 17 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-1.3
-- Resolves: RHEL-69928 add support for python cryptography 44.0.0
-- Resolves: RHEL-70258 Upgrade to ipa-server-4.12.2-1.el9 OTP-based bind to LDAP without enforceldapotp is broken
-- Resolves: RHEL-70482 ipa-server-upgrade fails after established trust with ad
-- Resolves: RHEL-67192 CVE-2024-11029 ipa: Administrative user data leaked through systemd journal
+* Wed Feb 12 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-13
+- Resolves: RHEL-67913 Add DNS over TLS Support
 
-* Wed Nov 27 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-1.2
-- Resolves: RHEL-69294 add a tool to quickly detect and fix issues with IPA ID ranges
+* Tue Feb 11 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-12
+- Resolves: RHEL-78726 ipa-server-install failing on slow hsm
 
-* Fri Nov 08 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-1.1
-- Resolves: RHEL-66173 Last expired OTP token would be considered as still assigned to the user
+* Tue Feb 11 2025 Thomas Woerner <twoerner@redhat.com> - 4.12.2-11
+- Resolves: RHEL-67913 Add DNS over TLS Support, Require bind9.18 32:9.18.29-2 and new bind-dyndb-ldap 11.11-1
+
+* Tue Jan 28 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-10
+- Resolves: RHEL-73022 A slow HSM can cause IPA server installation to fail setting up certificate tracking
+
+* Tue Jan 21 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-9
+- Resolves: RHEL-74465 kinit with external idp user is failing
+- Resolves: RHEL-75656 Include latest fixes in python3-ipatests package
+
+* Thu Jan 16 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-8
+- Resolves: RHEL-73022 A slow HSM can cause IPA server installation to fail setting up certificate tracking [rhel-9]
+- Resolves: RHEL-71261 [RHEL-9.6] Include latest fixes in python3-ipatests package
+- Resolves: RHEL-67191 CVE-2024-11029 ipa: Administrative user data leaked through systemd journal [rhel-9.6]
+- Resolves: RHEL-59040 KRA installation failure caused by a certificate mismatch in NSS DB and configuration file.
+
+* Wed Dec 11 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-7
+- Resolves: RHEL-70760 Fix typo in ipa-migrate log file i.e 'Privledges' to 'Privileges'
+- Resolves: RHEL-70481 ipa-server-upgrade fails after established trust with ad
+- Resolves: RHEL-69927 add support for python cryptography 44.0.0
+- Resolves: RHEL-69908 All user groups are not being included during HSM token validation
+- Resolves: RHEL-69900 Upgrade to ipa-server-4.12.2-1.el9 OTP-based bind to LDAP without enforceldapotp is broken
+
+* Wed Nov 27 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-6
+- Resolves: RHEL-68448 ipa trust-add fails in FIPS mode with an internal error has occurred
+- Resolves: RHEL-69301 Support GSSAPI in Cockpit on IPA servers
+
+* Wed Nov 20 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-5
+- Resolves: RHEL-67414 ipa dns-zone --allow-query '!198.18.2.0/24;any;' fails with Unrecognized IPAddress flags
+- Resolves: RHEL-67410 ipa-migrate should also migrate DNS forward zones
+- Resolves: RHEL-67409 ipa-migrate in stage mode fails with TypeError: 'NoneType' object is not iterable
+- Resolves: RHEL-66964 Include latest fixes in python3-ipatests packages
+- Resolves: RHEL-64135 IDP configuration in the IdM WebUI shows Organization is required
+
+* Mon Nov 4 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-4
+- Bump release for rebuild
+
+* Tue Oct 29 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-3
+- Resolves: RHEL-61642 Uninstall ACME separately during PKI uninstallation
+
+* Mon Oct 21 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-2
+- Related: RHEL-59788 Rebase Samba to the latest 4.21.x release
+- Resolves: RHEL-61642 Uninstall ACME separately during PKI uninstallation
+- Resolves: RHEL-56963 SSSD offline causing test-adtrust-install failure
+- Resolves: RHEL-56473 Include latest fixes in python3-ipatests packages
+- Resolves: RHEL-48104 Default hbac rules are duplicated on remote server post ipa-migrate in prod-mode
+- Resolves: RHEL-45330 [RFE] add a tool to quickly detect and fix issues with IPA ID ranges
+- Resolves: RHEL-40376 SID generation task is failing when SELinux is in Enforcing mode
+- Resolves: RHEL-4915 Last expired OTP token would be considered as still assigned to the user
 
 * Wed Aug 21 2024 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-1
 - Resolves: RHEL-54546 Covscan issues: Resource Leak

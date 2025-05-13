@@ -1,0 +1,34 @@
+From c64c098e1d0ae492499caa83a1b73532da511f84 Mon Sep 17 00:00:00 2001
+From: Carla Martinez <carlmart@redhat.com>
+Date: Tue, 29 Oct 2024 15:23:55 +0100
+Subject: [PATCH] Fix: 'Organization' field in Okta not required
+
+Although the 'Organization' field is not required
+when using the Okta template, the WebUI requires it
+in order to create a new IDP. If this is not provided,
+an error is shown.
+
+Fixes: https://pagure.io/freeipa/issue/9687
+Signed-off-by: Carla Martinez <carlmart@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ install/ui/src/freeipa/idp.js | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/install/ui/src/freeipa/idp.js b/install/ui/src/freeipa/idp.js
+index ada09c0754f5a51575831e127deb81d1f27f44d1..04daad591a8e94ea9b8c146c12e0c84aaad6cee4 100644
+--- a/install/ui/src/freeipa/idp.js
++++ b/install/ui/src/freeipa/idp.js
+@@ -41,7 +41,7 @@ idp.templates = [
+       fields: ['ipaidporg']},
+     { value: 'okta',
+       label: text.get('@i18n:objects.idp.template_okta'),
+-      fields: ['ipaidporg', 'ipaidpbaseurl']}
++      fields: ['ipaidpbaseurl']}
+ ];
+ 
+ 
+-- 
+2.47.0
+

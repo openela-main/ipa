@@ -1,0 +1,62 @@
+From 91353b10748f1153540c6f5447a80864dee59d7f Mon Sep 17 00:00:00 2001
+From: Antonio Torres <antorres@redhat.com>
+Date: Wed, 12 Feb 2025 09:48:58 +0100
+Subject: [PATCH] dns: only disable unbound when DoT is enabled
+
+Ensure unbound is only stopped and disabled when DNS over TLS was
+enabled during installation.
+
+Signed-off-by: Antonio Torres <antorres@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipaserver/install/bindinstance.py | 11 +++++++----
+ ipaserver/install/dns.py          |  3 +++
+ 2 files changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/ipaserver/install/bindinstance.py b/ipaserver/install/bindinstance.py
+index 4f4ab9bbc66fcfd89354d6659cf9ac2bcaa270f6..0cc1f1325ce0a9dbdb09f4100a1a22bc4f24924a 100644
+--- a/ipaserver/install/bindinstance.py
++++ b/ipaserver/install/bindinstance.py
+@@ -689,6 +689,8 @@ class BindInstance(service.Service):
+         self.forward_policy = forward_policy
+         self.reverse_zones = reverse_zones
+ 
++        self.sstore.backup_state("dns_over_tls", "enabled", dns_over_tls)
++
+         if not zonemgr:
+             self.zonemgr = 'hostmaster.%s' % normalize_zone(self.domain)
+         else:
+@@ -1377,10 +1379,11 @@ class BindInstance(service.Service):
+ 
+         self.named_conflict.unmask()
+ 
+-        certmonger.stop_tracking(certfile=paths.BIND_DNS_OVER_TLS_CRT)
+-        certmonger.stop_tracking(certfile=paths.BIND_DNS_OVER_TLS_KEY)
+-        services.knownservices.unbound.disable()
+-        services.knownservices.unbound.stop()
++        if self.sstore.restore_state("dns_over_tls", "enabled"):
++            if not self.sstore.restore_state("dns_over_tls", "external_crt"):
++                certmonger.stop_tracking(certfile=paths.BIND_DNS_OVER_TLS_CRT)
++            services.knownservices["unbound"].disable()
++            services.knownservices["unbound"].stop()
+ 
+         ipautil.remove_file(paths.NAMED_CONF_BAK)
+         ipautil.remove_file(paths.NAMED_CUSTOM_CONF)
+diff --git a/ipaserver/install/dns.py b/ipaserver/install/dns.py
+index 29ca0d2ff4efa8ad80784b393f49ac8ec0e03512..88aff19bcec11f778af5644167c32c45cbcab594 100644
+--- a/ipaserver/install/dns.py
++++ b/ipaserver/install/dns.py
+@@ -457,6 +457,9 @@ def install(standalone, replica, options, api=api):
+ 
+     bind.create_instance()
+ 
++    bind.sstore.backup_state("dns_over_tls",
++                             "external_crt",
++                             bool(options.dns_over_tls_cert))
+     if options.dns_over_tls:
+         print("Setting up DNS over TLS")
+         _setup_dns_over_tls(options)
+-- 
+2.48.1
+

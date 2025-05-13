@@ -1497,5 +1497,5 @@ index 0000000000000000000000000000000000000000..de3da9bfd221ce74f1d1bbb0dbe12e4d
 +        assert expected_text in result.stderr_text
 +        assert expected_user in result.stderr_text
 -- 
-2.47.0
+2.46.2
 
