@@ -1,0 +1,87 @@
+From 5d893c9c3b8d384873f40d2524b1ebf0f34fb452 Mon Sep 17 00:00:00 2001
+From: Julien Rische <jrische@redhat.com>
+Date: Mon, 28 Apr 2025 18:01:39 +0200
+Subject: [PATCH] kdb: keep ipadb_get_connection() from succeeding with null
+ LDAP context
+
+The final call to ipadb_reinit_mspac() in ipadb_get_connection() is not
+considered essential for the function to succeed, as there might be
+cases where the required pieces of information to generate PACs are not
+yet configured in the database. However, in environments where 389ds is
+overwhelmed, the LDAP connection established at the beginning of
+ipadb_get_connection() might already be lost while executing
+ipadb_reinit_mspac().
+
+Connection errors were not distinguished from configuration errors,
+which could result in ipadb_get_connection() succeeding while the LDAP
+context is set to null, leading to a KDC crash on the next LDAP request.
+
+ipadb_get_connection() now explicitly checks the value of the LDAP
+context before returning.
+
+Fixes: https://pagure.io/freeipa/issue/9777
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Rafael Guterres Jeffman <rjeffman@redhat.com>
+---
+ daemons/ipa-kdb/ipa_kdb.c | 31 ++++++++++++++++++++++++-------
+ 1 file changed, 24 insertions(+), 7 deletions(-)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb.c b/daemons/ipa-kdb/ipa_kdb.c
+index 903e19e83bbe383b878a3b9261dd501f96058d51..531ee223e1d5157c87a5c31dfe44b9cfa8dcc554 100644
+--- a/daemons/ipa-kdb/ipa_kdb.c
++++ b/daemons/ipa-kdb/ipa_kdb.c
+@@ -530,26 +530,43 @@ int ipadb_get_connection(struct ipadb_context *ipactx)
+ 
+     /* get adtrust options using default refresh interval */
+     ret = ipadb_reinit_mspac(ipactx, false, &stmsg);
+-    if (ret && stmsg)
+-        krb5_klog_syslog(LOG_WARNING, "MS-PAC generator: %s", stmsg);
++    if (ret) {
++        if (stmsg) {
++            krb5_klog_syslog(LOG_WARNING, "MS-PAC generator: %s", stmsg);
++        }
++        /* Initialization of the MS-PAC generator is an optional dependency.
++         * Fail only if the connection was lost. */
++        if (!ipactx->lcontext) {
++            goto done;
++        }
++    }
+ 
+     ret = 0;
+ 
+ done:
+     ldap_msgfree(res);
+ 
++    /* LDAP context should never be null on success, but keep this test out of
++     * security to make sure we do not return an invalid context. */
++    if (ret == 0 && !ipactx->lcontext) {
++        krb5_klog_syslog(LOG_WARNING, "Internal malfunction: LDAP connection "
++                                      "process resulted in an invalid context "
++                                      "(please report this incident)");
++        ret = LDAP_SERVER_DOWN;
++    }
++
+     if (ret) {
++        /* Cleanup LDAP context if connection failed. */
+         if (ipactx->lcontext) {
+             ldap_unbind_ext_s(ipactx->lcontext, NULL, NULL);
+             ipactx->lcontext = NULL;
+         }
+-        if (ret == LDAP_SERVER_DOWN) {
+-            return ETIMEDOUT;
+-        }
+-        return EIO;
++
++        /* Replace LDAP error code by POSIX error code. */
++        ret = ret == LDAP_SERVER_DOWN ? ETIMEDOUT : EIO;
+     }
+ 
+-    return 0;
++    return ret;
+ }
+ 
+ static krb5_principal ipadb_create_local_tgs(krb5_context kcontext,
+-- 
+2.49.0
+

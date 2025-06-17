@@ -218,7 +218,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        14%{?rc_version:.%rc_version}%{?dist}
+Release:        14%{?rc_version:.%rc_version}%{?dist}.1
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -297,6 +297,8 @@ Patch0052:      0052-Add-DNS-over-TLS-support.patch
 Patch0053:      0053-Configure-the-pki-tomcatd-service-systemd-timeout.patch
 Patch0054:      0054-Align-startup_timeout-with-the-systemd-default-and-d.patch
 Patch0055:      0055-dns-only-disable-unbound-when-DoT-is-enabled.patch
+Patch0056:      0056-kdb-keep-ipadb_get_connection-from-succeeding-with-n.patch
+Patch0057:      0057-Set-krbCanonicalName-admin-REALM-on-the-admin-user.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -1943,6 +1945,12 @@ fi
 %endif
 
 %changelog
+* Thu May 15 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-14.1
+- Resolves: RHEL-89908
+  EMBARGOED CVE-2025-4404 ipa: Privilege escalation from host to domain admin in FreeIPA
+- Resolves: RHEL-89144
+  kdb: ipadb_get_connection() succeeds but returns null LDAP context
+
 * Thu Mar 20 2025 Thomas Woerner <twoerner@redhat.com> - 4.12.2-14
 - Resolves: RHEL-80345 Use new bind9.18-dyndb-ldap and bind9.18 only for DNS over TLS with the ipa-server-encrypted-dns package
 

@@ -1,0 +1,188 @@
+From d6d2282f9f1b93ae7fb6e074920e41e64f35ab12 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Mon, 28 Apr 2025 13:43:40 -0400
+Subject: [PATCH] Set krbCanonicalName=admin@REALM on the admin user
+
+The admin must always own this name. If another entry has this
+value set then remove it.
+
+There is a uniqueness plugin for this attribute so the only two
+possibilities are:
+
+- no entry has this value set
+- the admin user has this value set
+- a different entry has the value set
+
+Still, for robustness purposes, the upgrade plugin will handle
+more entries.
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+---
+ install/share/bootstrap-template.ldif         |  1 +
+ .../updates/90-post_upgrade_plugins.update    |  1 +
+ .../plugins/add_admin_krbcanonicalname.py     | 79 +++++++++++++++++++
+ ipatests/test_integration/test_commands.py    | 38 +++++++++
+ 4 files changed, 119 insertions(+)
+ create mode 100644 ipaserver/install/plugins/add_admin_krbcanonicalname.py
+
+diff --git a/install/share/bootstrap-template.ldif b/install/share/bootstrap-template.ldif
+index 325eb8450..94972eb72 100644
+--- a/install/share/bootstrap-template.ldif
++++ b/install/share/bootstrap-template.ldif
+@@ -239,6 +239,7 @@ objectClass: ipasshuser
+ uid: admin
+ krbPrincipalName: admin@$REALM
+ krbPrincipalName: root@$REALM
++krbCanonicalName: admin@$REALM
+ cn: Administrator
+ sn: Administrator
+ uidNumber: $IDSTART
+diff --git a/install/updates/90-post_upgrade_plugins.update b/install/updates/90-post_upgrade_plugins.update
+index 7c3bba3e0..3d78c7b5a 100644
+--- a/install/updates/90-post_upgrade_plugins.update
++++ b/install/updates/90-post_upgrade_plugins.update
+@@ -25,6 +25,7 @@ plugin: update_mapping_Guests_to_nobody
+ plugin: fix_kra_people_entry
+ plugin: update_pwpolicy
+ plugin: update_pwpolicy_grace
++plugin: add_admin_krbcanonicalname
+ 
+ # last
+ # DNS version 1
+diff --git a/ipaserver/install/plugins/add_admin_krbcanonicalname.py b/ipaserver/install/plugins/add_admin_krbcanonicalname.py
+new file mode 100644
+index 000000000..e9ffdf55a
+--- /dev/null
++++ b/ipaserver/install/plugins/add_admin_krbcanonicalname.py
+@@ -0,0 +1,79 @@
++#
++# Copyright (C) 2025  FreeIPA Contributors see COPYING for license
++#
++
++from __future__ import absolute_import
++
++import logging
++
++from ipalib import errors
++from ipalib import Registry
++from ipalib import Updater
++from ipapython.dn import DN
++
++logger = logging.getLogger(__name__)
++
++register = Registry()
++
++
++@register()
++class add_admin_krbcanonicalname(Updater):
++    """
++    Ensures that only the admin user has the krbCanonicalName of
++    admin@$REALM.
++    """
++
++    def execute(self, **options):
++        ldap = self.api.Backend.ldap2
++
++        search_filter = (
++            "(krbcanonicalname=admin@{})".format(self.api.env.realm))
++        try:
++            (entries, _truncated) = ldap.find_entries(
++                filter=search_filter, base_dn=self.api.env.basedn,
++                time_limit=0, size_limit=0)
++        except errors.EmptyResult:
++            logger.debug("add_admin_krbcanonicalname: No user set with "
++                         "admin krbcanonicalname")
++            entries = []
++            # fall through
++        except errors.ExecutionError as e:
++            logger.error("add_admin_krbcanonicalname: Can not get list "
++                         "of krbcanonicalname: %s", e)
++            return False, []
++
++        admin_set = False
++        # admin should be only user with admin@ as krbcanonicalname
++        # It has a uniquness setting so there can be only one, we
++        # just didn't automatically set it for admin.
++        for entry in entries:
++            if entry.single_value.get('uid') != 'admin':
++                logger.critical(
++                    "add_admin_krbcanonicalname: "
++                    "entry %s has a krbcanonicalname of admin. Removing.",
++                    entry.dn)
++                del entry['krbcanonicalname']
++                ldap.update_entry(entry)
++            else:
++                admin_set = True
++
++        if not admin_set:
++            dn = DN(
++                ('uid', 'admin'),
++                self.api.env.container_user,
++                self.api.env.basedn)
++            entry = ldap.get_entry(dn)
++            entry['krbcanonicalname'] = 'admin@%s' % self.api.env.realm
++            try:
++                ldap.update_entry(entry)
++            except errors.DuplicateEntry:
++                logger.critical(
++                    "add_admin_krbcanonicalname: "
++                    "Failed to set krbcanonicalname on admin. It is set "
++                    "on another entry.")
++            except errors.ExecutionError as e:
++                logger.critical(
++                    "add_admin_krbcanonicalname: "
++                    "Failed to set krbcanonicalname on admin: %s", e)
++
++        return False, []
+diff --git a/ipatests/test_integration/test_commands.py b/ipatests/test_integration/test_commands.py
+index 621982c4f..1526a6e0d 100644
+--- a/ipatests/test_integration/test_commands.py
++++ b/ipatests/test_integration/test_commands.py
+@@ -1883,6 +1883,44 @@ class TestIPACommandWithoutReplica(IntegrationTest):
+         assert old_err_msg not in dirsrv_error_log
+         assert re.search(new_err_msg, dirsrv_error_log)
+ 
++    def test_unique_krbcanonicalname(self):
++        """Verify that the uniqueness for krbcanonicalname is working"""
++        master = self.master
++
++        base_dn = str(master.domain.basedn)
++        hostname = master.hostname
++        realm = master.domain.realm
++        principal = f'test/{hostname}@{realm}'
++        entry_ldif = textwrap.dedent("""
++            dn: krbprincipalname={principal},cn=services,cn=accounts,{base_dn}
++            changetype: add
++            ipakrbprincipalalias: test/{hostname}@{realm}
++            krbprincipalname: {principal}
++            objectclass: ipakrbprincipal
++            objectclass: ipaobject
++            objectclass: ipaservice
++            objectclass: krbprincipal
++            objectclass: krbprincipalaux
++            objectclass: top
++            krbcanonicalname: admin@{realm}
++            managedby: fqdn={hostname},cn=computers,cn=accounts,{base_dn}
++        """).format(
++            base_dn=base_dn,
++            hostname=hostname,
++            principal=principal,
++            realm=realm)
++        tasks.kdestroy_all(master)
++        master.run_command(
++            ['kinit', '-kt', '/etc/krb5.keytab', f'host/{hostname}@{realm}'])
++        args = [
++            'ldapmodify',
++            '-Y',
++            'GSSAPI'
++        ]
++        result = master.run_command(args, stdin_text=entry_ldif,
++                                    raiseonerr=False)
++        assert "entry with the same attribute value" in result.stderr_text
++
+ 
+ class TestIPAautomount(IntegrationTest):
+     @classmethod
+-- 
+2.48.1
+
