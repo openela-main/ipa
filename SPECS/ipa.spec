@@ -190,7 +190,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        16%{?rc_version:.%rc_version}%{?dist}
+Release:        18%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPLv3+
@@ -247,6 +247,8 @@ Patch0035:      0035-Unconditionally-add-MS-PAC-to-global-config-on-update_rhel#
 Patch0036:      0036-ipatests-Update-ipa-adtrust-install-test_rhel#40894.patch
 Patch0037:      0037-Replica-CA-installation-ignore-skew-during-initial-replication_rhel#80995.patch
 Patch0038:      0038-Add-a-check-into-ipa-cert-fix-tool-to-avoid-updating-certs-if-CA-is-close-to-being-expired_rhel#4941.patch
+Patch0039:      0039-kdb-keeep-ipadb_get_connection-from-succeding-with-null-LDAP-context_rhel#58435.patch
+Patch0040:      0040-Set-krbCanonicalName-admin-REALM-on-the-admin-user_rhel#89895.patch
 %if 0%{?rhel} >= 8
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
@@ -1761,6 +1763,14 @@ fi
 %endif
 
 %changelog
+* Tue Jun 03 2025 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-18
+- Set krbCanonicalName admin@REALM on the admin user
+  Resolves: RHEL-89895
+
+* Mon May 19 2025 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-17
+- kdb: keeep ipadb_get_connection() from succeding with null LDAP context
+  Resolves: RHEL-58453
+
 * Mon Mar 31 2025 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-16
 - Add a- heck into ipa-cert-fix tool to avoid updating certs if CA is close to expire
   Resolves: RHEL-4941
