@@ -218,7 +218,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        14%{?rc_version:.%rc_version}%{?dist}.1
+Release:        14%{?rc_version:.%rc_version}%{?dist}.3
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -299,6 +299,8 @@ Patch0054:      0054-Align-startup_timeout-with-the-systemd-default-and-d.patch
 Patch0055:      0055-dns-only-disable-unbound-when-DoT-is-enabled.patch
 Patch0056:      0056-kdb-keep-ipadb_get_connection-from-succeeding-with-n.patch
 Patch0057:      0057-Set-krbCanonicalName-admin-REALM-on-the-admin-user.patch
+Patch0058:      0058-ipa-sidgen-fix-memory-leak-in-ipa_sidgen_add_post_op.patch
+Patch0059:      0059-ipatests-use-sos-report-instead-of-sosreport-command.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -1945,6 +1947,14 @@ fi
 %endif
 
 %changelog
+* Tue Jul 29 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-14.3
+- Resolves: RHEL-106165
+  ipatests: use "sos report" instead of "sosreport" command
+
+* Tue Jul 22 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-14.2
+- Resolves: RHEL-104857
+  ipa-sidgen: fix memory leak in ipa_sidgen_add_post_op() [rhel-9.6.z]
+
 * Thu May 15 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-14.1
 - Resolves: RHEL-89908
   EMBARGOED CVE-2025-4404 ipa: Privilege escalation from host to domain admin in FreeIPA
