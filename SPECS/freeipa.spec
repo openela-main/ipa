@@ -79,7 +79,9 @@
 %global selinux_policy_version 3.14.3-107
 %else
 # version supporting LMDB and lib389.cli_ctl.dblib.run_dbscan utility
-%global ds_version 2.1.0
+# Allow Uniqueness plugin to search uniqueness
+# attributes using custom matching rules
+%global ds_version 2.6.1-11
 %global selinux_policy_version 38.1.1-1
 %endif
 
@@ -218,7 +220,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        14%{?rc_version:.%rc_version}%{?dist}.3
+Release:        14%{?rc_version:.%rc_version}%{?dist}.5
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -301,6 +303,9 @@ Patch0056:      0056-kdb-keep-ipadb_get_connection-from-succeeding-with-n.patch
 Patch0057:      0057-Set-krbCanonicalName-admin-REALM-on-the-admin-user.patch
 Patch0058:      0058-ipa-sidgen-fix-memory-leak-in-ipa_sidgen_add_post_op.patch
 Patch0059:      0059-ipatests-use-sos-report-instead-of-sosreport-command.patch
+Patch0060:      0060-Enforce-uniqueness-across-krbprincipalname-and-krbca.patch
+Patch0061:      0061-ipa-kdb-enforce-PAC-presence-on-TGT-for-TGS-REQ.patch
+Patch0062:      0062-ipatests-extend-test-for-unique-krbcanonicalname.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -1947,6 +1952,14 @@ fi
 %endif
 
 %changelog
+* Thu Sep 11 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-14.5
+- Resolves: RHEL-110068
+  EMBARGOED CVE-2025-7493 ipa: Privilege escalation from host to domain admin in FreeIPA
+
+* Wed Sep 03 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-14.4
+- Resolves: RHEL-110068
+  EMBARGOED CVE-2025-7493 ipa: Privilege escalation from host to domain admin in FreeIPA
+
 * Tue Jul 29 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-14.3
 - Resolves: RHEL-106165
   ipatests: use "sos report" instead of "sosreport" command
