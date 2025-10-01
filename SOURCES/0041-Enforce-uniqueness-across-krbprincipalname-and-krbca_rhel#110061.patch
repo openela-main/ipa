@@ -1,0 +1,106 @@
+From a37de8c22976a75caf969e232229ff6521ff4936 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Thu, 10 Jul 2025 11:44:36 -0400
+Subject: [PATCH] Enforce uniqueness across krbprincipalname and
+ krbcanonicalname
+
+This relies on a fix in 389-ds that extends the uniqueness plugin
+to be able to compare attributes with different matching syntax.
+
+This will prevent privilege escalation attacks if one of the
+attributes is not set on an entry if it is set elsewhere.
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+---
+ install/share/unique-attributes.ldif | 28 +++++-----------------------
+ install/updates/10-uniqueness.update | 27 +++++++++++++++++++++++----
+ 2 files changed, 28 insertions(+), 27 deletions(-)
+
+diff --git a/install/share/unique-attributes.ldif b/install/share/unique-attributes.ldif
+index 60f2c3470..b28d981b5 100644
+--- a/install/share/unique-attributes.ldif
++++ b/install/share/unique-attributes.ldif
+@@ -1,34 +1,16 @@
+-dn: cn=krbPrincipalName uniqueness,cn=plugins,cn=config
++dn: cn=kerberos name uniqueness,cn=plugins,cn=config
+ changetype: add
+ objectClass: top
+ objectClass: nsSlapdPlugin
+ objectClass: extensibleObject
+-cn: krbPrincipalName uniqueness
++cn: kerberos name uniqueness
+ nsslapd-pluginPath: libattr-unique-plugin
+ nsslapd-pluginInitfunc: NSUniqueAttr_Init
+ nsslapd-pluginType: preoperation
+ nsslapd-pluginEnabled: on
+-uniqueness-attribute-name: krbPrincipalName
+-nsslapd-plugin-depends-on-type: database
+-nsslapd-pluginId: NSUniqueAttr
+-nsslapd-pluginVersion: 1.1.0
+-nsslapd-pluginVendor: Fedora Project
+-nsslapd-pluginDescription: Enforce unique attribute values
+-uniqueness-subtrees: $SUFFIX
+-uniqueness-exclude-subtrees: cn=staged users,cn=accounts,cn=provisioning,$SUFFIX
+-uniqueness-across-all-subtrees: on
+-
+-dn: cn=krbCanonicalName uniqueness,cn=plugins,cn=config
+-changetype: add
+-objectClass: top
+-objectClass: nsSlapdPlugin
+-objectClass: extensibleObject
+-cn: krbCanonicalName uniqueness
+-nsslapd-pluginPath: libattr-unique-plugin
+-nsslapd-pluginInitfunc: NSUniqueAttr_Init
+-nsslapd-pluginType: preoperation
+-nsslapd-pluginEnabled: on
+-uniqueness-attribute-name: krbCanonicalName
++uniqueness-attribute-name: krbPrincipalName:CaseIgnoreMatch:
++uniqueness-attribute-name: krbPrincipalAlias:CaseIgnoreMatch:
++uniqueness-attribute-name: krbCanonicalName:CaseIgnoreMatch:
+ nsslapd-plugin-depends-on-type: database
+ nsslapd-pluginId: NSUniqueAttr
+ nsslapd-pluginVersion: 1.1.0
+diff --git a/install/updates/10-uniqueness.update b/install/updates/10-uniqueness.update
+index fa17911f2..5c5bfd3e0 100644
+--- a/install/updates/10-uniqueness.update
++++ b/install/updates/10-uniqueness.update
+@@ -63,13 +63,32 @@ add:uniqueness-subtree-entries-oc: posixAccount
+ 
+ # krbPrincipalName uniqueness scopes Active/Delete containers
+ dn: cn=krbPrincipalName uniqueness,cn=plugins,cn=config
+-add:uniqueness-exclude-subtrees: cn=staged users,cn=accounts,cn=provisioning,$SUFFIX
+-add:uniqueness-across-all-subtrees: on
++deleteentry: cn=krbPrincipalName uniqueness,cn=plugins,cn=config
+ 
+ # krbCanonicalName uniqueness scopes Active/Delete containers
+ dn: cn=krbCanonicalName uniqueness,cn=plugins,cn=config
+-add:uniqueness-exclude-subtrees: cn=staged users,cn=accounts,cn=provisioning,$SUFFIX
+-add:uniqueness-across-all-subtrees: on
++deleteentry: dn: cn=krbCanonicalName uniqueness,cn=plugins,cn=config
++
++dn: cn=kerberos name uniqueness,cn=plugins,cn=config
++default:objectClass: top
++default:objectClass: nsSlapdPlugin
++default:objectClass: extensibleObject
++default:cn: kerberos name uniqueness
++default:nsslapd-pluginPath: libattr-unique-plugin
++default:nsslapd-pluginInitfunc: NSUniqueAttr_Init
++default:nsslapd-pluginType: preoperation
++default:nsslapd-pluginEnabled: on
++default:uniqueness-attribute-name: krbPrincipalName:CaseIgnoreMatch:
++default:uniqueness-attribute-name: krbPrincipalAlias:CaseIgnoreMatch:
++default:uniqueness-attribute-name: krbCanonicalName:CaseIgnoreMatch:
++default:nsslapd-plugin-depends-on-type: database
++default:nsslapd-pluginId: NSUniqueAttr
++default:nsslapd-pluginVersion: 1.1.0
++default:nsslapd-pluginVendor: Fedora Project
++default:nsslapd-pluginDescription: Enforce unique attribute values
++default:uniqueness-subtrees: $SUFFIX
++default:uniqueness-exclude-subtrees: cn=staged users,cn=accounts,cn=provisioning,$SUFFIX
++default:uniqueness-across-all-subtrees: on
+ 
+ # ipaUniqueID uniqueness scopes Active/Delete containers
+ dn: cn=ipaUniqueID uniqueness,cn=plugins,cn=config
+-- 
+2.50.1
+

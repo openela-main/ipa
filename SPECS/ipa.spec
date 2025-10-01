@@ -74,7 +74,7 @@
 %global python_ldap_version 3.1.0-1
 %if 0%{?rhel} < 9
 # Bug 1929067 - PKI instance creation failed with new 389-ds-base build
-%global ds_version 1.4.3.16-12
+%global ds_version 1.4.3.39-15
 %else
 %global ds_version 2.0.3-3
 %endif
@@ -190,7 +190,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        18%{?rc_version:.%rc_version}%{?dist}
+Release:        20%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPLv3+
@@ -249,6 +249,10 @@ Patch0037:      0037-Replica-CA-installation-ignore-skew-during-initial-replicat
 Patch0038:      0038-Add-a-check-into-ipa-cert-fix-tool-to-avoid-updating-certs-if-CA-is-close-to-being-expired_rhel#4941.patch
 Patch0039:      0039-kdb-keeep-ipadb_get_connection-from-succeding-with-null-LDAP-context_rhel#58435.patch
 Patch0040:      0040-Set-krbCanonicalName-admin-REALM-on-the-admin-user_rhel#89895.patch
+Patch0041:      0041-Enforce-uniqueness-across-krbprincipalname-and-krbca_rhel#110061.patch
+Patch0042:      0042-ipa-kdb-enforce-PAC-presence-on-TGT-for-TGS-REQ_rhel#110061.patch
+Patch0043:      0043-ipatests-extend-test-for-unique-krbcanonicalname_rhel#110061.patch
+Patch0044:      0044-ipatests-refactor-krb-unique-tests_rhel#110061.patch
 %if 0%{?rhel} >= 8
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
@@ -1763,6 +1767,16 @@ fi
 %endif
 
 %changelog
+* Thu Sep 11 2025 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-20
+- Refactor ipatests for unique krbcanonicalname
+  Resolves: RHEL-110061
+
+* Thu Sep 11 2025 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-19
+- Enforce uniqueness across krbprincipalname and krbcanonicalname
+  ipa-kdb: enforce PAC presence on TGT for TGS-REQ
+  ipatests: extend test for unique krbcanonicalname
+  Resolves: RHEL-110061
+
 * Tue Jun 03 2025 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-18
 - Set krbCanonicalName admin@REALM on the admin user
   Resolves: RHEL-89895
