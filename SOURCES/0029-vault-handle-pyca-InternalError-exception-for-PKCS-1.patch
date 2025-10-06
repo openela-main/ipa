@@ -1,0 +1,44 @@
+From dad2f06ed6854abbd81b747c26de6c13dfea327b Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Wed, 30 Oct 2024 10:48:50 +0200
+Subject: [PATCH] vault: handle pyca InternalError exception for PKCS#1 v1.5
+ padding
+
+In FIPS mode one cannot use PKCS#1 v1.5 padding. OpenSSL did remove it
+from the FIPS provider and will report an error that PyCA cannot
+process, so it will raise its own InternalException.
+
+Handle it the same way as ValueError.
+
+Fixes: https://pagure.io/freeipa/issue/9689
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Francisco Trivino <ftrivino@redhat.com>
+---
+ ipaclient/plugins/vault.py | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/ipaclient/plugins/vault.py b/ipaclient/plugins/vault.py
+index 96edf09a2060e7b39e1e96c6fa65ae095ec18e73..75415c03a57242ae674636fa31a72db2fa56d6ea 100644
+--- a/ipaclient/plugins/vault.py
++++ b/ipaclient/plugins/vault.py
+@@ -37,6 +37,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+ from cryptography.hazmat.primitives.padding import PKCS7
+ from cryptography.hazmat.primitives.serialization import (
+     load_pem_public_key, load_pem_private_key)
++from cryptography.exceptions import InternalError as CryptographyInternalError
+ 
+ from ipaclient.frontend import MethodOverride
+ from ipalib import x509
+@@ -717,7 +718,7 @@ class ModVaultData(Local):
+                     algo.key,
+                     padding.PKCS1v15()
+                 )
+-            except ValueError:
++            except (ValueError, CryptographyInternalError):
+                 wrapped_session_key = public_key.encrypt(
+                     algo.key,
+                     padding.OAEP(
+-- 
+2.47.0
+

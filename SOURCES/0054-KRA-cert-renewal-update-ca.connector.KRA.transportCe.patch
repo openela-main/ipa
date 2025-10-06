@@ -1,0 +1,45 @@
+From a707083b0987e6ffabb817fcc5e5138b4c755459 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Fri, 20 Dec 2024 17:01:56 +0100
+Subject: [PATCH] KRA cert renewal: update ca.connector.KRA.transportCert
+
+After the KRA transport cert has been renewed, the value
+of ca.connector.KRA.transportCert must also be updated in
+/etc/pki/pki-tomcat/ca/CS.cfg.
+Otherwise replica installation with KRA fails.
+
+Fixes: https://pagure.io/freeipa/issue/9692
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipaserver/install/cainstance.py | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/ipaserver/install/cainstance.py b/ipaserver/install/cainstance.py
+index 5c2c9f8b981cf5d587865f7680e2b231eae655e2..e03a8c863e14782679e19c6887f5e220131e4234 100644
+--- a/ipaserver/install/cainstance.py
++++ b/ipaserver/install/cainstance.py
+@@ -1225,11 +1225,14 @@ class CAInstance(DogtagInstance):
+         """
+ 
+         # The cert directive to update per nickname
+-        directives = {'auditSigningCert cert-pki-ca': 'ca.audit_signing.cert',
+-                      'ocspSigningCert cert-pki-ca': 'ca.ocsp_signing.cert',
+-                      'caSigningCert cert-pki-ca': 'ca.signing.cert',
+-                      'subsystemCert cert-pki-ca': 'ca.subsystem.cert',
+-                      'Server-Cert cert-pki-ca': 'ca.sslserver.cert'}
++        directives = {
++            'auditSigningCert cert-pki-ca': 'ca.audit_signing.cert',
++            'ocspSigningCert cert-pki-ca': 'ca.ocsp_signing.cert',
++            'caSigningCert cert-pki-ca': 'ca.signing.cert',
++            'subsystemCert cert-pki-ca': 'ca.subsystem.cert',
++            'Server-Cert cert-pki-ca': 'ca.sslserver.cert',
++            'transportCert cert-pki-kra': 'ca.connector.KRA.transportCert'
++        }
+ 
+         try:
+             self.backup_config()
+-- 
+2.47.1
+

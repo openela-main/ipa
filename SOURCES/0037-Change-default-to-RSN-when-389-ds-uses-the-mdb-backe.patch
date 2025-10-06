@@ -1,0 +1,161 @@
+From 3777d2b06299454766ab70ee479a829d5f6b7fc0 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Wed, 11 Sep 2024 16:32:07 -0400
+Subject: [PATCH] Change default to RSN when 389-ds uses the mdb backend
+
+The lmdb performance for VLV indexes is not great so the PKI
+team recommended we switch from sequential serial numbers to
+Random Serial Numbers (RSN).
+
+The first time a non-bdb backend (future-proofing) is installed
+then the replication RSN configuration value is stored. All future
+replica installs will use RSN.
+
+We have no way of enforcing ONLY to have RSN across a topology
+so it will be up to administrators to retire any sequential CAs.
+
+Fixes: https://pagure.io/freeipa/issue/9661
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Rafael Guterres Jeffman <rjeffman@redhat.com>
+---
+ install/tools/ipa-ca-install.in           |  6 ++++-
+ install/tools/man/ipa-ca-install.1        |  2 +-
+ install/tools/man/ipa-server-install.1    |  2 +-
+ ipaserver/install/cainstance.py           | 29 +++++++++++++++++++++++
+ ipatests/test_xmlrpc/tracker/ca_plugin.py |  6 ++++-
+ 5 files changed, 41 insertions(+), 4 deletions(-)
+
+diff --git a/install/tools/ipa-ca-install.in b/install/tools/ipa-ca-install.in
+index 9f3d16669679a245b73e044622ff52321524fcde..3c27a6b27715786fb0d3614a9d5689a145037ad7 100644
+--- a/install/tools/ipa-ca-install.in
++++ b/install/tools/ipa-ca-install.in
+@@ -301,7 +301,11 @@ def install(safe_options, options):
+             install_master(safe_options, options)
+         else:
+             if options.random_serial_numbers:
+-                if ca.lookup_random_serial_number_version(api) == 0:
++                ldap_backend = cainstance.lookup_ldap_backend(api)
++                if (
++                    ca.lookup_random_serial_number_version(api) == 0
++                    and ldap_backend == "bdb"
++                ):
+                     sys.exit(
+                         "\nRandom serial numbers cannot be enabled in an "
+                         "existing CA installation.\n")
+diff --git a/install/tools/man/ipa-ca-install.1 b/install/tools/man/ipa-ca-install.1
+index 5745d39de440886af3147496eb1ed44edc010621..bbd3ba85d9849eaa50b39273a6e1f6ac089a0d6a 100644
+--- a/install/tools/man/ipa-ca-install.1
++++ b/install/tools/man/ipa-ca-install.1
+@@ -83,7 +83,7 @@ Signing algorithm of the IPA CA certificate. Possible values are SHA1withRSA, SH
+ Do not use DNS for hostname lookup during installation
+ .TP
+ \fB\-\-random\-serial\-numbers\fR
+-Enable Random Serial Numbers. Random serial numbers cannot be used in a mixed environment. Either all CA's have it enabled or none do.
++Enable Random Serial Numbers (RSN) and certificate pruning. This option is enabled by default if the system is installed with a 389-ds version that supports LMDB or if another CA in the topology is configured with Random Serial Numbers. This option remains present to avoid issues with automation. In mixed environments where existing CA servers are configured with sequential numbers, it is recommended to replace the sequential servers as soon as reasonably possible.
+ .TP
+ \fB\-\-token\-name\fR=\fITOKEN_NAME\fR
+ The PKCS#11 token name if using an HSM to store and generate private keys.
+diff --git a/install/tools/man/ipa-server-install.1 b/install/tools/man/ipa-server-install.1
+index 215a77d6b54bcf5c44f304a80fc76e1137c66beb..d226cf8d6513ab95ed274d861a1c6ee4b0dfca53 100644
+--- a/install/tools/man/ipa-server-install.1
++++ b/install/tools/man/ipa-server-install.1
+@@ -126,7 +126,7 @@ If no template is specified, the template name "SubCA" is used.
+ File containing the IPA CA certificate and the external CA certificate chain. The file is accepted in PEM and DER certificate and PKCS#7 certificate chain formats. This option may be used multiple times.
+ .TP
+ \fB\-\-random\-serial\-numbers\fR
+-Enable Random Serial Numbers. Random serial numbers cannot be used in a mixed environment. Either all CA's have it enabled or none do.
++Enable Random Serial Numbers (RSN) and certificate pruning. This option is enabled by default if the system is installed with a 389-ds version that supports LMDB or if another CA in the topology is configured with Random Serial Numbers. This option remains present to avoid issues with automation. In mixed environments where existing CA servers are configured with sequential numbers, it is recommended to replace the sequential servers as soon as reasonably possible.
+ .TP
+ \fB\-\-no\-pkinit\fR
+ Disables pkinit setup steps.
+diff --git a/ipaserver/install/cainstance.py b/ipaserver/install/cainstance.py
+index 5c2c9f8b981cf5d587865f7680e2b231eae655e2..d0c3b6b940a2b99f0fa747a4dc8c6fc800e4ca12 100644
+--- a/ipaserver/install/cainstance.py
++++ b/ipaserver/install/cainstance.py
+@@ -259,6 +259,18 @@ def is_ca_installed_locally():
+     return os.path.exists(paths.CA_CS_CFG_PATH)
+ 
+ 
++def lookup_ldap_backend(api):
++    """Look up the LDAP backend database value and return it"""
++    dn = DN("cn=config,cn=ldbm database,cn=plugins,cn=config")
++    try:
++        entry = api.Backend.ldap2.get_entry(dn)
++    except errors.NotFound:
++        ldap_backend = 'bdb'
++    else:
++        ldap_backend = entry.get('nsslapd-backend-implement', ['bdb'])[0]
++    return ldap_backend
++
++
+ class InconsistentCRLGenConfigException(Exception):
+     pass
+ 
+@@ -388,6 +400,15 @@ class CAInstance(DogtagInstance):
+             self.ca_type = x509.ExternalCAType.GENERIC.value
+         self.external_ca_profile = external_ca_profile
+         self.random_serial_numbers = random_serial_numbers
++        ldap_backend = lookup_ldap_backend(api)
++
++        if ldap_backend != 'bdb' and not random_serial_numbers:
++            # override selection for lmdb due to VLV performance issues.
++            logger.info(
++                'Forcing random serial numbers to be enabled for the %s '
++                'backend', ldap_backend
++            )
++            self.random_serial_numbers = True
+ 
+         self.no_db_setup = promote
+         self.use_ldaps = use_ldaps
+@@ -507,6 +528,9 @@ class CAInstance(DogtagInstance):
+ 
+                 self.step("configuring certmonger renewal for lightweight CAs",
+                           self.add_lightweight_ca_tracking_requests)
++                if self.clone and self.random_serial_numbers:
++                    self.step("Recording random serial number state",
++                              self.__store_random_serial_number_state)
+                 if minimum_acme_support():
+                     self.step("deploying ACME service", self.setup_acme)
+ 
+@@ -1650,6 +1674,11 @@ class CAInstance(DogtagInstance):
+         dn = DN(('cn', ipalib.constants.IPA_CA_CN), api.env.container_ca,
+                 api.env.basedn)
+         entry_attrs = api.Backend.ldap2.get_entry(dn)
++        version = entry_attrs.single_value.get(
++            "ipaCaRandomSerialNumberVersion", "0"
++        )
++        if str(version) == str(value):
++            return
+         entry_attrs['ipaCaRandomSerialNumberVersion'] = value
+         api.Backend.ldap2.update_entry(entry_attrs)
+ 
+diff --git a/ipatests/test_xmlrpc/tracker/ca_plugin.py b/ipatests/test_xmlrpc/tracker/ca_plugin.py
+index 59fb60037d0e2be98f55c85f52fa690b359ada30..f949b5707a38b5524cb543528ad4144e89527568 100644
+--- a/ipatests/test_xmlrpc/tracker/ca_plugin.py
++++ b/ipatests/test_xmlrpc/tracker/ca_plugin.py
+@@ -4,6 +4,7 @@
+ from __future__ import absolute_import
+ 
+ import six
++from lib389.utils import get_default_db_lib
+ 
+ from ipapython.dn import DN
+ from ipatests.test_xmlrpc.tracker.base import Tracker, EnableTracker
+@@ -83,7 +84,10 @@ class CATracker(Tracker, EnableTracker):
+             objectclass=objectclasses.ca
+         )
+         if self.description == 'IPA CA':
+-            self.attrs['ipacarandomserialnumberversion'] = ('0',)
++            if get_default_db_lib() == 'bdb':
++                self.attrs['ipacarandomserialnumberversion'] = ('0',)
++            else:
++                self.attrs['ipacarandomserialnumberversion'] = ('3',)
+         self.exists = True
+ 
+     def make_disable_command(self):
+-- 
+2.47.0
+

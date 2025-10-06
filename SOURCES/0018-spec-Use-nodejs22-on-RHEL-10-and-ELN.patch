@@ -1,0 +1,34 @@
+From 642af014d9e7de8e53934af4ca3970977957cba7 Mon Sep 17 00:00:00 2001
+From: Yaakov Selkowitz <yselkowi@redhat.com>
+Date: Tue, 8 Oct 2024 02:13:00 -0400
+Subject: [PATCH] spec: Use nodejs22 on RHEL 10 and ELN
+
+nodejs22 is now the default nodejs version in RHEL 10 as well as ELN.
+
+Signed-off-by: Yaakov Selkowitz <yselkowi@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ freeipa.spec.in | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/freeipa.spec.in b/freeipa.spec.in
+index 171b6ad27b57553fdd46c7d041715949bb00b163..9b3d916f34c10a00070855578a593e299187bc44 100755
+--- a/freeipa.spec.in
++++ b/freeipa.spec.in
+@@ -308,10 +308,10 @@ BuildRequires:  libpwquality-devel
+ BuildRequires:  libsss_idmap-devel
+ BuildRequires:  libsss_certmap-devel
+ BuildRequires:  libsss_nss_idmap-devel >= %{sssd_version}
+-%if 0%{?fedora} >= 41
++%if 0%{?fedora} >= 41 || 0%{?rhel} >= 10
+ # Do not use nodejs22 on fedora < 41, https://pagure.io/freeipa/issue/9643
+ BuildRequires: nodejs(abi)
+-%elif 0%{?fedora} >= 39 || 0%{?rhel} >= 10
++%elif 0%{?fedora} >= 39
+ # Do not use nodejs20 on fedora < 39, https://pagure.io/freeipa/issue/9374
+ BuildRequires:  nodejs(abi) < 127
+ %else
+-- 
+2.46.2
+

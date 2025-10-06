@@ -1,0 +1,34 @@
+From 9a2de23eb5e00efa72189c4a86d9db1fab52c2ca Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Thu, 24 Oct 2024 11:49:17 -0400
+Subject: [PATCH] Small fixup to determine which ACME uninstaller to use
+
+The conditional was <= 11.5.0 which it should have been
+< 11.6.0 to allow for small updates to the 11.5.0 branch.
+
+Fixes: https://pagure.io/freeipa/issue/9673
+Fixes: https://pagure.io/freeipa/issue/9674
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ ipaserver/install/dogtaginstance.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ipaserver/install/dogtaginstance.py b/ipaserver/install/dogtaginstance.py
+index 4b0f4d274b0c33140ed6f939f1a3fd8b75930ff9..58421a1d8859e5dd1357e07fd605e84e49048951 100644
+--- a/ipaserver/install/dogtaginstance.py
++++ b/ipaserver/install/dogtaginstance.py
+@@ -311,7 +311,7 @@ class DogtagInstance(service.Service):
+                 return
+             elif (
+                 pki.util.Version("11.0.0") <= pki_version
+-                <= pki.util.Version("11.5.0")
++                < pki.util.Version("11.6.0")
+             ):
+                 args = ['pki-server', 'acme-remove']
+             else:
+-- 
+2.47.0
+

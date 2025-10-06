@@ -1,0 +1,33 @@
+From 373d41f211c1a04dc432a068bc7d2ba825ff554c Mon Sep 17 00:00:00 2001
+From: Francisco Trivino <ftrivino@redhat.com>
+Date: Tue, 13 Aug 2024 12:44:21 +0200
+Subject: [PATCH] Installer: activate ssh service in sssd.conf
+
+This commit enables SSSD's ssh service in ipa-client-install to ensure
+sss_ssh_knownhosts and sss_ssh_knownhostsproxy functions properly.
+
+Fixes: https://pagure.io/freeipa/issue/9649
+Related: https://pagure.io/freeipa/issue/9536
+
+Signed-off-by: Francisco Trivino <ftrivino@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipaclient/install/client.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/ipaclient/install/client.py b/ipaclient/install/client.py
+index 802db9614b24553b2b49259f3aebb366093560ac..47a371f629f6ddfb1cd5e9fff9faad737aa01f54 100644
+--- a/ipaclient/install/client.py
++++ b/ipaclient/install/client.py
+@@ -974,6 +974,8 @@ def configure_sssd_conf(
+ 
+     sssd_enable_service(sssdconfig, 'nss')
+     sssd_enable_service(sssdconfig, 'pam')
++    if options.conf_ssh:
++        sssd_enable_service(sssdconfig, 'ssh')
+ 
+     domain.set_option('ipa_domain', cli_domain)
+     domain.set_option('ipa_hostname', client_hostname)
+-- 
+2.46.0
+

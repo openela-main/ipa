@@ -1,0 +1,35 @@
+From 3d0962014adda39b754c4274ccb5ca5d70963c33 Mon Sep 17 00:00:00 2001
+From: Mark Reynolds <mreynolds@redhat.com>
+Date: Mon, 21 Oct 2024 13:51:13 -0400
+Subject: [PATCH] ipa-migrate - dryrun write updates crashes when removing
+ values
+
+When removing values the mod value list is None and that leads to a
+crash when trying to iterate it. Instead check that the vals are not
+None before looping.
+
+Fixes: https://pagure.io/freeipa/issue/9682
+
+Signed-off-by: MArk Reynolds <mreynolds@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipaserver/install/ipa_migrate.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ipaserver/install/ipa_migrate.py b/ipaserver/install/ipa_migrate.py
+index 38356aa23ea435e2a616f48356feaea7b50dd1e4..f35629378490d3d45ca97f2aa5b4390c67d660ed 100644
+--- a/ipaserver/install/ipa_migrate.py
++++ b/ipaserver/install/ipa_migrate.py
+@@ -622,7 +622,7 @@ class IPAMigrate():
+                 else:
+                     action = "replace"
+                 ldif_entry += f"{action}: {attr}\n"
+-                for val in vals:
++                for val in list(vals or []):
+                     ldif_entry += get_ldif_attr_val(attr, val)
+                 ldif_entry += "-\n"
+             ldif_entry += "\n"
+-- 
+2.47.0
+
