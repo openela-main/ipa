@@ -1,0 +1,30 @@
+From a31654e5c4ba61177928abede5885a247365d067 Mon Sep 17 00:00:00 2001
+From: PRANAV THUBE <pthube@redhat.com>
+Date: Mon, 19 May 2025 14:46:19 +0530
+Subject: [PATCH] ipatests: Ignore /run/log/journal in test_uninstallation.py
+
+Update - Add /run/log/journal to the allowed list for leftover files/directories
+
+Fixes: https://pagure.io/freeipa/issue/9788
+
+Signed-off-by: PRANAV THUBE <pthube@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ ipatests/test_integration/test_uninstallation.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ipatests/test_integration/test_uninstallation.py b/ipatests/test_integration/test_uninstallation.py
+index 049c50db536ae1070f5f958e76b12a1518da0aba..f1cc1917dd0f216be3b11803554e86d1d22c3888 100644
+--- a/ipatests/test_integration/test_uninstallation.py
++++ b/ipatests/test_integration/test_uninstallation.py
+@@ -178,6 +178,7 @@ class TestUninstallCleanup(IntegrationTest):
+             '/var/log',
+             '/var/tmp/systemd-private',
+             '/run/systemd',
++            '/run/log/journal',
+             '/var/lib/authselect/backups/pre_ipaclient',
+             '/var/named/data/named.run',
+             paths.DNSSEC_SOFTHSM_PIN_SO,  # See commit eb54814741
+-- 
+2.49.0
+

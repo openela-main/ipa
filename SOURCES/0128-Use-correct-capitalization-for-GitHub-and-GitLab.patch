@@ -1,0 +1,151 @@
+From 6bb7ebd40f3fa9c266e62caef961c1078440751d Mon Sep 17 00:00:00 2001
+From: Rafael Guterres Jeffman <rjeffman@redhat.com>
+Date: Tue, 17 Jun 2025 17:15:49 -0300
+Subject: [PATCH] Use correct capitalization for GitHub and GitLab
+
+The correct third party trademarks are GitHub and GitLab, and this is
+the capitalization that needs to be used for documentation and messages,
+when referring to each service.
+
+Fixes: https://pagure.io/freeipa/issue/9811
+Signed-off-by: Rafael Guterres Jeffman <rjeffman@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ doc/designs/external-idp/idp-api.md      | 22 +++++++++++-----------
+ doc/workshop/12-external-idp-support.rst |  4 ++--
+ ipaserver/plugins/internal.py            |  2 +-
+ ipatests/test_integration/test_cert.py   |  2 +-
+ po/ipa.pot                               |  2 +-
+ 5 files changed, 16 insertions(+), 16 deletions(-)
+
+diff --git a/doc/designs/external-idp/idp-api.md b/doc/designs/external-idp/idp-api.md
+index fe2ba8d67389b89216b128c253695e3d1da363be..59d2ccb5707cda549130fc0f4e05c8e8ee9bb86b 100644
+--- a/doc/designs/external-idp/idp-api.md
++++ b/doc/designs/external-idp/idp-api.md
+@@ -156,13 +156,13 @@ List of pre-populated IdP types is currently limited by the following provider
+ Some IdP providers support parametrized URIs which include organization or a
+ realm name, or specific base URL, or both.
+ 
+-One notable omission in the pre-populated IdP types above is Gitlab.
++One notable omission in the pre-populated IdP types above is GitLab.
+ 
+ FreeIPA only supports IdPs that implement OAuth 2.0 Device authorization
+ grant flow as defined by the [RFC 8628](https://www.rfc-editor.org/rfc/rfc8628).
+ If required IdP cannot be made to support Device authorization grant flow, it
+ is recommended to use OAuth 2.0 federation within an IdP that supports this
+-method. Gitlab does not support OAuth 2.0 Device authorization grant flow and
++method. GitLab does not support OAuth 2.0 Device authorization grant flow and
+ thus is not supported directly.
+ 
+ SSSD 2.7.0 implements Kerberos pre-authentication method `idp` (registered as a
+@@ -193,7 +193,7 @@ Choosing `--provider=google` would expand to use the following options:
+ | `--scope`=STR         | `openid email`                                     |
+ | `--idp-user-id`=STR   | `email`                                            |
+ 
+-#### Github IdPs
++#### GitHub IdPs
+ 
+ Choosing `--provider=github` would expand to use the following options:
+ 
+@@ -207,17 +207,17 @@ Choosing `--provider=github` would expand to use the following options:
+ | `--scope`=STR         | `user`                                             |
+ | `--idp-user-id`=STR   | `login`                                            |
+ 
+-Please note that Github explicitly states that a user login is not unique and
++Please note that GitHub explicitly states that a user login is not unique and
+ can be reused after a user account was deleted. The configuration above aims
+-for an easy setup for testing. If production deployment with Github IdP would
++for an easy setup for testing. If production deployment with GitHub IdP would
+ be required, it is recommended to change `--idp-user-id` to a more unique subject
+-like `id`. Unfortunately, Github UI does not give an easy way to discover a
++like `id`. Unfortunately, GitHub UI does not give an easy way to discover a
+ user ID. Other IdPs also lack an easy way to resolve these internal identifiers
+ when not authorized by the user themselves.
+ 
+-For Github, user's ID can be looked up without authentication through the Users
++For GitHub, user's ID can be looked up without authentication through the Users
+ API. Assuming we have `curl` and `jq` utilities available, a request to
+-discover an ID of a Github user named `test` would look like:
++discover an ID of a GitHub user named `test` would look like:
+ 
+ ```
+ $ curl --silent \
+@@ -386,10 +386,10 @@ scope is used, this typically maps to `sub` value. Since there are no ways to
+ pull this value for all users in advance, pre-populated IdP templates set OAuth
+ 2.0 scopes to include `email` and then use `email` to map IdP subject where possible.
+ There are some well-known IdPs which allow reuse of user accounts and emails, this
+-applies to both Github and Gitlab. Since Gitlab does not support OAuth 2.0
++applies to both GitHub and GitLab. Since GitLab does not support OAuth 2.0
+ Device authorization grant flow, it is not an issue in itself for this project. However,
+-for Github it is known that user accounts can be recycled after their removal. In
+-this case we would recommend to use internal Github identifier instead.
++for GitHub it is known that user accounts can be recycled after their removal. In
++this case we would recommend to use internal GitHub identifier instead.
+ 
+ ## Upgrade and backward compatibility
+ 
+diff --git a/doc/workshop/12-external-idp-support.rst b/doc/workshop/12-external-idp-support.rst
+index 022c26483fa5b08fa02b69ff63fac7d08c53d110..66c714c257f0dacc724753cbc73968a588aa3a07 100644
+--- a/doc/workshop/12-external-idp-support.rst
++++ b/doc/workshop/12-external-idp-support.rst
+@@ -94,7 +94,7 @@ authorization grant flow:
+ 
+ * Microsoft Identity Platform, including Azure AD
+ * Google
+-* Github
++* GitHub
+ * Keycloak, including Red Hat SSO
+ * Okta
+ 
+@@ -389,7 +389,7 @@ IPA. Option ``--provider keycloak`` allows us to fill-in pre-defined template
+ for Keycloak or Red Hat SSO IdPs. The template expects both Keycloak's realm
+ (``--org`` option) and a base URL (``--base-url`` option) because Keycloak is
+ typically deployed as a part of a larger solution. These options may not be
+-needed for other pre-defined templates like Google or Github.
++needed for other pre-defined templates like Google or GitHub.
+ 
+ The `openid` scope is mandatory since
+ [Keycloak 19.0.2](https://www.keycloak.org/docs/latest/upgrading/index.html#userinfo-endpoint-changes).
+diff --git a/ipaserver/plugins/internal.py b/ipaserver/plugins/internal.py
+index e8642b6f03754fbdc6a099b72407ed2df25da86f..283b430778c37861c417c7829ac04bd2fb966be0 100644
+--- a/ipaserver/plugins/internal.py
++++ b/ipaserver/plugins/internal.py
+@@ -1100,7 +1100,7 @@ class i18n_messages(Command):
+             "idp": {
+                 "template_keycloak": _("Keycloak or Red Hat SSO"),
+                 "template_google": _("Google"),
+-                "template_github": _("Github"),
++                "template_github": _("GitHub"),
+                 "template_microsoft": _("Microsoft or Azure"),
+                 "template_okta": _("Okta"),
+                 "label_idpclient": _("OAuth 2.0 client details"),
+diff --git a/ipatests/test_integration/test_cert.py b/ipatests/test_integration/test_cert.py
+index 88859e67f5653bc91f25152c414350c0ba41e036..05b20b910b249af24039a497538f96dad07162aa 100644
+--- a/ipatests/test_integration/test_cert.py
++++ b/ipatests/test_integration/test_cert.py
+@@ -540,7 +540,7 @@ class TestCAShowErrorHandling(IntegrationTest):
+         4. Verify LWCA is recognized on the server
+         5. Run `ipa ca-show <LWCA>`
+ 
+-        PKI Github Link: https://github.com/dogtagpki/pki/pull/3605/
++        PKI GitHub Link: https://github.com/dogtagpki/pki/pull/3605/
+         """
+         self.replicas[0].run_command(['systemctl', 'stop', 'ipa-custodia'])
+         lwca = 'lwca1'
+diff --git a/po/ipa.pot b/po/ipa.pot
+index 41ee14059f1dc00f22c53d59f82ba9c4df439d1a..07413d546241149fcde36c38c0750d040916ba0f 100644
+--- a/po/ipa.pot
++++ b/po/ipa.pot
+@@ -23944,7 +23944,7 @@ msgid "Google"
+ msgstr ""
+ 
+ #: ipaserver/plugins/internal.py:1103
+-msgid "Github"
++msgid "GitHub"
+ msgstr ""
+ 
+ #: ipaserver/plugins/internal.py:1104
+-- 
+2.50.1
+

@@ -1,0 +1,45 @@
+From d03164fc104588e88ad75483e7233b7fccacabb6 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Thu, 6 Mar 2025 15:58:53 +0100
+Subject: [PATCH] ipatests: adapt error code and message for samba 4.22
+
+When establishing trust with an unreachable AD domain controller,
+the error code and message have changed with samba 4.22.
+
+Update the test to be compatible with any version of samba.
+
+Fixes: https://pagure.io/freeipa/issue/9751
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ ipatests/test_integration/test_trust.py | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/ipatests/test_integration/test_trust.py b/ipatests/test_integration/test_trust.py
+index f71ec377b429b104241e85a3d04ee42c6721494c..4086cb30ac5d52ee595c1ecdbe86a8d511cbb704 100644
+--- a/ipatests/test_integration/test_trust.py
++++ b/ipatests/test_integration/test_trust.py
+@@ -1072,8 +1072,18 @@ class TestTrust(BaseTestTrust):
+                 paths.VAR_LOG_HTTPD_ERROR,
+                 encoding='utf-8'
+             )
+-            assert 'CIFS server communication error: code "3221225653", ' \
+-                   'message "{Device Timeout}' in httpd_error_log
++
++            # The error code and message changed in samba 4.22
++            old_msg = 'CIFS server communication error: code "3221225653", ' \
++                      'message "{Device Timeout}'
++            new_msg = 'CIFS server communication error: code "3221226021", ' \
++                      'message "The object was not found."'
++            result = self.master.run_command(["smbstatus", "-V"]).stdout_text
++            version = result.split()[1]
++            if tasks.parse_version(version) < tasks.parse_version('4.22.0rc4'):
++                assert old_msg in httpd_error_log
++            else:
++                assert new_msg in httpd_error_log
+ 
+             # Check that trust is successfully established with --server option
+             tasks.establish_trust_with_ad(
+-- 
+2.50.0
+

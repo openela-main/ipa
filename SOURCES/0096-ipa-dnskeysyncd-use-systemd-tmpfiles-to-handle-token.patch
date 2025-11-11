@@ -1,0 +1,205 @@
+From efbe63a6ff2cbdab128c6d3c879862dba22ac1cb Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Fri, 25 Apr 2025 14:47:02 +0300
+Subject: [PATCH] ipa-dnskeysyncd: use systemd-tmpfiles to handle tokens
+
+ipa-dnskeysyncd daemon relies on both OpenDNSSEC and BIND accessing the
+same cryptographic token. We use SoftHSMv2 here and store token in
+DNSSEC_TOKENS_DIR, defined by the IPA platform.
+
+Configure ipa-dnskeysyncd service to update permissions of the token
+files using custom systemd-tmpfiles configuration.
+
+Extend SELinux policy to handle access to the token under a separate
+file context. Both token and its pin file need to be accessed by the BIND
+rndc tool.
+
+Fixes: https://pagure.io/freeipa/issue/9696
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ daemons/dnssec/Makefile.am                |  1 +
+ daemons/dnssec/ipa-dnskeysyncd.service.in |  1 +
+ freeipa.spec.in                           |  1 +
+ init/tmpfilesd/Makefile.am                | 11 ++++++++---
+ init/tmpfilesd/ipa-dnssec.conf.in         |  4 ++++
+ ipaserver/install/dnskeysyncinstance.py   | 10 ++++++++++
+ ipaserver/install/server/upgrade.py       | 10 +++++-----
+ selinux/ipa.fc                            |  3 +++
+ selinux/ipa.te                            |  7 +++++++
+ 9 files changed, 40 insertions(+), 8 deletions(-)
+ create mode 100644 init/tmpfilesd/ipa-dnssec.conf.in
+
+diff --git a/daemons/dnssec/Makefile.am b/daemons/dnssec/Makefile.am
+index 0edab98be9d4dfd2221bcc3220785622a6545761..d270f0f9a5c06e9d9d455671157c3d1f32973419 100644
+--- a/daemons/dnssec/Makefile.am
++++ b/daemons/dnssec/Makefile.am
+@@ -33,6 +33,7 @@ CLEANFILES = $(systemdsystemunit_DATA) $(nodist_app_SCRIPTS)
+ 		-e 's|@ODS_USER[@]|$(ODS_USER)|g' \
+ 		-e 's|@ODS_GROUP[@]|$(ODS_GROUP)|g' \
+ 		-e 's|@NAMED_GROUP[@]|$(NAMED_GROUP)|g' \
++		-e 's|@IPA_DATA_DIR[@]|$(IPA_DATA_DIR)|g' \
+ 		'$(srcdir)/$@.in' >$@
+ 
+ dnssecconfdir = $(IPA_SYSCONF_DIR)/dnssec
+diff --git a/daemons/dnssec/ipa-dnskeysyncd.service.in b/daemons/dnssec/ipa-dnskeysyncd.service.in
+index cd07275ad323649e305a96ad36488e93bd248d7b..6730c9676d272e38a8f69d2d23f5d29b86ff7d83 100644
+--- a/daemons/dnssec/ipa-dnskeysyncd.service.in
++++ b/daemons/dnssec/ipa-dnskeysyncd.service.in
+@@ -4,6 +4,7 @@ Description=IPA key daemon
+ [Service]
+ Environment=LC_ALL=C.UTF-8
+ EnvironmentFile=@sysconfenvdir@/ipa-dnskeysyncd
++ExecStartPre=/bin/sh -c '/bin/sed -e "s,@DNSSEC_TOKENS_DIR@,${DNSSEC_TOKENS_DIR},g;s,@DNSSEC_SOFTHSM_PIN@,${DNSSEC_SOFTHSM_PIN},g" @IPA_DATA_DIR@/ipa-dnssec.conf | /usr/bin/systemd-tmpfiles --create -'
+ ExecStart=@libexecdir@/ipa/ipa-dnskeysyncd
+ User=@ODS_USER@
+ Group=@NAMED_GROUP@
+diff --git a/freeipa.spec.in b/freeipa.spec.in
+index 558b3cfffa11a77c459ba80316a5e0413662575e..78004dc4fcec87079efcd235dcbf61ae2c20c669 100755
+--- a/freeipa.spec.in
++++ b/freeipa.spec.in
+@@ -1771,6 +1771,7 @@ fi
+ %{_libexecdir}/ipa/ipa-ods-exporter
+ %{_sbindir}/ipa-dns-install
+ %{_mandir}/man1/ipa-dns-install.1*
++%{_usr}/share/ipa/ipa-dnssec.conf
+ %attr(644,root,root) %{_unitdir}/ipa-dnskeysyncd.service
+ %attr(644,root,root) %{_unitdir}/ipa-ods-exporter.socket
+ %attr(644,root,root) %{_unitdir}/ipa-ods-exporter.service
+diff --git a/init/tmpfilesd/Makefile.am b/init/tmpfilesd/Makefile.am
+index 5d6e96f2c07ff2b73752e46d6dbfe363a2a18821..8d264aaab06bff4c3be622d779c7fc3f4930b64d 100644
+--- a/init/tmpfilesd/Makefile.am
++++ b/init/tmpfilesd/Makefile.am
+@@ -1,12 +1,17 @@
+ dist_noinst_DATA =     \
+-	ipa.conf.in
++	ipa.conf.in    \
++	ipa-dnssec.conf.in
+ 
+ systemdtmpfiles_DATA =         \
+ 	ipa.conf
+ 
+-CLEANFILES = $(systemdtmpfiles_DATA)
++appdir = $(IPA_DATA_DIR)
++dist_app_DATA =	\
++	ipa-dnssec.conf
++
++CLEANFILES = $(systemdtmpfiles_DATA) $(app_DATA)
+ 
+ %: %.in Makefile
+ 	sed \
+-		-e 's|@HTTPD_GROUP[@]|$(HTTPD_GROUP)|g' \
++		-e 's|@HTTPD_GROUP[@]|$(HTTPD_GROUP)|g;s|@ODS_USER[@]|$(ODS_USER)|g;s|@NAMED_GROUP[@]|$(NAMED_GROUP)|g' \
+ 		 '$(srcdir)/$@.in' >$@
+diff --git a/init/tmpfilesd/ipa-dnssec.conf.in b/init/tmpfilesd/ipa-dnssec.conf.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..1dd2b617045c405430749b304504dab1300583d4
+--- /dev/null
++++ b/init/tmpfilesd/ipa-dnssec.conf.in
+@@ -0,0 +1,4 @@
++d	@DNSSEC_TOKENS_DIR@	2770	@ODS_USER@	@NAMED_GROUP@
++A+	@DNSSEC_TOKENS_DIR@	-	-	-	-	group:@NAMED_GROUP@:rw,user:@ODS_USER@:rw
++Z	@DNSSEC_TOKENS_DIR@	-	-	-	-	-
++z	@DNSSEC_SOFTHSM_PIN@	-	@ODS_USER@	@NAMED_GROUP@	-	-
+diff --git a/ipaserver/install/dnskeysyncinstance.py b/ipaserver/install/dnskeysyncinstance.py
+index ae8a67a007cab36f81bf931e24755d3744265b8c..9c2bba11c08efb1ad1a9c537feced98463b6f398 100644
+--- a/ipaserver/install/dnskeysyncinstance.py
++++ b/ipaserver/install/dnskeysyncinstance.py
+@@ -258,6 +258,16 @@ class DNSKeySyncInstance(service.Service):
+             'SOFTHSM2_CONF', paths.DNSSEC_SOFTHSM2_CONF,
+             quotes=False, separator='=')
+ 
++        directivesetter.set_directive(
++            sysconfig,
++            'DNSSEC_TOKENS_DIR', paths.DNSSEC_TOKENS_DIR,
++            quotes=False, separator='=')
++
++        directivesetter.set_directive(
++            sysconfig,
++            'DNSSEC_SOFTHSM_PIN', paths.DNSSEC_SOFTHSM_PIN,
++            quotes=False, separator='=')
++
+         if any([constants.NAMED_OPENSSL_ENGINE is not None,
+                 constants.NAMED_OPENSSL_PROVIDER is not None]):
+             directivesetter.set_directive(
+diff --git a/ipaserver/install/server/upgrade.py b/ipaserver/install/server/upgrade.py
+index fb716d4c2921b2658a6fc4c984600a4feb52afce..58896e33097dd1accb1c957066958f43caea8fbf 100644
+--- a/ipaserver/install/server/upgrade.py
++++ b/ipaserver/install/server/upgrade.py
+@@ -547,7 +547,7 @@ def ca_initialize_hsm_state(ca):
+         ca.set_hsm_state(config)
+ 
+ 
+-def dnssec_set_openssl_engine(dnskeysyncd):
++def dnssec_set_openssl_provider(dnskeysyncd):
+     """
+     Setup OpenSSL engine or provider for BIND
+     """
+@@ -555,9 +555,9 @@ def dnssec_set_openssl_engine(dnskeysyncd):
+             constants.NAMED_OPENSSL_PROVIDER is None]):
+         return False
+ 
+-    # Nothing to do if we are using OpenSSL engine already and not on the OS
++    # Nothing to do if we are using OpenSSL provider already and not on the OS
+     # that requires OpenSSL provider instead.
+-    if all([sysupgrade.get_upgrade_state('dns', 'openssl_engine'),
++    if all([sysupgrade.get_upgrade_state('dns', 'openssl_provider'),
+             constants.NAMED_OPENSSL_PROVIDER is None]):
+         return False
+ 
+@@ -565,7 +565,7 @@ def dnssec_set_openssl_engine(dnskeysyncd):
+     dnskeysyncd.setup_named_openssl_conf()
+     dnskeysyncd.setup_named_sysconfig()
+     dnskeysyncd.setup_ipa_dnskeysyncd_sysconfig()
+-    sysupgrade.set_upgrade_state('dns', 'openssl_engine', True)
++    sysupgrade.set_upgrade_state('dns', 'openssl_provider', True)
+ 
+     return True
+ 
+@@ -1892,7 +1892,7 @@ def upgrade_configuration():
+                 dnskeysyncd.create_instance(fqdn, api.env.realm)
+                 dnskeysyncd.start_dnskeysyncd()
+             else:
+-                if dnssec_set_openssl_engine(dnskeysyncd):
++                if dnssec_set_openssl_provider(dnskeysyncd):
+                     dnskeysyncd.start_dnskeysyncd()
+             dnskeysyncd.set_dyndb_ldap_workdir_permissions()
+ 
+diff --git a/selinux/ipa.fc b/selinux/ipa.fc
+index 15e8e41aa50228ff560e338044240b46bc24cc40..ffab59933c56791e5561d9d3a5888b6b96499337 100644
+--- a/selinux/ipa.fc
++++ b/selinux/ipa.fc
+@@ -24,6 +24,9 @@
+ 
+ /var/lib/ipa/gssproxy/http.keytab -- gen_context(system_u:object_r:ipa_http_keytab_t,s0)
+ 
++/var/lib/ipa/dnssec/tokens -- gen_context(system_u:object_r:ipa_dnskey_t,s0)
++/var/lib/ipa/dnssec/softhsm_pin -- gen_context(system_u:object_r:ipa_dnskey_t,s0)
++
+ /var/log/ipa(/.*)?              gen_context(system_u:object_r:ipa_log_t,s0)
+ 
+ /var/log/ipabackup.log	--	gen_context(system_u:object_r:ipa_log_t,s0)
+diff --git a/selinux/ipa.te b/selinux/ipa.te
+index e4ce66687a48b27e85591cdd8352f7cac94d3151..c6d40b148325ac317437e1bd6e7c6d50e609bf5a 100644
+--- a/selinux/ipa.te
++++ b/selinux/ipa.te
+@@ -265,6 +265,13 @@ corenet_tcp_bind_generic_node(ipa_dnskey_t)
+ corenet_tcp_connect_kerberos_port(ipa_dnskey_t)
+ corenet_tcp_connect_rndc_port(ipa_dnskey_t)
+ 
++# Allow rndc to access SoftHSM token in IPA directory
++gen_require(`
++    type ndc_t;
++')
++allow ndc_t ipa_dnskey_t:file { getattr open read };
++
++
+ dev_read_rand(ipa_dnskey_t)
+ dev_read_sysfs(ipa_dnskey_t)
+ 
+-- 
+2.49.0
+

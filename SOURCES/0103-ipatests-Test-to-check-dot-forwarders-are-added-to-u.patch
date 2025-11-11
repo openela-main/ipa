@@ -1,0 +1,52 @@
+From 383574be4e645155fb58a79612138e51c3bdc4eb Mon Sep 17 00:00:00 2001
+From: Sudhir Menon <sumenon@redhat.com>
+Date: Tue, 13 May 2025 15:58:56 +0530
+Subject: [PATCH] ipatests: Test to check dot forwarders are added to unbound.
+
+This test checks that dns forwarder is listed in
+dnsserver-show command and also the dot forwarder is
+added to unbound and included in /etc/unbound/conf.d/zzz-ipa.conf
+
+Signed-off-by: Sudhir Menon <sumenon@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Antonio Torres <antorres@redhat.com>
+---
+ ipatests/test_integration/test_edns.py | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/ipatests/test_integration/test_edns.py b/ipatests/test_integration/test_edns.py
+index b42570ffa2c1cba8271ff08e084da0107e57d054..dd046f226926d09074d8d6ce536999c5d452fcc4 100644
+--- a/ipatests/test_integration/test_edns.py
++++ b/ipatests/test_integration/test_edns.py
+@@ -247,6 +247,7 @@ class TestDNSOverTLS(IntegrationTest):
+ 
+ 
+ class TestDNS_DoT(TestDNS):
++
+     @classmethod
+     def install(cls, mh):
+         tasks.install_packages(cls.master, ['*ipa-server-encrypted-dns'])
+@@ -255,3 +256,20 @@ class TestDNS_DoT(TestDNS):
+             "--dot-forwarder", "1.1.1.1#cloudflare-dns.com"
+         ]
+         tasks.install_master(cls.master, extra_args=args)
++
++    def test_check_dot_forwarder_added_in_ipa_conf(self):
++        """
++        This test checks that forwarders is listed in
++        dnsserver-show command and also the dot forwarder is
++        added to unbound and included in
++        /etc/unbound/conf.d/zzz-ipa.conf
++        """
++        msg = 'Forwarders: 127.0.0.55'
++        cmd1 = self.master.run_command(
++            ["ipa", "dnsserver-show", self.master.hostname]
++        )
++        assert msg in cmd1.stdout_text
++        contents = self.master.get_file_contents(
++            paths.UNBOUND_CONF, encoding='utf-8'
++        )
++        assert 'forward-addr: 1.1.1.1#cloudflare-dns.com' in contents
+-- 
+2.49.0
+

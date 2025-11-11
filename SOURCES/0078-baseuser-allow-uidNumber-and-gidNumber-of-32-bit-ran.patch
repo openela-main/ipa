@@ -1,0 +1,71 @@
+From 65cb358c01568e9a11899dbfe21eaeb916af3cdf Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Fri, 28 Feb 2025 15:34:12 +0200
+Subject: [PATCH] baseuser: allow uidNumber and gidNumber of 32-bit range
+
+JSON format allows to encode integers up to 2^53-1. Linux systems allow
+for 32-bit IDs. Permit setting full 32-bit uidNumber and gidNumber
+through IPA API. Administrators already can set 32-bit IDs via LDAP.
+
+ID Range also needs to permit larger sizes of RID bases. SIDGEN plugin
+already treats RID bases as 1..MAX_UINT32.
+
+Fixes: https://pagure.io/freeipa/issue/9757
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ ipaserver/plugins/baseuser.py | 4 +++-
+ ipaserver/plugins/idrange.py  | 4 ++++
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/ipaserver/plugins/baseuser.py b/ipaserver/plugins/baseuser.py
+index b66016305276f7f66d2e9dd4c7946cf49ec5cd96..22393b8f6c5d3e40b57f11947d0a0358d3a087bc 100644
+--- a/ipaserver/plugins/baseuser.py
++++ b/ipaserver/plugins/baseuser.py
+@@ -26,7 +26,7 @@ import six
+ from ipalib import api, errors, constants
+ from ipalib import (
+     Flag, Int, Password, Str, Bool, StrEnum, DateTime, DNParam)
+-from ipalib.parameters import Principal, Certificate
++from ipalib.parameters import Principal, Certificate, MAX_UINT32
+ from ipalib.plugable import Registry
+ from .baseldap import (
+     DN, LDAPObject, LDAPCreate, LDAPUpdate, LDAPSearch, LDAPDelete,
+@@ -348,11 +348,13 @@ class baseuser(LDAPObject):
+             label=_('UID'),
+             doc=_('User ID Number (system will assign one if not provided)'),
+             minvalue=1,
++            maxvalue=MAX_UINT32,
+         ),
+         Int('gidnumber?',
+             label=_('GID'),
+             doc=_('Group ID Number'),
+             minvalue=1,
++            maxvalue=MAX_UINT32,
+         ),
+         Str('street?',
+             cli_name='street',
+diff --git a/ipaserver/plugins/idrange.py b/ipaserver/plugins/idrange.py
+index ec061a455ca26aa7b5354b5b4cc8318e2559d5af..26a3bb666273013912e80d49b56031869157375a 100644
+--- a/ipaserver/plugins/idrange.py
++++ b/ipaserver/plugins/idrange.py
+@@ -235,10 +235,14 @@ class idrange(LDAPObject):
+         Int('ipabaserid?',
+             cli_name='rid_base',
+             label=_('First RID of the corresponding RID range'),
++            minvalue=1,
++            maxvalue=Int.MAX_UINT32
+         ),
+         Int('ipasecondarybaserid?',
+             cli_name='secondary_rid_base',
+             label=_('First RID of the secondary RID range'),
++            minvalue=1,
++            maxvalue=Int.MAX_UINT32
+         ),
+         Str('ipanttrusteddomainsid?',
+             cli_name='dom_sid',
+-- 
+2.48.1
+

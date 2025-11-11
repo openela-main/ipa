@@ -1,0 +1,43 @@
+From 13332be5931b2492b19121c083ab0e37aa1ae88f Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 5 May 2025 11:18:59 +0300
+Subject: [PATCH] freeipa.spec.in: do not recommend encrypted DNS on pre-F42
+ systems
+
+Fedora 41 or earlier do not have infrastructure to run encrypted DNS
+server side.
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ freeipa.spec.in | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/freeipa.spec.in b/freeipa.spec.in
+index 78b044b026de6181264a3572779596325af89158..ccb37ff0a7e46292ea0b5c50346f6aff984eecc7 100755
+--- a/freeipa.spec.in
++++ b/freeipa.spec.in
+@@ -652,7 +652,9 @@ Requires: %{openssl_pkcs11_name} >= %{openssl_pkcs11_version}
+ # See https://bugzilla.redhat.com/show_bug.cgi?id=1825812
+ # RHEL 8.3+ and Fedora 32+ have 2.1
+ Requires: opendnssec >= 2.1.6-5
++%if 0%{?fedora} >= 42 || 0%{?rhel} > 9
+ Recommends: %{name}-server-encrypted-dns
++%endif
+ %{?systemd_requires}
+ 
+ Provides: %{alt_name}-server-dns = %{version}
+@@ -670,6 +672,8 @@ Integrated DNS server is BIND 9. OpenDNSSEC provides key management.
+ %package server-encrypted-dns
+ Summary: support for encrypted DNS in IPA integrated DNS server
+ Requires: %{name}-client-encrypted-dns
++# Will need newer bind-dyndb-ldap to allow use of OpenSSL provider API
++Requires: bind-dyndb-ldap >= 11.11
+ 
+ %description server-encrypted-dns
+ Provides support for enabling DNS over TLS in the IPA integrated DNS
+-- 
+2.49.0
+

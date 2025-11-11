@@ -1,0 +1,33 @@
+From b8b91dfe71d7d049f5e55a8195cb37f87837bbce Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Wed, 12 Mar 2025 21:52:56 +0200
+Subject: [PATCH] update_dna_shared_config: do not fail when config is not
+ found
+
+The helper function was supposed to return a DN or None.
+
+Related: https://pagure.io/freeipa/issue/9757
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ ipaserver/install/plugins/update_dna_shared_config.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ipaserver/install/plugins/update_dna_shared_config.py b/ipaserver/install/plugins/update_dna_shared_config.py
+index 955bee5dd830f0dcad3f0810e7e2f1a1c725a0aa..42ee86d8b547fa9d6fb4cced5e36d243ba8cd4ff 100644
+--- a/ipaserver/install/plugins/update_dna_shared_config.py
++++ b/ipaserver/install/plugins/update_dna_shared_config.py
+@@ -49,7 +49,7 @@ class update_dna_shared_config(Updater):
+         except errors.NotFound:
+             logger.error("Could not find DNA config entry: %s",
+                          dna_config_base)
+-            return False, ()
++            return None
+         else:
+             logger.debug('Found DNA config %s', dna_config_base)
+ 
+-- 
+2.48.1
+

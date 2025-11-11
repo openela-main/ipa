@@ -1,0 +1,435 @@
+From f906e3625491e9b6fc67fdd5ac6b429531658be1 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Fri, 28 Feb 2025 14:57:25 +0200
+Subject: [PATCH] config-mod: allow disabling subordinate ID integration
+
+When full 32-bit ID range usage is required, subordinate ID support have
+to be disabled. However, even if ID range for subordinate IDs were to be
+removed, it will be restored during the next data upgrade.
+
+Change upgrade code to only apply subID range creation when subID
+support is enabled.
+
+Do not allow allocating subIDs if their use is disabled.
+
+Allow full 32-bit uidNumber/gidNumber values in JSON payload.
+
+Fixes: https://pagure.io/freeipa/issue/9757
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ API.txt                                       |  2 +-
+ doc/api/config_mod.md                         |  2 +-
+ doc/designs/subordinate-ids.md                | 22 +++++++++
+ install/share/Makefile.am                     |  1 +
+ install/share/subid-generators.uldif          | 38 ++++++++++++++++
+ install/updates/73-subid.update               | 37 ---------------
+ .../updates/90-post_upgrade_plugins.update    |  1 +
+ ipalib/messages.py                            | 13 ++++++
+ ipaplatform/base/paths.py                     |  1 +
+ ipaserver/install/ipa_subids.py               |  5 +++
+ .../install/plugins/update_subid_support.py   | 45 +++++++++++++++++++
+ ipaserver/plugins/config.py                   | 34 +++++++++++++-
+ ipaserver/plugins/subid.py                    | 11 +++++
+ ipaserver/plugins/user.py                     |  4 +-
+ 14 files changed, 174 insertions(+), 42 deletions(-)
+ create mode 100644 install/share/subid-generators.uldif
+ create mode 100644 ipaserver/install/plugins/update_subid_support.py
+
+diff --git a/API.txt b/API.txt
+index 61e8e463ab5c66b1609f8cc61f93ae2ded959bba..f19e3bf344cf6f23680c268c5081570ac629f851 100644
+--- a/API.txt
++++ b/API.txt
+@@ -1083,7 +1083,7 @@ option: Flag('all', autofill=True, cli_name='all', default=False)
+ option: Str('ca_renewal_master_server?', autofill=False)
+ option: Str('delattr*', cli_name='delattr')
+ option: Flag('enable_sid?', autofill=True, default=False)
+-option: StrEnum('ipaconfigstring*', autofill=False, cli_name='ipaconfigstring', values=[u'AllowNThash', u'KDC:Disable Last Success', u'KDC:Disable Lockout', u'KDC:Disable Default Preauth for SPNs', u'EnforceLDAPOTP'])
++option: StrEnum('ipaconfigstring*', autofill=False, cli_name='ipaconfigstring', values=[u'AllowNThash', u'KDC:Disable Last Success', u'KDC:Disable Lockout', u'KDC:Disable Default Preauth for SPNs', u'EnforceLDAPOTP', u'SubID:Disable'])
+ option: Str('ipadefaultemaildomain?', autofill=False, cli_name='emaildomain')
+ option: Str('ipadefaultloginshell?', autofill=False, cli_name='defaultshell')
+ option: Str('ipadefaultprimarygroup?', autofill=False, cli_name='defaultgroup')
+diff --git a/doc/api/config_mod.md b/doc/api/config_mod.md
+index b3203c350605af5a386544c858a9a5f7f724342f..e18dd55c75993016afbcd8a15d33f13a38ef96b3 100644
+--- a/doc/api/config_mod.md
++++ b/doc/api/config_mod.md
+@@ -27,7 +27,7 @@ No arguments.
+ * ipauserobjectclasses : :ref:`Str<Str>`
+ * ipapwdexpadvnotify : :ref:`Int<Int>`
+ * ipaconfigstring : :ref:`StrEnum<StrEnum>`
+- * Values: ('AllowNThash', 'KDC:Disable Last Success', 'KDC:Disable Lockout', 'KDC:Disable Default Preauth for SPNs', 'EnforceLDAPOTP')
++ * Values: ('AllowNThash', 'KDC:Disable Last Success', 'KDC:Disable Lockout', 'KDC:Disable Default Preauth for SPNs', 'EnforceLDAPOTP', 'SubID:Disable')
+ * ipaselinuxusermaporder : :ref:`Str<Str>`
+ * ipaselinuxusermapdefault : :ref:`Str<Str>`
+ * ipakrbauthzdata : :ref:`StrEnum<StrEnum>`
+diff --git a/doc/designs/subordinate-ids.md b/doc/designs/subordinate-ids.md
+index b280df1a9eb2fc8e0ff53271b19a2d5b13399506..dac1c3292fecdebcc7f49118ea0b23d8c5aeff37 100644
+--- a/doc/designs/subordinate-ids.md
++++ b/doc/designs/subordinate-ids.md
+@@ -64,6 +64,18 @@ and don't auto-map or auto-assign subordinate ids by default. Instead
+ we give the admin several options to assign them manually, semi-manual,
+ or automatically.
+ 
++For deployments where there is a need to consume IDs above 2^31 for normal UID
++and GID assignments, one has to disable subordinate ID feature. This should be
++done with `ipa config-mod --addattr ipaconfigstring=SubID:Disable` command.
++After it is done, subordinate ID range can be removed with `ipa idrange-del`
++command and on the IPA server one have to run `ipa-server-upgrade` command to
++make sure internal DNA plugin configuration is removed as well.
++Finally, a new local ID range can be added to cover required part of the
++2^31..2^32-1 space. The range must have RID bases to make sure FreeIPA will
++generate SIDs properly to users and groups created with IDs from this range.
++
++**NOTE**: Disabling subordinate ID feature can only be done if no subordinate
++IDs were already allocated.
+ 
+ ### Revision 1 limitation
+ 
+@@ -340,6 +352,16 @@ subordinate id entries for new users:
+ $ ipa config-mod --user-default-subid=true
+ ```
+ 
++Subordinate ID feature can be disabled completely. This is done with `ipa
++config-mod --addattr ipaconfigstring=SubID:Disable` command. After it is done,
++subordinate ID range can be removed with `ipa idrange-del` command and on the
++IPA server one have to run `ipa-server-upgrade` command to make sure internal
++DNA plugin configuration is removed as well. Finally, a new local ID range can
++be added to cover the required part of the full 32-bit ID space.
++
++**NOTE**: Disabling subordinate ID feature can only be done if no subordinate
++IDs were already allocated.
++
+ Subordinate ids are managed by a new plugin class. The ``subid-add``
+ and ``subid-del`` commands are hidden from command line. New subordinate
+ ids are generated and auto-assigned with ``subid-generate``.
+diff --git a/install/share/Makefile.am b/install/share/Makefile.am
+index 4029297b76cc2f30dc9eab606e5670667978dd27..d8d270ca9f4b13ed01e65c6460a3a6b0dbbc5ebe 100644
+--- a/install/share/Makefile.am
++++ b/install/share/Makefile.am
+@@ -90,6 +90,7 @@ dist_app_DATA =				\
+ 	vault.ldif			\
+ 	kdcproxy-enable.uldif		\
+ 	kdcproxy-disable.uldif		\
++	subid-generators.uldif		\
+ 	ipa-httpd.conf.template		\
+ 	ipa-httpd-wsgi.conf.template	\
+ 	gssapi.login			\
+diff --git a/install/share/subid-generators.uldif b/install/share/subid-generators.uldif
+new file mode 100644
+index 0000000000000000000000000000000000000000..118077382b860c655aa63907ab3db090110349d6
+--- /dev/null
++++ b/install/share/subid-generators.uldif
+@@ -0,0 +1,38 @@
++# DNA plugin and idrange configuration
++dn: cn=subordinate-ids,cn=dna,cn=ipa,cn=etc,$SUFFIX
++default: objectClass: nsContainer
++default: objectClass: top
++default: cn: subordinate-ids
++
++dn: cn=Subordinate IDs,cn=Distributed Numeric Assignment Plugin,cn=plugins,cn=config
++default: objectclass: top
++default: objectclass: extensibleObject
++default: cn: Subordinate IDs
++default: dnaType: ipasubuidnumber
++default: dnaType: ipasubgidnumber
++default: dnaNextValue: eval($SUBID_RANGE_START)
++default: dnaMaxValue: eval($SUBID_RANGE_MAX)
++default: dnaMagicRegen: -1
++default: dnaFilter: (objectClass=ipaSubordinateId)
++default: dnaScope: $SUFFIX
++default: dnaThreshold: eval($SUBID_DNA_THRESHOLD)
++default: dnaSharedCfgDN: cn=subordinate-ids,cn=dna,cn=ipa,cn=etc,$SUFFIX
++default: dnaExcludeScope: cn=provisioning,$SUFFIX
++default: dnaInterval: eval($SUBID_COUNT)
++add: aci: (targetattr = "dnaNextRange || dnaNextValue || dnaMaxValue")(version 3.0;acl "permission:Modify DNA Range";allow (write) groupdn = "ldap:///cn=Modify DNA Range,cn=permissions,cn=pbac,$SUFFIX";)
++add: aci: (targetattr = "cn || dnaMaxValue || dnaNextRange || dnaNextValue  || dnaThreshold || dnaType || objectclass")(version 3.0;acl "permission:Read DNA Range";allow (read, search, compare) groupdn = "ldap:///cn=Read DNA Range,cn=permissions,cn=pbac,$SUFFIX";)
++
++dn: cn=${REALM}_subid_range,cn=ranges,cn=etc,$SUFFIX
++default: objectClass: top
++default: objectClass: ipaIDrange
++default: objectClass: ipaTrustedADDomainRange
++default: cn: ${REALM}_subid_range
++default: ipaBaseID: $SUBID_RANGE_START
++default: ipaIDRangeSize: $SUBID_RANGE_SIZE
++# HACK: RIDs to work around adtrust sidgen issue
++default: ipaBaseRID: eval($SUBID_BASE_RID)
++default: ipaNTTrustedDomainSID: S-1-5-21-738065-838566-$DOMAIN_HASH
++# HACK: "ipa-local-subid" range type causes issues with older SSSD clients
++# see https://github.com/SSSD/sssd/issues/5571
++default: ipaRangeType: ipa-ad-trust
++
+diff --git a/install/updates/73-subid.update b/install/updates/73-subid.update
+index 3c030b41e6d01ed48a0e5cc5c0ed7e536c9d3412..18bca60bcd85b32350a456f71ef9d97ef35b9584 100644
+--- a/install/updates/73-subid.update
++++ b/install/updates/73-subid.update
+@@ -67,40 +67,3 @@ dn: cn=subids,cn=accounts,$SUFFIX
+ add: aci: (targetfilter = "(objectclass=ipasubordinateidentry)")(targetattr="description || ipaowner || ipauniqueid")(targattrfilters = "add=objectClass:(|(objectClass=top)(objectClass=ipasubordinateid)(objectClass=ipasubordinateidentry)(objectClass=ipasubordinategid)(objectClass=ipasubordinateuid)) && ipasubuidnumber:(ipasubuidnumber=-1) && ipasubuidcount:(ipasubuidcount=eval($SUBID_COUNT)) && ipasubgidnumber:(ipasubgidnumber=-1) && ipasubgidcount:(ipasubgidcount=eval($SUBID_COUNT)), del=ipasubuidnumber:(!(ipasubuidnumber=*)) && ipasubuidcount:(!(ipasubuidcount=*)) && ipasubgidnumber:(!(ipasubgidnumber=*)) && ipasubgidcount:(!(ipasubgidcount=*))")(version 3.0;acl "selfservice: Add subordinate id";allow (add, write) userattr = "ipaowner#SELFDN" and groupdn="ldap:///cn=Self-service subordinate ID,cn=permissions,cn=pbac,$SUFFIX";)
+ add: aci: (targetfilter = "(objectclass=ipasubordinateidentry)")(targetattr="description || ipaowner || ipauniqueid")(targattrfilters = "add=objectClass:(|(objectClass=top)(objectClass=ipasubordinateid)(objectClass=ipasubordinateidentry)(objectClass=ipasubordinategid)(objectClass=ipasubordinateuid)) && ipasubuidnumber:(|(ipasubuidnumber>=1)(ipasubuidnumber=-1)) && ipasubuidcount:(ipasubuidcount=eval($SUBID_COUNT)) && ipasubgidnumber:(|(ipasubgidnumber>=1)(ipasubgidnumber=-1)) && ipasubgidcount:(ipasubgidcount=eval($SUBID_COUNT)), del=ipasubuidnumber:(!(ipasubuidnumber=*)) && ipasubuidcount:(!(ipasubuidcount=*)) && ipasubgidnumber:(!(ipasubgidnumber=*)) && ipasubgidcount:(!(ipasubgidcount=*))")(version 3.0;acl "Add subordinate ids to any user";allow (add, write) groupdn="ldap:///cn=Subordinate ID Administrators,cn=privileges,cn=pbac,$SUFFIX";)
+ 
+-# DNA plugin and idrange configuration
+-dn: cn=subordinate-ids,cn=dna,cn=ipa,cn=etc,$SUFFIX
+-default: objectClass: nsContainer
+-default: objectClass: top
+-default: cn: subordinate-ids
+-
+-dn: cn=Subordinate IDs,cn=Distributed Numeric Assignment Plugin,cn=plugins,cn=config
+-default: objectclass: top
+-default: objectclass: extensibleObject
+-default: cn: Subordinate IDs
+-default: dnaType: ipasubuidnumber
+-default: dnaType: ipasubgidnumber
+-default: dnaNextValue: eval($SUBID_RANGE_START)
+-default: dnaMaxValue: eval($SUBID_RANGE_MAX)
+-default: dnaMagicRegen: -1
+-default: dnaFilter: (objectClass=ipaSubordinateId)
+-default: dnaScope: $SUFFIX
+-default: dnaThreshold: eval($SUBID_DNA_THRESHOLD)
+-default: dnaSharedCfgDN: cn=subordinate-ids,cn=dna,cn=ipa,cn=etc,$SUFFIX
+-default: dnaExcludeScope: cn=provisioning,$SUFFIX
+-default: dnaInterval: eval($SUBID_COUNT)
+-add: aci: (targetattr = "dnaNextRange || dnaNextValue || dnaMaxValue")(version 3.0;acl "permission:Modify DNA Range";allow (write) groupdn = "ldap:///cn=Modify DNA Range,cn=permissions,cn=pbac,$SUFFIX";)
+-add: aci: (targetattr = "cn || dnaMaxValue || dnaNextRange || dnaNextValue  || dnaThreshold || dnaType || objectclass")(version 3.0;acl "permission:Read DNA Range";allow (read, search, compare) groupdn = "ldap:///cn=Read DNA Range,cn=permissions,cn=pbac,$SUFFIX";)
+-
+-dn: cn=${REALM}_subid_range,cn=ranges,cn=etc,$SUFFIX
+-default: objectClass: top
+-default: objectClass: ipaIDrange
+-default: objectClass: ipaTrustedADDomainRange
+-default: cn: ${REALM}_subid_range
+-default: ipaBaseID: $SUBID_RANGE_START
+-default: ipaIDRangeSize: $SUBID_RANGE_SIZE
+-# HACK: RIDs to work around adtrust sidgen issue
+-default: ipaBaseRID: eval($SUBID_BASE_RID)
+-default: ipaNTTrustedDomainSID: S-1-5-21-738065-838566-$DOMAIN_HASH
+-# HACK: "ipa-local-subid" range type causes issues with older SSSD clients
+-# see https://github.com/SSSD/sssd/issues/5571
+-default: ipaRangeType: ipa-ad-trust
+diff --git a/install/updates/90-post_upgrade_plugins.update b/install/updates/90-post_upgrade_plugins.update
+index 9a9d80a9245654691ef96bb048dfbe950a4a7c6f..7c3bba3e0317162d4739513e16b9fac973495c66 100644
+--- a/install/updates/90-post_upgrade_plugins.update
++++ b/install/updates/90-post_upgrade_plugins.update
+@@ -34,6 +34,7 @@ plugin: update_dnsforward_emptyzones
+ plugin: update_managed_post
+ plugin: update_managed_permissions
+ plugin: update_read_replication_agreements_permission
++plugin: update_subid_support
+ plugin: update_idrange_baserid
+ plugin: update_passync_privilege_update
+ plugin: update_dnsserver_configuration_into_ldap
+diff --git a/ipalib/messages.py b/ipalib/messages.py
+index 732de7cb92bb530a734a68440478dfda09062db8..6a70bbc7556126748cc2ec031fc2af36bfe76f74 100644
+--- a/ipalib/messages.py
++++ b/ipalib/messages.py
+@@ -506,6 +506,19 @@ class MissingTargetAttributesinPermission(PublicMessage):
+                "are set.")
+ 
+ 
++class ServerUpgradeRequired(PublicMessage):
++    """
++    **13033** Server upgrade required
++    """
++    errno = 13033
++    type = "warning"
++    format = _(
++        "Change of the state of '%(feature)s' feature requires to run "
++        "'ipa-server-upgrade' command on IPA server %(server)s "
++        "to apply configuration changes."
++    )
++
++
+ def iter_messages(variables, base):
+     """Return a tuple with all subclasses
+     """
+diff --git a/ipaplatform/base/paths.py b/ipaplatform/base/paths.py
+index f794aae6d7b19a60ba40282f83a41052584517cb..a5bca789bdb8d07b51779e28adf64c9b68892328 100644
+--- a/ipaplatform/base/paths.py
++++ b/ipaplatform/base/paths.py
+@@ -302,6 +302,7 @@ class BasePathNamespace:
+     HTML_KRBREALM_CON = "/usr/share/ipa/html/krbrealm.con"
+     SCHEMA_COMPAT_ULDIF = "/usr/share/ipa/updates/91-schema_compat.update"
+     SCHEMA_COMPAT_POST_ULDIF = "/usr/share/ipa/schema_compat_post.uldif"
++    SUBID_GENERATORS_ULDIF = "/usr/share/ipa/subid-generators.uldif"
+     IPA_JS_PLUGINS_DIR = "/usr/share/ipa/ui/js/plugins"
+     UPDATES_DIR = "/usr/share/ipa/updates/"
+     DICT_WORDS = "/usr/share/dict/words"
+diff --git a/ipaserver/install/ipa_subids.py b/ipaserver/install/ipa_subids.py
+index 1537047c33431b59d776f9bfa6325d52561e1ac6..8c542e4eae4b6e378a99ed748cd3a2b311dc0ce8 100644
+--- a/ipaserver/install/ipa_subids.py
++++ b/ipaserver/install/ipa_subids.py
+@@ -116,6 +116,11 @@ class IPASubids(AdminTool):
+         api.finalize()
+         api.Backend.ldap2.connect()
+         self.ldap2 = api.Backend.ldap2
++
++        if api.Object.config.is_config_option_present('SubID:Disable'):
++            print("Support for subordinate IDs is disabled.")
++            return 2
++
+         subid_generate = api.Command.subid_generate
+ 
+         dry_run = self.safe_options.dry_run
+diff --git a/ipaserver/install/plugins/update_subid_support.py b/ipaserver/install/plugins/update_subid_support.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..54852d2034012bcac9d12b6e81a3025ac3fe7caf
+--- /dev/null
++++ b/ipaserver/install/plugins/update_subid_support.py
+@@ -0,0 +1,45 @@
++#
++# Copyright (C) 2025  FreeIPA Contributors see COPYING for license
++#
++import logging
++from ipalib import Registry, Updater, errors
++from ipaserver.install import ldapupdate
++from ipaplatform.paths import paths
++from ipapython.dn import DN
++
++logger = logging.getLogger(__name__)
++
++register = Registry()
++
++
++@register()
++class update_subid_support(Updater):
++    """
++    Conditionally add SubID ranges when subID support is enabled
++    """
++
++    dna_plugin_dn = DN(
++        ('cn', 'Distributed Numeric Assignment Plugin'),
++        ('cn', 'plugins'),
++        ('cn', 'config')
++    )
++
++    def execute(self, **options):
++        subid_disabled = self.api.Object.config.is_config_option_present(
++            'SubID:Disable')
++        if not subid_disabled:
++            ld = ldapupdate.LDAPUpdate(api=self.api)
++            ld.update([paths.SUBID_GENERATORS_ULDIF])
++        else:
++            # make sure to remove DNA configuration
++            conn = self.api.Backend.ldap2
++            try:
++                subid_dna_config = DN(
++                    ('cn', 'Subordinate IDs'), self.dna_plugin_dn
++                )
++                entry = conn.get_entry(subid_dna_config)
++                conn.delete_entry(entry)
++            except errors.NotFound:
++                pass
++
++        return False, []
+diff --git a/ipaserver/plugins/config.py b/ipaserver/plugins/config.py
+index adf21ea0c59f70714298af74d7e92f7200f75085..c509c2c13adfb4950741f63ffcbc9f3f806c0c3b 100644
+--- a/ipaserver/plugins/config.py
++++ b/ipaserver/plugins/config.py
+@@ -33,7 +33,7 @@ from .baseldap import (
+     LDAPUpdate,
+     LDAPRetrieve)
+ from .selinuxusermap import validate_selinuxuser
+-from ipalib import _
++from ipalib import _, messages
+ from ipapython.admintool import ScriptError
+ from ipapython.dn import DN
+ from ipaserver.plugins.privilege import principal_has_privilege
+@@ -261,7 +261,7 @@ class config(LDAPObject):
+             values=(u'AllowNThash',
+                     u'KDC:Disable Last Success', u'KDC:Disable Lockout',
+                     u'KDC:Disable Default Preauth for SPNs',
+-                    u'EnforceLDAPOTP'),
++                    u'EnforceLDAPOTP', u'SubID:Disable'),
+         ),
+         Str('ipaselinuxusermaporder',
+             label=_('SELinux user map order'),
+@@ -521,6 +521,12 @@ class config(LDAPObject):
+         for domain in submitted_domains:
+             self._validate_single_domain(attr_name, domain, known_domains)
+ 
++    def is_config_option_present(self, option):
++        dn = DN(('cn', 'ipaconfig'), ('cn', 'etc'), self.api.env.basedn)
++        configentry = self.api.Backend.ldap2.get_entry(dn, ['ipaconfigstring'])
++        configstring = configentry['ipaconfigstring']
++        return (option.lower() in map(str.lower, configstring))
++
+ 
+ @register()
+ class config_mod(LDAPUpdate):
+@@ -695,6 +701,30 @@ class config_mod(LDAPUpdate):
+                 raise errors.ValidationError(name=failedattr,
+                     error=_('SELinux user map default user not in order list'))
+ 
++        if 'ipaconfigstring' in entry_attrs:
++            configstring = entry_attrs['ipaconfigstring']
++            if 'SubID:Disable'.lower() in map(str.lower, configstring):
++                # Check if SubIDs already allocated
++                try:
++                    result = self.api.Command.subid_stats()
++                    stats = result['result']
++                except errors.PublicError:
++                    stats = {'assigned_subids': 0}
++                if stats["assigned_subids"] > 0:
++                    error_message = _("Subordinate ID feature can not be "
++                                      "disabled when there are subIDs "
++                                      "already in use.")
++                    raise errors.ValidationError(name='configuration state',
++                                                 error=error_message)
++                # SubID:Disable enforces disabling default subid generation
++                entry_attrs['ipauserdefaultsubordinateid'] = False
++                self.add_message(
++                    messages.ServerUpgradeRequired(
++                        feature='Subordinate ID',
++                        server=_('<all IPA servers>')
++                    )
++                )
++
+         if 'ca_renewal_master_server' in options:
+             new_master = options['ca_renewal_master_server']
+ 
+diff --git a/ipaserver/plugins/subid.py b/ipaserver/plugins/subid.py
+index 132c85c7f198217ba70f2332306ee2550be86035..2be2cdeff920ff79eb7df6e3cf635df96d7f3348 100644
+--- a/ipaserver/plugins/subid.py
++++ b/ipaserver/plugins/subid.py
+@@ -265,6 +265,12 @@ class subid(LDAPObject):
+ 
+     def handle_subordinate_ids(self, ldap, dn, entry_attrs):
+         """Handle ipaSubordinateId object class"""
++
++        if self.api.Object.config.is_config_option_present('SubID:Disable'):
++            raise errors.ValidationError(
++                name="configuration state",
++                error=_("Support for subordinate IDs is disabled"))
++
+         new_subuid = entry_attrs.single_value.get("ipasubuidnumber")
+         new_subgid = entry_attrs.single_value.get("ipasubgidnumber")
+ 
+@@ -577,6 +583,11 @@ class subid_stats(LDAPQuery):
+         return int(entry.single_value["numSubordinates"])
+ 
+     def execute(self, *keys, **options):
++        if self.api.Object.config.is_config_option_present('SubID:Disable'):
++            raise errors.ValidationError(
++                name="configuration state",
++                error=_("Support for subordinate IDs is disabled"))
++
+         ldap = self.obj.backend
+         dna_remaining = self.get_remaining_dna(ldap, **options)
+         baseid, rangesize = self.get_idrange(ldap, **options)
+diff --git a/ipaserver/plugins/user.py b/ipaserver/plugins/user.py
+index a3e9c29035161af40c29093b3792f2d97847e5d1..875f2b4babc526359d76778321ba7402198acac9 100644
+--- a/ipaserver/plugins/user.py
++++ b/ipaserver/plugins/user.py
+@@ -718,7 +718,9 @@ class user_add(baseuser_add):
+         default_subid = config.single_value.get(
+             'ipaUserDefaultSubordinateId', False
+         )
+-        if default_subid:
++        subid_disabled = self.api.Object.config.is_config_option_present(
++            'SubID:Disable')
++        if default_subid and not subid_disabled:
+             result = self.api.Command.subid_generate(
+                 ipaowner=entry_attrs.single_value['uid'],
+                 version=options['version']
+-- 
+2.48.1
+

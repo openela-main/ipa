@@ -1,0 +1,36 @@
+From d77c4597a841729cb7c890bb57cc548a70c8724b Mon Sep 17 00:00:00 2001
+From: Sudhir Menon <sumenon@redhat.com>
+Date: Tue, 1 Apr 2025 12:31:18 +0530
+Subject: [PATCH] ipatests: Fix for ipa-healthcheck test in FIPS Mode
+
+Fix https://github.com/freeipa/freeipa-healthcheck/pull/349
+was added for RHEL10 only causing the tests to
+fail in RHEL10.1.
+Hence the if condition has been changed in the testcode.
+
+Signed-off-by: Sudhir Menon <sumenon@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ ipatests/test_integration/test_ipahealthcheck.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index d72808f0f9b6dc7e438a16f9bd7e676f473fd323..8d1b9fce32f8e2e6ac78f9b26f9daf19445c3c8b 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -374,10 +374,10 @@ class TestIpaHealthCheck(IntegrationTest):
+         if (
+             parse_version(healthcheck_version) < parse_version("0.17")
+             and osinfo.id == 'rhel'
+-            and osinfo.version_number == (10,0)
++            and osinfo.version_number >= (10,0)
+         ):
+             # Patch: https://github.com/freeipa/freeipa-healthcheck/pull/349
+-            pytest.xfail("Patch is unavailable for RHEL 10.0 and "
++            pytest.xfail("Patch is unavailable for RHEL 10.0 and above"
+                          "freeipa-healtheck version 0.16 or less")
+ 
+         returncode, check = run_healthcheck(self.master,
+-- 
+2.49.0
+

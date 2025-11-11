@@ -1,0 +1,35 @@
+From 100737fff5a0039cd883a92400d1495dd5bf7658 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Fri, 7 Mar 2025 09:01:35 +0100
+Subject: [PATCH] WebUI: fix the tooltip for Search Size limit
+
+The tooltip for IPA Server > Configuration > Search size limit
+is using the doc from ipasearchtimelimit instead of
+ipasearchrecordslimit.
+
+Use the right tooltip to properly display:
+Maximum number of records to search (-1 or 0 is unlimited)
+
+Fixes: https://pagure.io/freeipa/issue/9758
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ install/ui/src/freeipa/serverconfig.js | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/install/ui/src/freeipa/serverconfig.js b/install/ui/src/freeipa/serverconfig.js
+index e81e48cfb405c4ccc2591edb754fa88f5586c8e0..d7f67e885bdb2c884a5dedd615bade5fcedc863d 100644
+--- a/install/ui/src/freeipa/serverconfig.js
++++ b/install/ui/src/freeipa/serverconfig.js
+@@ -47,7 +47,7 @@ return {
+                     fields: [
+                         {
+                             name: 'ipasearchrecordslimit',
+-                            tooltip: '@mc-opt:config_mod:ipasearchtimelimit:doc'
++                            tooltip: '@mc-opt:config_mod:ipasearchrecordslimit:doc'
+                         },
+                         {
+                             name: 'ipasearchtimelimit',
+-- 
+2.48.1
+

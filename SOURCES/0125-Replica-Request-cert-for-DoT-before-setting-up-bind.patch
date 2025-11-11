@@ -1,0 +1,59 @@
+From f4cbea00fde8dada84bfd1262b5271035d3ca7a4 Mon Sep 17 00:00:00 2001
+From: Thomas Woerner <twoerner@redhat.com>
+Date: Thu, 12 Jun 2025 18:34:49 +0200
+Subject: [PATCH] Replica: Request cert for DoT before setting up bind
+
+Deploying a replica with DNS support using an IPA server DNS with DoT
+fails while setting up DNS over TLS. The request for the certificate for
+DoT using IPA CA is done after the DNS server for the replica is configured.
+
+The nameserver in /etc/resolv.conf has been changed to 127.0.0.1, but
+unbound was not yet configured as a forwarder.
+
+The solution is to move the cert request before the DNS server
+configuration. The unbound config from the client deployment is still
+working at that moment.
+
+Fixes: https://pagure.io/freeipa/issue/9808
+Signed-off-by: Thomas Woerner <twoerner@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ ipaserver/install/dns.py | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/ipaserver/install/dns.py b/ipaserver/install/dns.py
+index ccec9d8019a250a275cbfac5a360fc3046bcb69c..9740faeddb244a56b2dc8a274ff82158f6dd2204 100644
+--- a/ipaserver/install/dns.py
++++ b/ipaserver/install/dns.py
+@@ -114,7 +114,7 @@ def _disable_dnssec():
+             conn.update_entry(entry)
+ 
+ 
+-def _setup_dns_over_tls(options):
++def _request_cert_for_dns_over_tls(options):
+     if os.path.isfile(paths.IPA_CA_CRT) and not options.dns_over_tls_cert:
+         # request certificate for DNS over TLS, using IPA CA
+         cert = paths.BIND_DNS_OVER_TLS_CRT
+@@ -128,6 +128,8 @@ def _setup_dns_over_tls(options):
+         constants.NAMED_USER.chown(cert, gid=constants.NAMED_GROUP.gid)
+         constants.NAMED_USER.chown(key, gid=constants.NAMED_GROUP.gid)
+ 
++
++def _setup_dns_over_tls(options):
+     # setup and enable Unbound as resolver
+     forward_addrs = ["# forward-addr: specify here forwarders"]
+     if options.dot_forwarders:
+@@ -435,6 +437,10 @@ def install(standalone, replica, options, api=api):
+             "and IPA CA is not present."
+         )
+ 
++    if options.dns_over_tls:
++        print("Request certificate for DNS over TLS, using IPA CA")
++        _request_cert_for_dns_over_tls(options)
++
+     bind = bindinstance.BindInstance(fstore, api=api)
+     bind.setup(api.env.host, ip_addresses, api.env.realm, api.env.domain,
+                options.forwarders, options.forward_policy,
+-- 
+2.50.0
+

@@ -30,5 +30,5 @@ index 4032d266a8dc72fae6ee11857c306aa3a21e51bc..b0d79182cfc98d23333266ee4c3d710b
              '--manual-cleanup-hook', CERTBOT_DNS_IPA_SCRIPT,
              '--key-type', 'rsa',
 -- 
-2.51.0
+2.50.0
 

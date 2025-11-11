@@ -1,0 +1,77 @@
+From 3ba0f6a34cb018a36bc548667e2b433d05da6a45 Mon Sep 17 00:00:00 2001
+From: Sudhir Menon <sumenon@redhat.com>
+Date: Tue, 6 May 2025 15:37:54 +0530
+Subject: [PATCH] ipatests: Tests for krbLastSuccessfulAuth warning
+
+This testcase checks that ipa-healthcheck issues
+warning when ipaconfigstring=AllowNThash
+
+Ref: https://github.com/freeipa/freeipa-healthcheck/issues/315
+
+Signed-off-by: Sudhir Menon <sumenon@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ .../test_integration/test_ipahealthcheck.py   | 40 ++++++++++++++++++-
+ 1 file changed, 39 insertions(+), 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index b8ee2884de51a2e0b2dcf2991452486c29c4ed00..0ebc7149f88394bf6b6355adbb88b3ad92697517 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -1526,6 +1526,45 @@ class TestIpaHealthCheck(IntegrationTest):
+             ]
+         )
+ 
++    @pytest.fixture
++    def change_pwd_plugin_default(self):
++        """
++        Fixture to change the password plugin feature
++        to AllowNThash and change it to default
++        """
++        self.master.run_command(
++            [
++                "ipa", "config-mod", "--delattr",
++                "ipaconfigstring=KDC:Disable Last Success"
++            ]
++        )
++        yield
++        self.master.run_command(
++            [
++                "ipa", "config-mod", "--addattr",
++                "ipaconfigstring=KDC:Disable Last Success"
++            ]
++        )
++
++    def test_krbLastSuccessfulAuth_warning(self, change_pwd_plugin_default):
++        """
++        This test checks that warning message is displayed
++        when password plugin feature is modified to
++        AllowNThash
++        """
++        err_msg = (
++            "Last Successful Auth is enabled. "
++            "It may cause performance problems."
++        )
++        returncode, data = run_healthcheck(
++            self.master, "ipahealthcheck.ipa.config",
++            "IPAkrbLastSuccessfulAuth",
++        )
++        assert returncode == 1
++        for check in data:
++            assert check["result"] == "WARNING"
++            assert check["kw"]["msg"] == err_msg
++
+     @pytest.fixture
+     def expire_cert_critical(self):
+         """
+@@ -1553,7 +1592,6 @@ class TestIpaHealthCheck(IntegrationTest):
+             assert "Expired Certificate" in check["kw"]["items"]
+             assert check["kw"]["msg"] == msg
+ 
+-
+     def test_ipa_healthcheck_expiring(self, restart_service):
+         """
+         There are two overlapping tests for expiring certs, check both.
+-- 
+2.49.0
+

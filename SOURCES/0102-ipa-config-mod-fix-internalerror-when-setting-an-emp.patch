@@ -1,0 +1,90 @@
+From 1c069653806ce8224132a35d6d3bd01ac53098b6 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 26 May 2025 18:24:12 +0200
+Subject: [PATCH] ipa config-mod: fix internalerror when setting an empty
+ ipaconfigstring
+
+When ipa config-mod is called with --ipaconfigstring="", the command
+fails with an InternalError.
+This happens because the code added for 32bits uid did not properly
+handle this case.
+
+Same issue if ipa subid-stats is called with a null ipaconfigstring.
+
+This commit now handles when ipaconfigstring is empty or None, and adds
+a test.
+
+Fixes: https://pagure.io/freeipa/issue/9794
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Francisco Trivino <ftrivino@redhat.com>
+---
+ ipaserver/plugins/config.py                |  4 +--
+ ipatests/test_integration/test_commands.py | 30 ++++++++++++++++++++++
+ 2 files changed, 32 insertions(+), 2 deletions(-)
+
+diff --git a/ipaserver/plugins/config.py b/ipaserver/plugins/config.py
+index c509c2c13adfb4950741f63ffcbc9f3f806c0c3b..d9769ab1fb8498c24ce41ad32af40938bdaee804 100644
+--- a/ipaserver/plugins/config.py
++++ b/ipaserver/plugins/config.py
+@@ -524,7 +524,7 @@ class config(LDAPObject):
+     def is_config_option_present(self, option):
+         dn = DN(('cn', 'ipaconfig'), ('cn', 'etc'), self.api.env.basedn)
+         configentry = self.api.Backend.ldap2.get_entry(dn, ['ipaconfigstring'])
+-        configstring = configentry['ipaconfigstring']
++        configstring = configentry.get('ipaconfigstring') or []
+         return (option.lower() in map(str.lower, configstring))
+ 
+ 
+@@ -702,7 +702,7 @@ class config_mod(LDAPUpdate):
+                     error=_('SELinux user map default user not in order list'))
+ 
+         if 'ipaconfigstring' in entry_attrs:
+-            configstring = entry_attrs['ipaconfigstring']
++            configstring = entry_attrs['ipaconfigstring'] or []
+             if 'SubID:Disable'.lower() in map(str.lower, configstring):
+                 # Check if SubIDs already allocated
+                 try:
+diff --git a/ipatests/test_integration/test_commands.py b/ipatests/test_integration/test_commands.py
+index f64152908b3e1cbca451697043c1fcc8ad37fee6..9cad5772127bcd860aeecc8dabe73d5f160faf7b 100644
+--- a/ipatests/test_integration/test_commands.py
++++ b/ipatests/test_integration/test_commands.py
+@@ -2123,6 +2123,36 @@ class TestIPACommandWithoutReplica(IntegrationTest):
+         assert old_err_msg not in dirsrv_error_log
+         assert re.search(new_err_msg, dirsrv_error_log)
+ 
++    @pytest.fixture
++    def update_ipaconfigstring(self):
++        """
++        This fixture stores the value of ipaconfigstring parameter
++        and reverts to the initial value
++        """
++        ldap = self.master.ldap_connect()
++        dn = DN(
++            ("cn", "ipaconfig"), ('cn', 'etc'),
++            self.master.domain.basedn
++        )
++        entry = ldap.get_entry(dn)
++        val = entry.get("ipaconfigstring")
++        yield
++
++        # re-read the entry as the value may have been changed by the test
++        entry = ldap.get_entry(dn)
++        entry["ipaconfigstring"] = val
++        ldap.update_entry(entry)
++
++    def test_empty_ipaconfigstring(self, update_ipaconfigstring):
++        """
++        Test for https://pagure.io/freeipa/issue/9794
++
++        Test that setting an empty ipaconfigstring does not fail.
++        Subsequent calls to ipa subid-stats should also succeed.
++        """
++        self.master.run_command(['ipa', 'config-mod', "--ipaconfigstring="])
++        self.master.run_command(['ipa', 'subid-stats'])
++
+     def test_ipa_cacert_manage_prune(self):
+         """Test for ipa-cacert-manage prune
+ 
+-- 
+2.49.0
+

@@ -1,0 +1,65 @@
+From 460281f4508864ef25b3b9992e5922e7947a3109 Mon Sep 17 00:00:00 2001
+From: David Hanina <dhanina@redhat.com>
+Date: Tue, 18 Feb 2025 15:36:12 +0100
+Subject: [PATCH] Replace fips-mode-setup
+
+RHEL10 no longer support fips-setup-mode, this has been
+replaced in the healthcheck tool, but also needs to be replaced here.
+
+Fixes: https://pagure.io/freeipa/issue/9750
+
+Signed-off-by: David Hanina <dhanina@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipaplatform/base/paths.py                        |  1 -
+ ipatests/test_integration/test_ipahealthcheck.py | 15 ++++++---------
+ 2 files changed, 6 insertions(+), 10 deletions(-)
+
+diff --git a/ipaplatform/base/paths.py b/ipaplatform/base/paths.py
+index b2da94992a031878fc20a98ff1023c2f5c80acca..6a62d7bd0a2f75f43f6dd62fccbaa84a1c9929c0 100644
+--- a/ipaplatform/base/paths.py
++++ b/ipaplatform/base/paths.py
+@@ -28,7 +28,6 @@ class BasePathNamespace:
+     BIN_HOSTNAMECTL = "/bin/hostnamectl"
+     CRYPTO_POLICY_OPENSSLCNF_FILE = None
+     ECHO = "/bin/echo"
+-    FIPS_MODE_SETUP = "/bin/fips-mode-setup"
+     GZIP = "/bin/gzip"
+     LS = "/bin/ls"
+     SYSTEMCTL = "/bin/systemctl"
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index 05a0adb24a3f26d70d0690462e7c0fefbf98c6e6..9f4017e35ec89d19f8d1bd354ecdd8fb21071e6a 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -377,21 +377,18 @@ class TestIpaHealthCheck(IntegrationTest):
+                                             failures_only=False)
+         assert returncode == 0
+ 
+-        cmd = self.master.run_command(
+-            [paths.FIPS_MODE_SETUP, "--is-enabled"], raiseonerr=False
+-        )
+-        returncode = cmd.returncode
++        is_fips_enabled = tasks.is_fips_enabled(self.master)
+ 
+         assert "fips" in check[0]["kw"]
+ 
+         if check[0]["kw"]["fips"] == "disabled":
+-            assert returncode == 2
++            assert not is_fips_enabled
+         elif check[0]["kw"]["fips"] == "enabled":
+-            assert returncode == 0
+-        elif check[0]["kw"]["fips"] == f"missing {paths.FIPS_MODE_SETUP}":
+-            assert returncode == 127
++            assert is_fips_enabled
+         else:
+-            assert returncode == 1
++            raise ValueError("File %s doesn't exist or contains unexpected "
++                             "value, this is a kernel issue!"
++                             % paths.PROC_FIPS_ENABLED)
+ 
+     def test_ipa_healthcheck_after_certupdate(self):
+         """
+-- 
+2.48.1
+

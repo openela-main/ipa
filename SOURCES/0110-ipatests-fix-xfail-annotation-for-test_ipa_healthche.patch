@@ -1,0 +1,43 @@
+From 982569fcb3d23d6e6578e5efbaafb99c32542a8d Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Tue, 20 May 2025 13:58:54 +0200
+Subject: [PATCH] ipatests: fix xfail annotation for
+ test_ipa_healthcheck_fips_enabled
+
+The test is expected to fail
+- on rhel 10.0 with ipa-healthcheck < 0.17
+
+On Fedora 41, the command fips-mode-check is still available.
+On Fedora 42, it has been removed but ipa-healthcheck 0.18 has
+been adapted.
+
+Fixes: https://pagure.io/freeipa/issue/9791
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipatests/test_integration/test_ipahealthcheck.py | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index 13fcc3d43545590e025598fcc9c9ee40f62dae76..3dcc22411347b98853ef8b9551cc33f05ff13195 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -375,11 +375,11 @@ class TestIpaHealthCheck(IntegrationTest):
+         if (
+             parse_version(healthcheck_version) < parse_version("0.17")
+             and osinfo.id == 'rhel'
+-            and osinfo.version_number >= (10,0)
++            and osinfo.version_number == (10,0)
+         ):
+             # Patch: https://github.com/freeipa/freeipa-healthcheck/pull/349
+-            pytest.xfail("Patch is unavailable for RHEL 10.0 and above"
+-                         "freeipa-healtheck version 0.16 or less")
++            pytest.skip("Patch is unavailable for RHEL 10.0 "
++                        "freeipa-healthcheck version 0.16 or less")
+ 
+         returncode, check = run_healthcheck(self.master,
+                                             source="ipahealthcheck.meta.core",
+-- 
+2.49.0
+

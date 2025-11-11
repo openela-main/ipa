@@ -66,11 +66,10 @@
 %if 0%{?rhel}
 %global package_name ipa
 %global alt_name freeipa
-%global krb5_version 1.20.1-1
 %global krb5_kdb_version 9.0
 # 0.7.16: https://github.com/drkjam/netaddr/issues/71
 %global python_netaddr_version 0.7.19
-%global samba_version 4.21.1
+%global samba_version 4.22.2
 %global slapi_nis_version 0.70.0
 %global python_ldap_version 3.1.0-1
 %if 0%{?rhel} < 9
@@ -79,15 +78,27 @@
 %global selinux_policy_version 3.14.3-107
 %else
 # version supporting LMDB and lib389.cli_ctl.dblib.run_dbscan utility
-# Allow Uniqueness plugin to search uniqueness
-# attributes using custom matching rules 
-%global ds_version 3.0.6-12
+%global ds_version 3.0.4
 %global selinux_policy_version 38.1.1-1
+%endif
+
+%if 0%{?rhel} >= 10
+%global krb5_version 1.21.3-6
+%elif 0%{?rhel} == 9
+%global krb5_version 1.21.1-5
+%else
+%global krb5_version 1.18.2-31
 %endif
 
 # Fix for TLS 1.3 PHA, RHBZ#1775158
 %global httpd_version 2.4.37-21
-%global bind_version 32:9.18.33-2
+
+# DNSSEC support with OpenSSL provider API in RHEL 10
+%if 0%{?rhel} < 10
+%global bind_version 9.11.20-6
+%else
+%global bind_version 9.18.33-3
+%endif
 
 # support for passkey
 %global sssd_version 2.10.0
@@ -107,7 +118,6 @@
 %global slapi_nis_version 0.70.0
 
 # Require new KDB ABI
-%global krb5_version 1.21.2
 %global krb5_kdb_version 9.0
 
 # fix for segfault in python3-ldap, https://pagure.io/freeipa/issue/7324
@@ -121,17 +131,28 @@
 %elif 0%{?fedora} == 40
 %global ds_version 3.0.4-3
 %elif 0%{?fedora} >= 41
-%global ds_version 3.1.1-3 
+%global ds_version 3.1.1-3
 %else
 %global ds_version 2.1.0
+%endif
+
+%if 0%{?fedora} >= 42
+%global krb5_version 1.21.3-5
+%elif 0%{?fedora} == 41
+%global krb5_version 1.21.3-4
+%else
+%global krb5_version 1.21.3-3
 %endif
 
 # Fix for TLS 1.3 PHA, RHBZ#1775146
 %global httpd_version 2.4.41-9
 
-# Fix for RHBZ#2117342
-%global bind_version 32:9.18.7-1
-
+%if 0%{?fedora} < 42
+%global bind_version 32:9.18.33-1
+%else
+# BIND version with backport of DNSSEC support over OpenSSL provider API
+%global bind_version 32:9.18.35-2
+%endif
 # Don't use Fedora's Python dependency generator on Fedora 30/rawhide yet.
 # Some packages don't provide new dist aliases.
 # https://docs.fedoraproject.org/en-US/packaging-guidelines/Python/
@@ -209,7 +230,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        15%{?rc_version:.%rc_version}%{?dist}.4
+Release:        24%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -271,7 +292,6 @@ Patch0028:      0028-ipa-migrate-should-migrate-dns-forward-zones.patch
 Patch0029:      0029-vault-handle-pyca-InternalError-exception-for-PKCS-1.patch
 Patch0030:      0030-ipatests-Tests-for-ipa-migrate-tool.patch
 Patch0031:      0031-Fix-Organization-field-in-Okta-not-required.patch
-Patch0032:      0032-Use-OpenSSL-provider-with-BIND-for-Fedora-41-and-RHE.patch
 Patch0033:      0033-selinux-allow-Cockpit-to-use-HTTP-keytab-on-IPA-serv.patch
 Patch0034:      0034-Minimal-test-for-Cockpit-integration-on-IPA-master.patch
 Patch0035:      0035-ipatests-install-master-with-allow-zone-overlap.patch
@@ -309,14 +329,68 @@ Patch0066:      0066-ipatests-on-rhel10-do-not-install-firefox.patch
 Patch0067:      0067-Configure-the-pki-tomcatd-service-systemd-timeout.patch
 Patch0068:      0068-Align-startup_timeout-with-the-systemd-default-and-d.patch
 Patch0069:      0069-dns-only-disable-unbound-when-DoT-is-enabled.patch
-Patch0070:      0070-kdb-keep-ipadb_get_connection-from-succeeding-with-n.patch
-Patch0071:      0071-Set-krbCanonicalName-admin-REALM-on-the-admin-user.patch
-Patch0072:      0072-Enforce-uniqueness-across-krbprincipalname-and-krbca.patch
-Patch0073:      0073-ipa-kdb-enforce-PAC-presence-on-TGT-for-TGS-REQ.patch
-Patch0074:      0074-ipatests-extend-test-for-unique-krbcanonicalname.patch
-Patch0075:      0075-ipatests-certbot-removed-the-manual-public-ip-loggin.patch
-Patch0076:      0076-ipatests-use-sos-report-instead-of-sosreport-command.patch
-Patch0077:      0077-ipatests-fix-test_certmonger_ipa_responder_jsonrpc.patch
+Patch0070:      0070-ipa-migrate-do-not-migrate-tombstone-entries-ignore-.patch
+Patch0071:      0071-Replace-fips-mode-setup.patch
+Patch0072:      0072-Skip-for-unpatched-freeipa-healthcheck.patch
+Patch0073:      0073-WebUI-fix-the-tooltip-for-Search-Size-limit.patch
+Patch0074:      0074-Leapp-upgrade-skip-systemctl-calls.patch
+Patch0075:      0075-Disable-raw-and-structured-together.patch
+Patch0076:      0076-config-mod-allow-disabling-subordinate-ID-integratio.patch
+Patch0077:      0077-update_dna_shared_config-do-not-fail-when-config-is-.patch
+Patch0078:      0078-baseuser-allow-uidNumber-and-gidNumber-of-32-bit-ran.patch
+Patch0079:      0079-ipatests-add-a-test-to-use-full-32-bit-ID-range-spac.patch
+Patch0080:      0080-idrange-use-minvalue-0-for-baserid-and-secondarybase.patch
+Patch0081:      0081-ipatests-Tests-to-check-data-in-journal-log.patch
+Patch0082:      0082-Disallow-removal-of-dogtag-and-ipa-dnskeysyncd-servi.patch
+Patch0083:      0083-Don-t-require-certificates-to-have-unique-ipaCertSub.patch
+Patch0084:      0084-dns-don-t-populate-forwarders-with-DoT-forwarders.patch
+Patch0085:      0085-Correct-dnsrecord_-tests-for-raw-structured.patch
+Patch0086:      0086-ipatests-Fix-for-ipa-healthcheck-test-in-FIPS-Mode.patch
+Patch0087:      0087-ipa-sidgen-fix-memory-leak-in-ipa_sidgen_add_post_op.patch
+Patch0088:      0088-Add-a-check-into-ipa-cert-fix-tool-to-avoid-updating.patch
+Patch0089:      0089-Test-fix-for-the-update.patch
+Patch0090:      0090-ipa-migrate-remove-replication-state-information.patch
+Patch0091:      0091-ipa-migrate-do-not-process-AD-entgries-in-staging-mo.patch
+Patch0092:      0092-ipa-migrate-improve-suffix-replacement.patch
+Patch0093:      0093-kdb-keep-ipadb_get_connection-from-succeeding-with-n.patch
+Patch0094:      0094-Use-OpenSSL-provider-with-BIND-for-Fedora-42-and-RHE.patch
+Patch0095:      0095-DNS-detect-when-OpenSSL-engine-should-be-removed-on-.patch
+Patch0096:      0096-ipa-dnskeysyncd-use-systemd-tmpfiles-to-handle-token.patch
+Patch0097:      0097-freeipa.spec.in-update-BIND-related-dependencies.patch
+Patch0098:      0098-freeipa.spec.in-do-not-recommend-encrypted-DNS-on-pr.patch
+Patch0099:      0099-dns-install-fix-selinux-avc-relabelto.patch
+Patch0100:      0100-ipatests-test_manual_renewal_master_transfer-must-wa.patch
+Patch0101:      0101-Require-baserid-and-secondarybaserid.patch
+Patch0102:      0102-ipa-config-mod-fix-internalerror-when-setting-an-emp.patch
+Patch0103:      0103-ipatests-Test-to-check-dot-forwarders-are-added-to-u.patch
+Patch0104:      0104-Fix-some-issues-identified-by-a-static-analyzer.patch
+Patch0105:      0105-ipatests-Ignore-run-log-journal-in-test_uninstallati.patch
+Patch0106:      0106-ipatests-Tests-for-krbLastSuccessfulAuth-warning.patch
+Patch0107:      0107-ipatests-ipahealthcheck-warns-for-user-provided-cert.patch
+Patch0108:      0108-Warn-when-UID-is-out-of-local-ID-ranges.patch
+Patch0109:      0109-ipatests-fix-invalid-range-creation-in-test_ipa_idra.patch
+Patch0110:      0110-ipatests-fix-xfail-annotation-for-test_ipa_healthche.patch
+Patch0111:      0111-ipatests-certbot-removed-the-manual-public-ip-loggin.patch
+Patch0112:      0112-ipatests-adapt-error-code-and-message-for-samba-4.22.patch
+Patch0113:      0113-Fix-inconsistency-in-manpage-for-DoT-forwarder-optio.patch
+Patch0114:      0114-Set-krbCanonicalName-admin-REALM-on-the-admin-user.patch
+Patch0115:      0115-ipa-client-install-Fix-nsupdate-issues-when-dns_over.patch
+Patch0116:      0116-ipatests-fix-test_adtrust_install_with_non_ipa_user.patch
+Patch0117:      0117-ipa-idrange-fix-check-that-IPA-server-is-installed.patch
+Patch0118:      0118-ipa-migrate-only-remove-repl-state-attribute-options.patch
+# Patch0119:      0119-ipa-kdb-support-storing-multiple-KVNO-for-the-same-p.patch
+# Patch0120:      0120-Use-ipaplatform-tasks-for-krb5-enctypes.patch
+# Patch0121:      0121-Add-test-for-master-key-upgrade.patch
+Patch0122:      0122-ipa-client-install-New-no-dnssec-validation-option.patch
+Patch0123:      0123-ipaserver-install-dns.py-Allow-to-Turn-off-DNSSEC-va.patch
+Patch0124:      0124-ipatests-Tests-for-32BitIdranges.patch
+Patch0125:      0125-Replica-Request-cert-for-DoT-before-setting-up-bind.patch
+Patch0126:      0126-ipatests-use-sos-report-instead-of-sosreport-command.patch
+Patch0127:      0127-dns-only-overwrite-resolv.conf-during-eDNS-setup-whe.patch
+Patch0128:      0128-Use-correct-capitalization-for-GitHub-and-GitLab.patch
+Patch0129:      0129-kdb-prevent-double-crash-in-RBCD-ACL-free.patch
+Patch0130:      0130-ipatests-Tests-for-ipa-migrate-tool-with-ldif-file.patch
+Patch0131:      0131-dns-disable-all-previous-Unbound-configuration-befor.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -370,8 +444,9 @@ BuildRequires:  libsss_idmap-devel
 BuildRequires:  libsss_certmap-devel
 BuildRequires:  libsss_nss_idmap-devel >= %{sssd_version}
 %if 0%{?fedora} >= 41 || 0%{?rhel} >= 10
+# Do not use nodejs-24
 # Do not use nodejs22 on fedora < 41, https://pagure.io/freeipa/issue/9643
-BuildRequires: nodejs(abi)
+BuildRequires: nodejs(abi) == 127
 %elif 0%{?fedora} >= 39
 # Do not use nodejs20 on fedora < 39, https://pagure.io/freeipa/issue/9374
 BuildRequires:  nodejs(abi) < 127
@@ -670,7 +745,12 @@ If you are installing an IPA server, you need to install this package.
 Summary: IPA integrated DNS server with support for automatic DNSSEC signing
 BuildArch: noarch
 Requires: %{name}-server = %{version}-%{release}
-Requires: bind-dyndb-ldap >= 11.11-1
+# Both Fedora 42+ and RHEL support newer bind-dyndb-ldap 11.11
+%if 0%{?fedora} < 42
+Requires: bind-dyndb-ldap >= 11.10-33
+%else
+Requires: bind-dyndb-ldap >= 11.11
+%endif
 Requires: bind >= %{bind_version}
 Requires: bind-utils >= %{bind_version}
 # bind-dnssec-utils is required by the OpenDNSSec integration
@@ -681,7 +761,9 @@ Requires: %{openssl_pkcs11_name} >= %{openssl_pkcs11_version}
 # See https://bugzilla.redhat.com/show_bug.cgi?id=1825812
 # RHEL 8.3+ and Fedora 32+ have 2.1
 Requires: opendnssec >= 2.1.6-5
+%if 0%{?fedora} >= 42 || 0%{?rhel} > 9
 Recommends: %{name}-server-encrypted-dns
+%endif
 %{?systemd_requires}
 
 Provides: %{alt_name}-server-dns = %{version}
@@ -699,6 +781,8 @@ Integrated DNS server is BIND 9. OpenDNSSEC provides key management.
 %package server-encrypted-dns
 Summary: support for encrypted DNS in IPA integrated DNS server
 Requires: %{name}-client-encrypted-dns
+# Will need newer bind-dyndb-ldap to allow use of OpenSSL provider API
+Requires: bind-dyndb-ldap >= 11.11
 
 %description server-encrypted-dns
 Provides support for enabling DNS over TLS in the IPA integrated DNS
@@ -1285,8 +1369,11 @@ if [ $1 = 0 ]; then
 # NOTE: systemd specific section
     /bin/systemctl --quiet stop ipa.service || :
     /bin/systemctl --quiet disable ipa.service || :
-    /bin/systemctl reload-or-try-restart dbus
-    /bin/systemctl reload-or-try-restart oddjobd
+    # Skip systemctl calls when leapp upgrade is in progress
+    if [ -z "$LEAPP_IPU_IN_PROGRESS" ] ; then
+        /bin/systemctl reload-or-try-restart dbus
+        /bin/systemctl reload-or-try-restart oddjobd
+    fi
 # END
 fi
 
@@ -1350,8 +1437,11 @@ fi
 %preun server-trust-ad
 if [ $1 -eq 0 ]; then
     %{_sbindir}/update-alternatives --remove winbind_krb5_locator.so /dev/null
-    /bin/systemctl reload-or-try-restart dbus
-    /bin/systemctl reload-or-try-restart oddjobd
+    # Skip systemctl calls when leapp upgrade is in progress
+    if [ -z "$LEAPP_IPU_IN_PROGRESS" ] ; then
+        /bin/systemctl reload-or-try-restart dbus
+        /bin/systemctl reload-or-try-restart oddjobd
+    fi
 fi
 
 # ONLY_CLIENT
@@ -1781,6 +1871,7 @@ fi
 %{_libexecdir}/ipa/ipa-ods-exporter
 %{_sbindir}/ipa-dns-install
 %{_mandir}/man1/ipa-dns-install.1*
+%{_usr}/share/ipa/ipa-dnssec.conf
 %attr(644,root,root) %{_unitdir}/ipa-dnskeysyncd.service
 %attr(644,root,root) %{_unitdir}/ipa-ods-exporter.socket
 %attr(644,root,root) %{_unitdir}/ipa-ods-exporter.service
@@ -1962,23 +2053,60 @@ fi
 %endif
 
 %changelog
-* Thu Sep 11 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-15.4
-- Resolves: RHEL-110055
-  EMBARGOED CVE-2025-7493 ipa: Privilege escalation from host to domain admin in FreeIPA
+* Tue Aug 19 2025 Rafael Jeffman <rjeffman@redhat.com> - 4.12.2-24
+- Resolves: RHEL-109895 Revert allow update of Kerberos master key
 
-* Fri Sep 05 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-15.3
-- Resolves: RHEL-113245
-  Include latest fixes in python3-ipatests package
+* Wed Jul 30 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-23
+- Resolves: RHEL-105973 Include fixes in python3-ipatests package
+- Resolves: RHEL-105513 kdb: prevent double crash in RBCD ACL free
+- Resolves: RHEL-101708 ipatests: use "sos report" instead of "sosreport" command
+- Resolves: RHEL-95733 Incorrect use of external IdP GitHub trademark
+- Resolves: RHEL-95374 eDNS: multiple issues during encrypted DNS setup
 
-* Tue Sep 02 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-15.2
-- Resolves: RHEL-110055
-  EMBARGOED CVE-2025-7493 ipa: Privilege escalation from host to domain admin in FreeIPA
+* Thu Jun 26 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-22
+- Resolves: RHEL-95374 eDNS: multiple issues during encrypted DNS setup
+- Resolves: RHEL-89893 ipa: Privilege escalation from host to domain admin in FreeIPA
+- Resolves: RHEL-99316 Include latest fixes in python3-ipatests package
+- Resolves: RHEL-97053 ipa-idrange-fix: 'Env' object has no attribute 'basedn'
+- Resolves: RHEL-96936 Nightly test failure (rawhide) in test_trust.py::TestTrust::test_server_option_with_unreachable_ad
+- Resolves: RHEL-49440 kdb: support storing and retrieving multiple master keys
 
-* Thu May 15 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-15.1
-- Resolves: RHEL-89145
-  kdb: ipadb_get_connection() succeeds but returns null LDAP context
-- Resolves: RHEL-89892
-  EMBARGOED CVE-2025-4404 ipa: Privilege escalation from host to domain admin in FreeIPA
+* Thu Jun 12 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-21
+- Related: RHEL-89870
+Bump NVR, rebuild required after infra issue
+
+* Wed Jun 11 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-20
+- Related: RHEL-89870
+
+* Thu Jun 05 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-19
+- Related: RHEL-89979
+Bump version and rebuild because of rpm issue
+
+* Wed Jun 04 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-18
+- Resolves: RHEL-89979 Support OpenSSL provider API
+- Resolves: RHEL-25007 [RFE] Give warning when adding user with UID out of any ID range
+- Resolves: RHEL-93484 Unable to modify IPA config; --ipaconfigstring="" causes internal error
+- Resolves: RHEL-89834 Include latest fixes in python3-ipatests package
+- Resolves: RHEL-88833 kdb: ipadb_get_connection() succeeds but returns null LDAP context
+- Resolves: RHEL-79072 ipa idrange-add --help should be more clear about required options
+- Resolves: RHEL-68803 ipa-migrate with LDIF file from backup of remote server, fails with error 'change collided with another change'
+- Resolves: RHEL-30825 IDM - When creating an ID range, should require a RID
+
+* Tue Apr 29 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-17
+- Resolves: RHEL-88043 Server installation: dot-forwarder not added as a forwarder
+- Resolves: RHEL-86481 Include latest fixes in python3-ipatests package
+- Resolves: RHEL-85788 ipa-sidgen: fix memory leak in ipa_sidgen_add_post_op()
+- Resolves: RHEL-88899 [RFE] Add check on CA cert expiry for ipa-cert-fix
+
+* Mon Mar 24 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-16
+- Resolves: RHEL-84648 ipa-cacert-manage install fails with CAs having the same subject DN (subject key mismatch info)
+- Resolves: RHEL-84279 IPU 9 -> 10: ipa-server breaks the in-place upgrade due to failed scriptlet
+- Resolves: RHEL-84275 Search size limit tooltip has Search time limit tooltip text
+- Resolves: RHEL-81200 Ipa client --raw --structured throws internal error
+- Resolves: RHEL-68803 ipa-migrate with LDIF file from backup of remote server, fails with error 'change collided with another change'
+- Resolves: RHEL-67686 [RFE] IDM support UIDs up to 4,294,967,293
+- Resolves: RHEL-67633 ipa-healthcheck has tests which call fips-mode-setup
+- Resolves: RHEL-4845 Protect *all* IPA service principals
 
 * Wed Feb 12 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-15
 - Resolves: RHEL-67912 Add DNS over TLS Support
@@ -2494,7 +2622,7 @@ fi
 
 * Sat Apr 06 2019 Alexander Bokovoy <abokovoy@redhat.com> - 4.7.2-8
 - Fixed: rhbz#1696963 (Failed to install replica)
-  
+
 * Sat Apr 06 2019 Alexander Bokovoy <abokovoy@redhat.com> - 4.7.2-7
 - Support Samba 4.10
 - Support 389-ds 1.4.1.2-2.fc30 or later
