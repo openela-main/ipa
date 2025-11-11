@@ -1,0 +1,227 @@
+From ee838b21200a7e61398bd6a60be848bc1fa96985 Mon Sep 17 00:00:00 2001
+From: Julien Rische <jrische@redhat.com>
+Date: Fri, 18 Jul 2025 10:26:37 +0200
+Subject: [PATCH] ipa-kdb: enforce PAC presence on TGT for TGS-REQ
+
+MS-KILE's PA-PAC-REQUEST sequence allows the Kerberos client to request
+a TGT without a PAC. At the moment, there is no way to configure the MIT
+KDC to reject such request.
+
+This commit enforces the presence of the PAC when processing TGTs
+provided by TGS-REQ. It ensures the server principal of the TGT is the
+same as the one in PAC_CLIENT_INFO (i.e. enforces client principal
+canonicalization) with integrity check.
+
+Only one exception is applied: this check is skipped for local TGTs on
+domain where the MS-PAC generator is not initialized (i.e. domains where
+SID generation was not executed yet).
+
+Signed-off-by: Julien Rische <jrische@redhat.com>
+---
+ daemons/ipa-kdb/ipa_kdb.h            |  9 +++
+ daemons/ipa-kdb/ipa_kdb_common.c     | 18 ++++++
+ daemons/ipa-kdb/ipa_kdb_kdcpolicy.c  |  2 +-
+ daemons/ipa-kdb/ipa_kdb_mspac.c      | 87 ++++++++++++++++++++++++++++
+ daemons/ipa-kdb/ipa_kdb_principals.c | 21 +------
+ 5 files changed, 116 insertions(+), 21 deletions(-)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb.h b/daemons/ipa-kdb/ipa_kdb.h
+index 58a0339fc984c9b421aed23c6c1e6084f132421b..8fa0509956dfc1d0f2ba0c5363da463ba1189199 100644
+--- a/daemons/ipa-kdb/ipa_kdb.h
++++ b/daemons/ipa-kdb/ipa_kdb.h
+@@ -431,6 +431,14 @@ krb5_error_code ipadb_is_princ_from_trusted_realm(krb5_context kcontext,
+                                                   const char *test_realm, size_t size,
+                                                   char **trusted_realm);
+ 
++/* Check the ticket provided in a TGS-REQ. In some situations, the ticket is
++ * expected to contain a PAC. If it is not the case, or if the function is
++ * enable to decode an authorization-data element, it fails.
++ * Any failure should result in the TGS-REQ to be rejected. */
++krb5_error_code ipadb_enforce_pac(krb5_context kcontext,
++                                  const krb5_ticket *ticket,
++                                  const char **status);
++
+ /* DELEGATION CHECKS */
+ 
+ krb5_error_code ipadb_check_allowed_to_delegate(krb5_context kcontext,
+@@ -475,3 +483,4 @@ int ipadb_string_to_sid(const char *str, struct dom_sid *sid);
+ void alloc_sid(struct dom_sid **sid);
+ void free_sid(struct dom_sid **sid);
+ bool dom_sid_check(const struct dom_sid *sid1, const struct dom_sid *sid2, bool exact_check);
++bool ipadb_is_tgs_princ(krb5_context kcontext, krb5_const_principal princ);
+diff --git a/daemons/ipa-kdb/ipa_kdb_common.c b/daemons/ipa-kdb/ipa_kdb_common.c
+index ae7742a320ed714b703bf12a32811c0fd9eb75aa..fc603cbe2957f43698936e74a40fcbc0912f95bc 100644
+--- a/daemons/ipa-kdb/ipa_kdb_common.c
++++ b/daemons/ipa-kdb/ipa_kdb_common.c
+@@ -767,3 +767,21 @@ krb5_error_code ipadb_multibase_search(struct ipadb_context *ipactx,
+     return ipadb_simple_ldap_to_kerr(ret);
+ }
+ 
++bool
++ipadb_is_tgs_princ(krb5_context kcontext, krb5_const_principal princ)
++{
++    krb5_data *primary;
++    size_t l_tgs_name;
++
++    if (2 != krb5_princ_size(kcontext, princ))
++        return false;
++
++    primary = krb5_princ_component(kcontext, princ, 0);
++
++    l_tgs_name = strlen(KRB5_TGS_NAME);
++
++    if (l_tgs_name != primary->length)
++        return false;
++
++    return 0 == memcmp(primary->data, KRB5_TGS_NAME, l_tgs_name);
++}
+diff --git a/daemons/ipa-kdb/ipa_kdb_kdcpolicy.c b/daemons/ipa-kdb/ipa_kdb_kdcpolicy.c
+index 2802221c79fe63ab4bd33bfbe4859517f3d91ec5..aa8de3edac279ecf822af2b807e9378e28b125d0 100644
+--- a/daemons/ipa-kdb/ipa_kdb_kdcpolicy.c
++++ b/daemons/ipa-kdb/ipa_kdb_kdcpolicy.c
+@@ -195,7 +195,7 @@ ipa_kdcpolicy_check_tgs(krb5_context context, krb5_kdcpolicy_moddata moddata,
+     *lifetime_out = 0;
+     *renew_lifetime_out = 0;
+ 
+-    return 0;
++    return ipadb_enforce_pac(context, ticket, status);
+ }
+ 
+ krb5_error_code kdcpolicy_ipakdb_initvt(krb5_context context,
+diff --git a/daemons/ipa-kdb/ipa_kdb_mspac.c b/daemons/ipa-kdb/ipa_kdb_mspac.c
+index 9723103d8a77294ed7457d9b48bfc0d98b9ccef1..9a7aedd84850ac4b51ba97415bad9d6c071d0d0b 100644
+--- a/daemons/ipa-kdb/ipa_kdb_mspac.c
++++ b/daemons/ipa-kdb/ipa_kdb_mspac.c
+@@ -3346,3 +3346,90 @@ krb5_error_code ipadb_is_princ_from_trusted_realm(krb5_context kcontext,
+ 
+ 	return KRB5_KDB_NOENTRY;
+ }
++
++static krb5_error_code
++check_for_pac(krb5_context kcontext, krb5_authdata **authdata, bool *pac_present)
++{
++    krb5_error_code kerr = ENOENT;
++    size_t i, j;
++    krb5_authdata **ifrel = NULL;
++
++    for (i = 0; authdata && authdata[i]; ++i) {
++        if (authdata[i]->ad_type != KRB5_AUTHDATA_IF_RELEVANT) {
++            continue;
++        }
++
++        kerr = krb5_decode_authdata_container(kcontext,
++                                              KRB5_AUTHDATA_IF_RELEVANT,
++                                              authdata[i], &ifrel);
++        if (kerr) {
++            goto end;
++        }
++
++        for (j = 0; ifrel[j]; ++j) {
++            if (ifrel[j]->ad_type == KRB5_AUTHDATA_WIN2K_PAC) {
++                break;
++            }
++        }
++        if (ifrel[j]) {
++            break;
++        }
++
++        krb5_free_authdata(kcontext, ifrel);
++        ifrel = NULL;
++    }
++
++    *pac_present = ifrel;
++    kerr = 0;
++
++end:
++    krb5_free_authdata(kcontext, ifrel);
++    return kerr;
++}
++
++krb5_error_code
++ipadb_enforce_pac(krb5_context kcontext, const krb5_ticket *ticket,
++                  const char **status)
++{
++    struct ipadb_context *ipactx;
++    bool pac_present;
++    krb5_error_code kerr;
++
++    /* Filter TGTs only */
++    if (!ipadb_is_tgs_princ(kcontext, ticket->server)) {
++        kerr = 0;
++        goto end;
++    }
++
++    /* Get IPA context */
++    ipactx = ipadb_get_context(kcontext);
++    if (!ipactx) {
++        kerr = KRB5_KDB_DBNOTINITED;
++        goto end;
++    }
++
++    /* If local TGT but PAC generator not initialized, skip PAC enforcement */
++    if (krb5_realm_compare(kcontext, ipactx->local_tgs, ticket->server) &&
++        !ipactx->mspac)
++    {
++        krb5_klog_syslog(LOG_WARNING, "MS-PAC not available. This makes "
++                         "FreeIPA vulnerable to privilege escalation exploit "
++                         "(CVE-2025-7493). Please generate SIDs to enable PAC "
++                         "support.");
++        kerr = 0;
++        goto end;
++    }
++
++    /* Search for the PAC, fail if it cannot be found */
++    kerr = check_for_pac(kcontext, ticket->enc_part2->authorization_data,
++                         &pac_present);
++    if (kerr) {
++        *status = "PAC_ENFORCEMENT_CANNOT_DECODE_TGT_AUTHDATA";
++    } else if (!pac_present) {
++        kerr = ENOENT;
++        *status = "PAC_ENFORCEMENT_TGT_WITHOUT_PAC";
++    }
++
++end:
++    return kerr;
++}
+diff --git a/daemons/ipa-kdb/ipa_kdb_principals.c b/daemons/ipa-kdb/ipa_kdb_principals.c
+index a7e77e940ab61b27407076a834f3804b0e69c122..bb9e039923e821e8a20d01fbc42d92b402d3f961 100644
+--- a/daemons/ipa-kdb/ipa_kdb_principals.c
++++ b/daemons/ipa-kdb/ipa_kdb_principals.c
+@@ -188,25 +188,6 @@ done:
+     return ret;
+ }
+ 
+-static bool
+-is_tgs_princ(krb5_context kcontext, krb5_const_principal princ)
+-{
+-    krb5_data *primary;
+-    size_t l_tgs_name;
+-
+-    if (2 != krb5_princ_size(kcontext, princ))
+-        return false;
+-
+-    primary = krb5_princ_component(kcontext, princ, 0);
+-
+-    l_tgs_name = strlen(KRB5_TGS_NAME);
+-
+-    if (l_tgs_name != primary->length)
+-        return false;
+-
+-    return 0 == memcmp(primary->data, KRB5_TGS_NAME, l_tgs_name);
+-}
+-
+ static krb5_error_code
+ cmp_local_tgs_princ(krb5_context kcontext, const char *local_realm,
+                    krb5_const_principal princ, bool *result)
+@@ -2080,7 +2061,7 @@ krb5_error_code ipadb_get_principal(krb5_context kcontext,
+         return kerr;
+ 
+     /* If TGS principal, some virtual attributes may be added */
+-    if (is_tgs_princ(kcontext, (*entry)->princ)) {
++    if (ipadb_is_tgs_princ(kcontext, (*entry)->princ)) {
+         kerr = cmp_local_tgs_princ(kcontext, ipactx->realm, (*entry)->princ,
+                                    &is_local_tgs_princ);
+         if (kerr)
+-- 
+2.51.0
+
