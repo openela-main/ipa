@@ -1,0 +1,80 @@
+From 0155718308fa58f43f2ec8df240c1df1c929195e Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 2 Jun 2025 14:47:48 +0200
+Subject: [PATCH] ipatests: fix invalid range creation in
+ test_ipa_idrange_fix.py
+
+The test is creating a local ID range without rid-base and
+secondary-rid-base in order to test the behavior of ipa-idrange-fix.
+
+Since the patch for ticket #9779 it is not possible any more to call
+ipa idrange-add for local range without these parameters. The test needs
+to create the invalid local range using a direct ldapmodify instead.
+
+Fixes: https://pagure.io/freeipa/issue/9801
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+---
+ .../test_integration/test_ipa_idrange_fix.py  | 39 ++++++++++++-------
+ 1 file changed, 25 insertions(+), 14 deletions(-)
+
+diff --git a/ipatests/test_integration/test_ipa_idrange_fix.py b/ipatests/test_integration/test_ipa_idrange_fix.py
+index 0c915bd0931ed11a3aa86c533ee8748aa8a7ec07..6559818d3b290211ed421b652be7a424a3b51052 100644
+--- a/ipatests/test_integration/test_ipa_idrange_fix.py
++++ b/ipatests/test_integration/test_ipa_idrange_fix.py
+@@ -40,13 +40,18 @@ class TestIpaIdrangeFix(IntegrationTest):
+ 
+     def test_idrange_no_rid_bases(self):
+         """Test ipa-idrange-fix command with IDrange with no RID bases."""
+-        self.master.run_command([
+-            "ipa",
+-            "idrange-add",
+-            "idrange_no_rid_bases",
+-            "--base-id", '10000',
+-            "--range-size", '20000',
+-        ])
++        # Use ldapmodify to create the range without rid bases
++        idrange_ldif = (
++            "dn: cn=idrange_no_rid_bases,cn=ranges,cn=etc,{suffix}\n"
++            "changetype: add\n"
++            "objectclass: top\n"
++            "objectclass: ipaIDrange\n"
++            "objectclass: ipadomainidrange\n"
++            "ipaRangeType: ipa-local\n"
++            "ipaBaseID: 10000\n"
++            "ipaIDRangeSize: 20000\n"
++        ).format(suffix=str(self.master.domain.basedn))
++        tasks.ldapmodify_dm(self.master, idrange_ldif)
+ 
+         result = self.master.run_command(["ipa-idrange-fix", "--unattended"])
+         expected_text = "RID bases updated for range 'idrange_no_rid_bases'"
+@@ -62,13 +67,19 @@ class TestIpaIdrangeFix(IntegrationTest):
+         previously had a range with RID bases reversed - secondary lower than
+         primary. It is a valid configuration, so we should fix no-RID range.
+         """
+-        self.master.run_command([
+-            "ipa",
+-            "idrange-add",
+-            "idrange_no_rid_bases",
+-            "--base-id", '10000',
+-            "--range-size", '20000',
+-        ])
++        # Use ldapmodify to create the range without rid bases
++        idrange_ldif = (
++            "dn: cn=idrange_no_rid_bases,cn=ranges,cn=etc,{suffix}\n"
++            "changetype: add\n"
++            "objectclass: top\n"
++            "objectclass: ipaIDrange\n"
++            "objectclass: ipadomainidrange\n"
++            "ipaRangeType: ipa-local\n"
++            "ipaBaseID: 10000\n"
++            "ipaIDRangeSize: 20000\n"
++        ).format(suffix=str(self.master.domain.basedn))
++        tasks.ldapmodify_dm(self.master, idrange_ldif)
++
+         self.master.run_command([
+             "ipa",
+             "idrange-add",
+-- 
+2.49.0
+

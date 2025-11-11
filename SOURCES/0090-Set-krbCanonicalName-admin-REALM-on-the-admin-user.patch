@@ -1,4 +1,4 @@
-From d6d2282f9f1b93ae7fb6e074920e41e64f35ab12 Mon Sep 17 00:00:00 2001
+From 796ed20092d554ee0c9e23295e346ec1e8a0bf6e Mon Sep 17 00:00:00 2001
 From: Rob Crittenden <rcritten@redhat.com>
 Date: Mon, 28 Apr 2025 13:43:40 -0400
 Subject: [PATCH] Set krbCanonicalName=admin@REALM on the admin user
@@ -26,7 +26,7 @@ Signed-off-by: Rob Crittenden <rcritten@redhat.com>
  create mode 100644 ipaserver/install/plugins/add_admin_krbcanonicalname.py
 
 diff --git a/install/share/bootstrap-template.ldif b/install/share/bootstrap-template.ldif
-index 325eb8450..94972eb72 100644
+index 325eb8450c786899e7b5e4ae2ef8978f42a8425b..94972eb7270fc9224650bd414c740fc2e8f6c149 100644
 --- a/install/share/bootstrap-template.ldif
 +++ b/install/share/bootstrap-template.ldif
 @@ -239,6 +239,7 @@ objectClass: ipasshuser
@@ -38,7 +38,7 @@ index 325eb8450..94972eb72 100644
  sn: Administrator
  uidNumber: $IDSTART
 diff --git a/install/updates/90-post_upgrade_plugins.update b/install/updates/90-post_upgrade_plugins.update
-index 7c3bba3e0..3d78c7b5a 100644
+index 7c3bba3e0317162d4739513e16b9fac973495c66..3d78c7b5a983f418502a7902a53ff8cd8d6847c4 100644
 --- a/install/updates/90-post_upgrade_plugins.update
 +++ b/install/updates/90-post_upgrade_plugins.update
 @@ -25,6 +25,7 @@ plugin: update_mapping_Guests_to_nobody
@@ -51,7 +51,7 @@ index 7c3bba3e0..3d78c7b5a 100644
  # DNS version 1
 diff --git a/ipaserver/install/plugins/add_admin_krbcanonicalname.py b/ipaserver/install/plugins/add_admin_krbcanonicalname.py
 new file mode 100644
-index 000000000..e9ffdf55a
+index 0000000000000000000000000000000000000000..e9ffdf55a3f9a1e182bcadda352eda99e536cf16
 --- /dev/null
 +++ b/ipaserver/install/plugins/add_admin_krbcanonicalname.py
 @@ -0,0 +1,79 @@
@@ -135,12 +135,12 @@ index 000000000..e9ffdf55a
 +
 +        return False, []
 diff --git a/ipatests/test_integration/test_commands.py b/ipatests/test_integration/test_commands.py
-index 621982c4f..1526a6e0d 100644
+index 9cad5772127bcd860aeecc8dabe73d5f160faf7b..ad97affe62e15c68442239d669032f0c84e7f5c9 100644
 --- a/ipatests/test_integration/test_commands.py
 +++ b/ipatests/test_integration/test_commands.py
-@@ -1883,6 +1883,44 @@ class TestIPACommandWithoutReplica(IntegrationTest):
-         assert old_err_msg not in dirsrv_error_log
-         assert re.search(new_err_msg, dirsrv_error_log)
+@@ -2179,6 +2179,44 @@ class TestIPACommandWithoutReplica(IntegrationTest):
+ 
+         assert isrgrootx1_nick in result
  
 +    def test_unique_krbcanonicalname(self):
 +        """Verify that the uniqueness for krbcanonicalname is working"""
@@ -184,5 +184,5 @@ index 621982c4f..1526a6e0d 100644
  class TestIPAautomount(IntegrationTest):
      @classmethod
 -- 
-2.48.1
+2.50.0
 

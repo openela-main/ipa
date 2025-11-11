@@ -1,0 +1,108 @@
+From 5db3bfafe6c12222b656f67d5ae3f6745e5f2644 Mon Sep 17 00:00:00 2001
+From: Thomas Woerner <twoerner@redhat.com>
+Date: Thu, 12 Jun 2025 16:23:13 +0200
+Subject: [PATCH] ipa-client-install: New --no-dnssec-validation option
+
+The new option is needed to be able to deactivate DNSSEC validation
+for unbound.
+
+Unbound is by default configured to do DNSSEC validation with the
+validator module.
+
+The solution is to set module-config to "iterator".
+
+When the server is built with EDNS client subnet support this should be
+changed to "subnetcache iterator" according to the unbound man page.
+
+Fixes: https://pagure.io/freeipa/issue/9805
+Signed-off-by: Thomas Woerner <twoerner@redhat.com>
+Reviewed-By: Antonio Torres <antorres@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ client/man/ipa-client-install.1    |  3 +++
+ client/share/unbound.conf.template |  1 +
+ ipaclient/install/client.py        | 22 +++++++++++++++++++++-
+ 3 files changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/client/man/ipa-client-install.1 b/client/man/ipa-client-install.1
+index 6833991b83bf60718fc74a12657342715c0fda91..5432c48a993eec6aaf819d9ce2e0e82ff7c1e62a 100644
+--- a/client/man/ipa-client-install.1
++++ b/client/man/ipa-client-install.1
+@@ -204,6 +204,9 @@ Create DNS A/AAAA record for each IP address on this host.
+ .TP
+ \fB\-\-dns\-over\-tls\fR
+ Configure DNS over TLS.
++.TP
++\fB\-\-no\-dnssec\-validation\fR
++Disable DNSSEC validation for DNS over TLS.
+ 
+ .SS "SSSD OPTIONS"
+ .TP
+diff --git a/client/share/unbound.conf.template b/client/share/unbound.conf.template
+index 166036f651ddc5ba88235a41b2c06579348e5286..f611ebb7effc83fa07e797dfbe78568c27847851 100644
+--- a/client/share/unbound.conf.template
++++ b/client/share/unbound.conf.template
+@@ -3,6 +3,7 @@ server:
+     tls-upstream: yes
+     interface: 127.0.0.55
+     log-servfail: yes
++    ${MODULE_CONFIG_ITERATOR}module-config: "iterator"
+ forward-zone:
+     name: "."
+     forward-tls-upstream: yes
+diff --git a/ipaclient/install/client.py b/ipaclient/install/client.py
+index 43a71828335ad655ad067b5320572d40bee1a44b..96e91268f54aecf08e0791c91811072e8d6f459f 100644
+--- a/ipaclient/install/client.py
++++ b/ipaclient/install/client.py
+@@ -1675,13 +1675,17 @@ def client_dns(server, hostname, options):
+         # setup and enable Unbound as resolver
+         server_ip = str(list(dnsutil.resolve_ip_addresses(server))[0])
+         forward_addr = "forward-addr: %s#%s" % (server_ip, server)
++        # module_config_iterator is commented out if DNSSEC validation is
++        # not disabled.
++        module_config_iterator = '' if options.no_dnssec_validation else '# '
+         ipautil.copy_template_file(
+             paths.UNBOUND_CONF_SRC,
+             paths.UNBOUND_CONF,
+             dict(
+                 TLS_CERT_BUNDLE_PATH=os.path.join(
+                     paths.OPENSSL_CERTS_DIR, "ca-bundle.crt"),
+-                FORWARD_ADDRS=forward_addr
++                FORWARD_ADDRS=forward_addr,
++                MODULE_CONFIG_ITERATOR=module_config_iterator
+             )
+         )
+         sr = services.knownservices["systemd-resolved"]
+@@ -2419,6 +2423,16 @@ def install_check(options):
+     if not check_ip_addresses(options):
+         raise ScriptError(rval=CLIENT_INSTALL_ERROR)
+ 
++    if options.dns_over_tls \
++       and not services.knownservices["unbound"].is_installed():
++        raise ScriptError(
++            "To enable DNS over TLS, package ipa-client-encrypted-dns must "
++            "be installed.")
++    if options.no_dnssec_validation and not options.dns_over_tls:
++        raise ScriptError(
++            "You can not specify --no-dnssec-validation option without the"
++            "--dns-over-tls option.")
++
+     # Create the discovery instance
+     ds = discovery.IPADiscovery()
+ 
+@@ -4061,6 +4075,12 @@ class ClientInstallInterface(hostname_.HostNameInstallInterface,
+     )
+     dns_over_tls = enroll_only(dns_over_tls)
+ 
++    no_dnssec_validation = knob(
++        None,
++        description="Disable DNSSEC validation for DNS over TLS",
++    )
++    no_dnssec_validation = enroll_only(no_dnssec_validation)
++
+     request_cert = knob(
+         None,
+         deprecated=True,
+-- 
+2.50.0
+

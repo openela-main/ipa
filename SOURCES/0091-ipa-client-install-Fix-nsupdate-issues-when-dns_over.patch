@@ -1,0 +1,43 @@
+From 7b4317979080cb8efe901e2ab491f6f4e4ccad15 Mon Sep 17 00:00:00 2001
+From: Thomas Woerner <twoerner@redhat.com>
+Date: Thu, 12 Jun 2025 17:44:44 +0200
+Subject: [PATCH] ipa-client-install: Fix nsupdate issues when dns_over_tls is
+ enabled
+
+The server commands for nsupdate.txt to define the server with the port
+853 have been added for dns_over_tls. These commands do not have a leading
+newline. This results in a syntax error as the next line is added to the
+command.
+
+Fixes: https://pagure.io/freeipa/issue/9806
+Signed-off-by: Thomas Woerner <twoerner@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+---
+ ipaclient/install/client.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/ipaclient/install/client.py b/ipaclient/install/client.py
+index 372daa51e4647023dde76e183189eeebdd9525b8..43a71828335ad655ad067b5320572d40bee1a44b 100644
+--- a/ipaclient/install/client.py
++++ b/ipaclient/install/client.py
+@@ -1540,7 +1540,7 @@ def update_dns(server, hostname, options):
+ 
+     update_txt = "debug\n"
+     if options.dns_over_tls:
+-        update_txt += "server %s 853" % server
++        update_txt += "server %s 853\n" % server
+     update_txt += ipautil.template_str(DELETE_TEMPLATE_A,
+                                        dict(HOSTNAME=hostname))
+     update_txt += ipautil.template_str(DELETE_TEMPLATE_AAAA,
+@@ -1788,7 +1788,7 @@ def update_ssh_keys(hostname, ssh_dir, options, server):
+ 
+         update_txt = 'debug\n'
+         if options.dns_over_tls:
+-            update_txt += "server %s 853" % server
++            update_txt += "server %s 853\n" % server
+         update_txt += 'update delete %s. IN SSHFP\nshow\nsend\n' % hostname
+         for pubkey in pubkeys:
+             sshfp = pubkey.fingerprint_dns_sha1()
+-- 
+2.50.0
+

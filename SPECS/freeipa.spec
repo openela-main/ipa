@@ -66,11 +66,10 @@
 %if 0%{?rhel}
 %global package_name ipa
 %global alt_name freeipa
-%global krb5_version 1.20.1-1
 %global krb5_kdb_version 9.0
 # 0.7.16: https://github.com/drkjam/netaddr/issues/71
 %global python_netaddr_version 0.7.19
-%global samba_version 4.21.1
+%global samba_version 4.22.2
 %global slapi_nis_version 0.56.4
 %global python_ldap_version 3.1.0-1
 %if 0%{?rhel} < 9
@@ -79,10 +78,16 @@
 %global selinux_policy_version 3.14.3-107
 %else
 # version supporting LMDB and lib389.cli_ctl.dblib.run_dbscan utility
-# Allow Uniqueness plugin to search uniqueness
-# attributes using custom matching rules
-%global ds_version 2.6.1-11
+%global ds_version 2.1.0
 %global selinux_policy_version 38.1.1-1
+%endif
+
+%if 0%{?rhel} >= 10
+%global krb5_version 1.21.3-6
+%elif 0%{?rhel} == 9
+%global krb5_version 1.21.1-5
+%else
+%global krb5_version 1.18.2-31
 %endif
 
 # Fix for TLS 1.3 PHA, RHBZ#1775158
@@ -112,11 +117,9 @@
 
 %if 0%{?fedora} < 38
 # Fix for CVE-2020-28196
-%global krb5_version 1.18.2-29
 %global krb5_kdb_version 8.0
 %else
 # Fix for CVE-2020-28196
-%global krb5_version 1.20.1-3
 %global krb5_kdb_version 9.0
 %endif
 
@@ -130,6 +133,14 @@
 %global ds_version 1.4.4.16-1
 %else
 %global ds_version 2.1.0
+%endif
+
+%if 0%{?fedora} >= 42
+%global krb5_version 1.21.3-5
+%elif 0%{?fedora} == 41
+%global krb5_version 1.21.3-4
+%else
+%global krb5_version 1.21.3-3
 %endif
 
 # Fix for TLS 1.3 PHA, RHBZ#1775146
@@ -220,7 +231,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        14%{?rc_version:.%rc_version}%{?dist}.5
+Release:        21%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -299,13 +310,58 @@ Patch0052:      0052-Add-DNS-over-TLS-support.patch
 Patch0053:      0053-Configure-the-pki-tomcatd-service-systemd-timeout.patch
 Patch0054:      0054-Align-startup_timeout-with-the-systemd-default-and-d.patch
 Patch0055:      0055-dns-only-disable-unbound-when-DoT-is-enabled.patch
-Patch0056:      0056-kdb-keep-ipadb_get_connection-from-succeeding-with-n.patch
-Patch0057:      0057-Set-krbCanonicalName-admin-REALM-on-the-admin-user.patch
-Patch0058:      0058-ipa-sidgen-fix-memory-leak-in-ipa_sidgen_add_post_op.patch
-Patch0059:      0059-ipatests-use-sos-report-instead-of-sosreport-command.patch
-Patch0060:      0060-Enforce-uniqueness-across-krbprincipalname-and-krbca.patch
-Patch0061:      0061-ipa-kdb-enforce-PAC-presence-on-TGT-for-TGS-REQ.patch
-Patch0062:      0062-ipatests-extend-test-for-unique-krbcanonicalname.patch
+Patch0056:      0056-ipa-migrate-do-not-migrate-tombstone-entries-ignore-.patch
+Patch0057:      0057-WebUI-fix-the-tooltip-for-Search-Size-limit.patch
+Patch0058:      0058-Leapp-upgrade-skip-systemctl-calls.patch
+Patch0059:      0059-Disable-raw-and-structured-together.patch
+Patch0060:      0060-config-mod-allow-disabling-subordinate-ID-integratio.patch
+Patch0061:      0061-update_dna_shared_config-do-not-fail-when-config-is-.patch
+Patch0062:      0062-baseuser-allow-uidNumber-and-gidNumber-of-32-bit-ran.patch
+Patch0063:      0063-ipatests-add-a-test-to-use-full-32-bit-ID-range-spac.patch
+Patch0064:      0064-idrange-use-minvalue-0-for-baserid-and-secondarybase.patch
+Patch0065:      0065-ipatests-Tests-to-check-data-in-journal-log.patch
+Patch0066:      0066-Disallow-removal-of-dogtag-and-ipa-dnskeysyncd-servi.patch
+Patch0067:      0067-Don-t-require-certificates-to-have-unique-ipaCertSub.patch
+Patch0068:      0068-dns-don-t-populate-forwarders-with-DoT-forwarders.patch
+Patch0069:      0069-Add-a-check-into-ipa-cert-fix-tool-to-avoid-updating.patch
+Patch0070:      0070-Test-fix-for-the-update.patch
+Patch0071:      0071-Correct-dnsrecord_-tests-for-raw-structured.patch
+Patch0072:      0072-ipa-sidgen-fix-memory-leak-in-ipa_sidgen_add_post_op.patch
+Patch0073:      0073-ipa-migrate-remove-replication-state-information.patch
+Patch0074:      0074-ipa-migrate-do-not-process-AD-entgries-in-staging-mo.patch
+Patch0075:      0075-ipa-migrate-improve-suffix-replacement.patch
+Patch0076:      0076-kdb-keep-ipadb_get_connection-from-succeeding-with-n.patch
+Patch0077:      0077-ipatests-test_manual_renewal_master_transfer-must-wa.patch
+Patch0078:      0078-Require-baserid-and-secondarybaserid.patch
+Patch0079:      0079-ipa-config-mod-fix-internalerror-when-setting-an-emp.patch
+Patch0080:      0080-ipatests-Test-to-check-dot-forwarders-are-added-to-u.patch
+Patch0081:      0081-Fix-some-issues-identified-by-a-static-analyzer.patch
+Patch0082:      0082-ipatests-Ignore-run-log-journal-in-test_uninstallati.patch
+Patch0083:      0083-ipatests-Tests-for-krbLastSuccessfulAuth-warning.patch
+Patch0084:      0084-ipatests-ipahealthcheck-warns-for-user-provided-cert.patch
+Patch0085:      0085-Warn-when-UID-is-out-of-local-ID-ranges.patch
+Patch0086:      0086-ipatests-fix-invalid-range-creation-in-test_ipa_idra.patch
+Patch0087:      0087-ipatests-certbot-removed-the-manual-public-ip-loggin.patch
+Patch0088:      0088-ipatests-adapt-error-code-and-message-for-samba-4.22.patch
+Patch0089:      0089-Fix-inconsistency-in-manpage-for-DoT-forwarder-optio.patch
+Patch0090:      0090-Set-krbCanonicalName-admin-REALM-on-the-admin-user.patch
+Patch0091:      0091-ipa-client-install-Fix-nsupdate-issues-when-dns_over.patch
+Patch0092:      0092-ipatests-fix-test_adtrust_install_with_non_ipa_user.patch
+Patch0093:      0093-ipa-idrange-fix-check-that-IPA-server-is-installed.patch
+Patch0094:      0094-ipa-migrate-only-remove-repl-state-attribute-options.patch
+# Patch0095:      0095-ipa-kdb-support-storing-multiple-KVNO-for-the-same-p.patch
+# Patch0096:      0096-Use-ipaplatform-tasks-for-krb5-enctypes.patch
+# Patch0097:      0097-Add-test-for-master-key-upgrade.patch
+Patch0098:      0098-ipa-client-install-New-no-dnssec-validation-option.patch
+Patch0099:      0099-ipaserver-install-dns.py-Allow-to-Turn-off-DNSSEC-va.patch
+Patch0100:      0100-ipatests-Tests-for-32BitIdranges.patch
+Patch0101:      0101-Replica-Request-cert-for-DoT-before-setting-up-bind.patch
+Patch0102:      0102-ipatests-use-sos-report-instead-of-sosreport-command.patch
+Patch0103:      0103-dns-only-overwrite-resolv.conf-during-eDNS-setup-whe.patch
+Patch0104:      0104-Use-correct-capitalization-for-GitHub-and-GitLab.patch
+Patch0105:      0105-kdb-prevent-double-crash-in-RBCD-ACL-free.patch
+Patch0106:      0106-ipatests-Tests-for-ipa-migrate-tool-with-ldif-file.patch
+Patch0107:      0107-dns-disable-all-previous-Unbound-configuration-befor.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -823,6 +879,7 @@ This package provides command-line tools for IPA administrators.
 Summary: Enable encrypted DNS support for clients
 Requires: %{name}-client
 Requires: unbound
+Requires: bind9.18-utils
 
 %description client-encrypted-dns
 This package enables support for installing clients with encrypted DNS
@@ -1273,8 +1330,11 @@ if [ $1 = 0 ]; then
 # NOTE: systemd specific section
     /bin/systemctl --quiet stop ipa.service || :
     /bin/systemctl --quiet disable ipa.service || :
-    /bin/systemctl reload-or-try-restart dbus
-    /bin/systemctl reload-or-try-restart oddjobd
+    # Skip systemctl calls when leapp upgrade is in progress
+    if [ -z "$LEAPP_IPU_IN_PROGRESS" ] ; then
+        /bin/systemctl reload-or-try-restart dbus
+        /bin/systemctl reload-or-try-restart oddjobd
+    fi
 # END
 fi
 
@@ -1338,8 +1398,11 @@ fi
 %preun server-trust-ad
 if [ $1 -eq 0 ]; then
     %{_sbindir}/update-alternatives --remove winbind_krb5_locator.so /dev/null
-    /bin/systemctl reload-or-try-restart dbus
-    /bin/systemctl reload-or-try-restart oddjobd
+    # Skip systemctl calls when leapp upgrade is in progress
+    if [ -z "$LEAPP_IPU_IN_PROGRESS" ] ; then
+        /bin/systemctl reload-or-try-restart dbus
+        /bin/systemctl reload-or-try-restart oddjobd
+    fi
 fi
 
 # ONLY_CLIENT
@@ -1952,27 +2015,50 @@ fi
 %endif
 
 %changelog
-* Thu Sep 11 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-14.5
-- Resolves: RHEL-110068
-  EMBARGOED CVE-2025-7493 ipa: Privilege escalation from host to domain admin in FreeIPA
+* Mon Aug 18 2025 Rafael Jeffman <rjeffman@redhat.com> - 4.12.2-21
+- Resolves: RHEL-109768 Revert allow update of Kerberos master key
 
-* Wed Sep 03 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-14.4
-- Resolves: RHEL-110068
-  EMBARGOED CVE-2025-7493 ipa: Privilege escalation from host to domain admin in FreeIPA
+* Wed Jul 30 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-20
+- Resolves: RHEL-106285 Incorrect use of external IdP GitHub trademark
+- Resolves: RHEL-106026 Include fixes in python3-ipatests package
+- Resolves: RHEL-105512 kdb: prevent double crash in RBCD ACL free
+- Resolves: RHEL-101707 ipatests: use "sos report" instead of "sosreport" command
+- Resolves: RHEL-101544 ipa-client-encrypted-dns does not ensure bind-utils >= 9.18 for DoT-compatible nsupdate
+- Resolves: RHEL-100450 eDNS: multiple issues during encrypted DNS setup
 
-* Tue Jul 29 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-14.3
-- Resolves: RHEL-106165
-  ipatests: use "sos report" instead of "sosreport" command
+* Thu Jun 26 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-19
+- Resolves: RHEL-100450 eDNS: multiple issues during encrypted DNS setup
+- Resolves: RHEL-89907 Privilege escalation from host to domain admin in FreeIPA
+- Resolves: RHEL-99315 Include latest fixes in python3-ipatests package
+- Resolves: RHEL-98565 ipa-idrange-fix: 'Env' object has no attribute 'basedn'
+- Resolves: RHEL-96920 Nightly test failure (rawhide) in test_trust.py::TestTrust::test_server_option_with_unreachable_ad
+- Resolves: RHEL-31907 kdb: support storing and retrieving multiple master keys
 
-* Tue Jul 22 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-14.2
-- Resolves: RHEL-104857
-  ipa-sidgen: fix memory leak in ipa_sidgen_add_post_op() [rhel-9.6.z]
+* Wed Jun 11 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-18
+- Related: RHEL-89873
 
-* Thu May 15 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-14.1
-- Resolves: RHEL-89908
-  EMBARGOED CVE-2025-4404 ipa: Privilege escalation from host to domain admin in FreeIPA
-- Resolves: RHEL-89144
-  kdb: ipadb_get_connection() succeeds but returns null LDAP context
+* Wed Jun 04 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-17
+- Resolves: RHEL-95010 [RFE] Give warning when adding user with UID out of any ID range
+- Resolves: RHEL-93890 Include latest fixes in python3-ipatests package
+- Resolves: RHEL-93887 ipa idrange-add --help should be more clear about required options
+- Resolves: RHEL-93483 Unable to modify IPA config; --ipaconfigstring="" causes internal error
+- Resolves: RHEL-88834 kdb: ipadb_get_connection() succeeds but returns null LDAP context
+- Resolves: RHEL-68800 ipa-migrate with LDIF file from backup of remote server, fails with error 'change collided with another change'
+
+* Tue Apr 29 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-16
+- Resolves: RHEL-88900 [RFE] Add check on CA cert expiry for ipa-cert-fix
+- Resolves: RHEL-88037 Server installation: dot-forwarder not added as a forwarder
+- Resolves: RHEL-86483 Include latest fixes in python3-ipatests package
+- Resolves: RHEL-41178 ipa-sidgen: fix memory leak in ipa_sidgen_add_post_op()
+
+* Tue Mar 25 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-15
+- Resolves: RHEL-84481 Protect all IPA service principals
+- Resolves: RHEL-84277 [RFE] IDM support UIDs up to 4,294,967,293
+- Resolves: RHEL-84276 Ipa client --raw --structured throws internal error
+- Resolves: RHEL-82707 Search size limit tooltip has Search time limit tooltip text
+- Resolves: RHEL-82089 IPU 9 -> 10: ipa-server breaks the in-place upgrade due to failed scriptlet
+- Resolves: RHEL-68800 ipa-migrate with LDIF file from backup of remote server, fails with error 'change collided with another change'
+- Resolves: RHEL-30658 ipa-cacert-manage install fails with CAs having the same subject DN (subject key mismatch info)
 
 * Thu Mar 20 2025 Thomas Woerner <twoerner@redhat.com> - 4.12.2-14
 - Resolves: RHEL-80345 Use new bind9.18-dyndb-ldap and bind9.18 only for DNS over TLS with the ipa-server-encrypted-dns package
@@ -2350,7 +2436,7 @@ temporarily revert a commit that depends on newer version of python-jwcrypto
   - ipatests: refactor test_ipa_cert_fix with tasks
   - ipatests: use whole date for journalctl --since
 * Tue Aug 17 2021 Florence Blanc-Renaud <frenaud@redhat.com> - 4.9.6-5
-- Resolves: rhbz#1988383 Do SRV discovery in ipa-getkeytab if -s and -H aren't provided 
+- Resolves: rhbz#1988383 Do SRV discovery in ipa-getkeytab if -s and -H aren't provided
   - ipa-getkeytab: add option to discover servers using DNS SRV
   - ipa-getkeytab: fix compiler warnings
   - ipatests: test ipa-getkeytab server option
@@ -2405,8 +2491,8 @@ temporarily revert a commit that depends on newer version of python-jwcrypto
 - Resolves: rhbz#1975139 Upgrade error: Add failure missing required attribute "objectclass"
 - Resolves: rhbz#1973024 CA_less ipa-server-install fails if CA cert subject contains non ascii chars
 - Resolves: rhbz#1966101 [RFE] - IDM - Allow specifying permanent logging settings for BIND
-- Resolves: rhbz#1962570 IPA in c9s should not require redhat-logos-ipa as a runtime package 
-- Resolves: rhbz#1957736 [RFE] IPA to allow configuring auto-private-groups at idrange level 
+- Resolves: rhbz#1962570 IPA in c9s should not require redhat-logos-ipa as a runtime package
+- Resolves: rhbz#1957736 [RFE] IPA to allow configuring auto-private-groups at idrange level
 
 * Wed Jun 16 2021 Mohan Boddu <mboddu@redhat.com> - 4.9.3-2.1
 - Rebuilt for RHEL 9 BETA for openssl 3.0
@@ -2622,7 +2708,7 @@ temporarily revert a commit that depends on newer version of python-jwcrypto
 
 * Sat Apr 06 2019 Alexander Bokovoy <abokovoy@redhat.com> - 4.7.2-8
 - Fixed: rhbz#1696963 (Failed to install replica)
-  
+
 * Sat Apr 06 2019 Alexander Bokovoy <abokovoy@redhat.com> - 4.7.2-7
 - Support Samba 4.10
 - Support 389-ds 1.4.1.2-2.fc30 or later

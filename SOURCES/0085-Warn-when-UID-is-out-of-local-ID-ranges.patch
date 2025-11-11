@@ -1,0 +1,278 @@
+From 0c98af9f70c62da3d3dea02b91a9330a5f9f669a Mon Sep 17 00:00:00 2001
+From: David Hanina <dhanina@redhat.com>
+Date: Thu, 22 May 2025 08:25:07 +0200
+Subject: [PATCH] Warn when UID is out of local ID ranges
+
+Provides simple warning when creating new user with uid out of
+all local ranges, as this is the main culprit of breaking Kerberos, by
+not generating ipantsecurityidentifier. We don't have to check for
+user-mod, because modification never changes ipantsecurityidentifier.
+We do not have to check groups, as groups are ignored for ipa without
+AD trust. It's reasonable to revisit this in the future for group
+creation and warn against groups out of ranges as well as
+warn for users with groups without SID, in case AD trust is enabled.
+
+Fixes: https://pagure.io/freeipa/issue/9781
+Signed-off-by: David Hanina <dhanina@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipalib/messages.py                            | 12 +++++
+ ipaserver/plugins/baseuser.py                 | 29 +++++++++++-
+ ipatests/test_xmlrpc/test_stageuser_plugin.py | 45 ++++++++++++++++++-
+ ipatests/test_xmlrpc/test_user_plugin.py      | 43 ++++++++++++++++++
+ .../test_xmlrpc/tracker/stageuser_plugin.py   | 22 +++++++++
+ 5 files changed, 148 insertions(+), 3 deletions(-)
+
+diff --git a/ipalib/messages.py b/ipalib/messages.py
+index 6a70bbc7556126748cc2ec031fc2af36bfe76f74..a440ca6221d00e6d753c94f87396fc5d7ae177b5 100644
+--- a/ipalib/messages.py
++++ b/ipalib/messages.py
+@@ -519,6 +519,18 @@ class ServerUpgradeRequired(PublicMessage):
+     )
+ 
+ 
++class UidNumberOutOfLocalIDRange(PublicMessage):
++    """
++    **13034** UID Number is out of all local ID Ranges
++    """
++    errno = 13034
++    type = "warning"
++    format = _(
++        "User '%(user)s', with UID Number '%(uidnumber)d' is out of all ID "
++        "Ranges, 'SID' will not be correctly generated."
++    )
++
++
+ def iter_messages(variables, base):
+     """Return a tuple with all subclasses
+     """
+diff --git a/ipaserver/plugins/baseuser.py b/ipaserver/plugins/baseuser.py
+index 22393b8f6c5d3e40b57f11947d0a0358d3a087bc..21e05d4d983502fde76af549594d678d51451e9c 100644
+--- a/ipaserver/plugins/baseuser.py
++++ b/ipaserver/plugins/baseuser.py
+@@ -23,7 +23,7 @@ from cryptography.hazmat.primitives.serialization import load_pem_public_key
+ import re
+ import six
+ 
+-from ipalib import api, errors, constants
++from ipalib import api, errors, constants, messages
+ from ipalib import (
+     Flag, Int, Password, Str, Bool, StrEnum, DateTime, DNParam)
+ from ipalib.parameters import Principal, Certificate, MAX_UINT32
+@@ -198,6 +198,22 @@ def validate_passkey(ugettext, key):
+     return None
+ 
+ 
++def is_in_local_idrange(uidnumber):
++    result = api.Command.idrange_find(
++        iparangetype='ipa-local',
++        sizelimit=0,
++    )
++
++    for r in result['result']:
++        if 'ipabaserid' in r:
++            ipabaseid = int(r['ipabaseid'][0])
++            ipaidrangesize = int(r['ipaidrangesize'][0])
++            if ipabaseid <= uidnumber < ipabaseid + ipaidrangesize:
++                return True
++
++    return False
++
++
+ class baseuser(LDAPObject):
+     """
+     baseuser object.
+@@ -621,6 +637,17 @@ class baseuser_add(LDAPCreate):
+             add_missing_object_class(ldap, 'ipaidpuser', dn,
+                                      entry_attrs, update=False)
+ 
++        # Check and warn if we're out of local idrange
++        # Skip dynamically assigned uid, old clients say 999
++        uidnumber = entry_attrs.get('uidnumber')
++        if (
++            uidnumber != -1
++            and uidnumber != 999
++            and not is_in_local_idrange(uidnumber)
++        ):
++            self.add_message(messages.UidNumberOutOfLocalIDRange(
++                user=entry_attrs.get('uid'), uidnumber=uidnumber))
++
+     def post_common_callback(self, ldap, dn, entry_attrs, *keys, **options):
+         assert isinstance(dn, DN)
+         self.obj.convert_usercertificate_post(entry_attrs, **options)
+diff --git a/ipatests/test_xmlrpc/test_stageuser_plugin.py b/ipatests/test_xmlrpc/test_stageuser_plugin.py
+index 6ed593fbf24dd2e8ce087625b9cb4c21c9a3c145..dc4940a9983a410640d93efb1185ed4d394a8c2c 100644
+--- a/ipatests/test_xmlrpc/test_stageuser_plugin.py
++++ b/ipatests/test_xmlrpc/test_stageuser_plugin.py
+@@ -80,9 +80,7 @@ options_def = OrderedDict([
+     ('car license', {u'carlicense': u'abc1234'}),
+     ('SSH key', {u'ipasshpubkey': sshpubkey}),
+     ('manager', {u'manager': u'auser1'}),
+-    ('user ID number', {u'uidnumber': uid}),
+     ('group ID number', {u'gidnumber': gid}),
+-    ('UID and GID numbers', {u'uidnumber': uid, u'gidnumber': gid}),
+     ('password', {u'userpassword': u'Secret123'}),
+     ('random password', {u'random': True}),
+     ])
+@@ -90,6 +88,13 @@ options_def = OrderedDict([
+ options_ok = list(options_def.values())
+ options_ids = list(options_def.keys())
+ 
++warn_options_def = OrderedDict([
++    ('user ID number', {u'uidnumber': uid}),
++    ('UID and GID numbers', {u'uidnumber': uid, u'gidnumber': gid}),
++])
++
++warn_options_ok = list(warn_options_def.values())
++warn_options_ids = list(warn_options_def.keys())
+ 
+ @pytest.fixture(scope='class')
+ def stageduser(request, xmlrpc_setup):
+@@ -108,6 +113,12 @@ def stageduser2(request, xmlrpc_setup):
+     return tracker.make_fixture_activate(request)
+ 
+ 
++@pytest.fixture(scope='class', params=warn_options_ok, ids=warn_options_ids)
++def warn_stageduser(request, xmlrpc_setup):
++    tracker = StageUserTracker(u'warnuser', u'staged', u'user', **request.param)
++    return tracker.make_fixture_activate(request)
++
++
+ @pytest.fixture(scope='class')
+ def user_activated(request, xmlrpc_setup):
+     tracker = UserTracker(u'suser2', u'staged', u'user')
+@@ -273,6 +284,36 @@ class TestStagedUser(XMLRPC_test):
+ 
+         user_activated.delete()
+ 
++    def test_warn_create_with_attr(self, warn_stageduser, user, user_activated):
++        """ Tests creating a user with various valid attributes that throw
++        a warning listed in 'warn_options_ok' list"""
++        # create staged user with specified parameters
++        user.ensure_exists()  # necessary for manager test
++        warn_stageduser.ensure_missing()
++        command = warn_stageduser.make_create_command()
++        result = command()
++        warn_stageduser.track_create()
++        warn_stageduser.check_create_with_warning(result, (13034,))
++
++        # activate user, verify that specified values were preserved
++        # after activation
++        user_activated.ensure_missing()
++        user_activated = UserTracker(
++            warn_stageduser.uid, warn_stageduser.givenname,
++            warn_stageduser.sn, **warn_stageduser.kwargs)
++        user_activated.create_from_staged(warn_stageduser)
++        command = warn_stageduser.make_activate_command()
++        result = command()
++        user_activated.check_activate(result)
++
++        # verify the staged user does not exist after activation
++        command = warn_stageduser.make_retrieve_command()
++        with raises_exact(errors.NotFound(
++                reason=u'%s: stage user not found' % warn_stageduser.uid)):
++            command()
++
++        user_activated.delete()
++
+     def test_delete_stageduser(self, stageduser):
+         stageduser.delete()
+ 
+diff --git a/ipatests/test_xmlrpc/test_user_plugin.py b/ipatests/test_xmlrpc/test_user_plugin.py
+index c0415cae6eb0389c91b804ab28dc2d9f131930c6..420c80213177dc513e10451c0c53506e879ba93f 100644
+--- a/ipatests/test_xmlrpc/test_user_plugin.py
++++ b/ipatests/test_xmlrpc/test_user_plugin.py
+@@ -826,6 +826,49 @@ class TestCreate(XMLRPC_test):
+         user_idp.check_create(result, ['ipaidpsub'])
+         user_idp.delete()
+ 
++    def test_out_of_idrange(self):
++        """Test ensuring warning is thrown when uid is out of range"""
++        uidnumber = 2000
++        testuser = UserTracker(
++            name="testwarning", givenname="test",
++            sn="warning", uidnumber=uidnumber
++        )
++        testuser.attrs.update(
++            uidnumber=[u'2000'],
++        )
++        command = testuser.make_create_command()
++        result = command()
++        result_messages = result['messages']
++        assert len(result_messages) == 1
++        assert result_messages[0]['type'] == 'warning'
++        assert result_messages[0]['code'] == 13034
++        testuser.delete()
++
++    def test_in_idrange(self):
++        """Test ensuring no warning is thrown when uid is in range"""
++        result = api.Command.idrange_find(
++            iparangetype='ipa-local',
++            sizelimit=0,
++        )
++
++        assert len(result) >= 1
++        ipabaseid = int(result['result'][0]['ipabaseid'][0])
++        ipaidrangesize = int(result['result'][0]['ipaidrangesize'][0])
++
++        # Take the last valid id, as we're not sure which has not yet been used
++        valid_id = ipabaseid + ipaidrangesize - 1
++        testuser = UserTracker(
++            name="testnowarning", givenname="test",
++            sn="nowarning", uidnumber=valid_id
++        )
++        testuser.attrs.update(
++            uidnumber=[str(valid_id)],
++        )
++        command = testuser.make_create_command()
++        result = command()
++        assert "messages" not in result
++        testuser.delete()
++
+ 
+ @pytest.mark.tier1
+ class TestUserWithGroup(XMLRPC_test):
+diff --git a/ipatests/test_xmlrpc/tracker/stageuser_plugin.py b/ipatests/test_xmlrpc/tracker/stageuser_plugin.py
+index 17744a98e9d4a8c5939e9c912b348689674becd9..93157ba3a44362c56a955c3d52d0d18678a9bc5d 100644
+--- a/ipatests/test_xmlrpc/tracker/stageuser_plugin.py
++++ b/ipatests/test_xmlrpc/tracker/stageuser_plugin.py
+@@ -3,6 +3,7 @@
+ #
+ 
+ import six
++import copy
+ 
+ from ipalib import api, errors
+ from ipaplatform.constants import constants as platformconstants
+@@ -187,6 +188,27 @@ class StageUserTracker(PasskeyMixin, KerberosAliasMixin, Tracker):
+             result=self.filter_attrs(expected),
+         ), result)
+ 
++    def check_create_with_warning(self, result,
++                                  warning_codes=(), extra_keys=()):
++        """ Check 'stageuser-add' command result """
++        expected = self.filter_attrs(self.create_keys | set(extra_keys))
++
++        result = copy.deepcopy(result)
++        assert 'messages' in result
++        assert len(result['messages']) == len(warning_codes)
++        codes = [message['code'] for message in result['messages']]
++        for code in warning_codes:
++            assert code in codes
++            codes.pop(codes.index(code))
++
++        del result['messages']
++
++        assert_deepequal(dict(
++            value=self.uid,
++            summary=u'Added stage user "%s"' % self.uid,
++            result=self.filter_attrs(expected),
++        ), result)
++
+     def check_delete(self, result):
+         """ Check 'stageuser-del' command result """
+         assert_deepequal(dict(
+-- 
+2.49.0
+

@@ -1,0 +1,59 @@
+From d0f6979c0250bdf5299404bf711cef74dd458042 Mon Sep 17 00:00:00 2001
+From: Antonio Torres <antorres@redhat.com>
+Date: Wed, 4 Jun 2025 09:36:55 +0200
+Subject: [PATCH] Fix inconsistency in manpage for DoT forwarder option
+
+The example given in manpages for --dot-forwarder option is inconsistent
+to the format that is required.
+
+Fixes: https://pagure.io/freeipa/issue/9804
+Signed-off-by: Antonio Torres <antorres@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ install/tools/man/ipa-dns-install.1     | 2 +-
+ install/tools/man/ipa-replica-install.1 | 2 +-
+ install/tools/man/ipa-server-install.1  | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/install/tools/man/ipa-dns-install.1 b/install/tools/man/ipa-dns-install.1
+index 6008d2028e1d91a39c8cbffc9e240121d8fd18f5..96eee1ef713a5069804088d68785f333c76b2369 100644
+--- a/install/tools/man/ipa-dns-install.1
++++ b/install/tools/man/ipa-dns-install.1
+@@ -74,7 +74,7 @@ An unattended installation that will never prompt for user input
+ Configure DNS over TLS.
+ .TP
+ \fB\-\-dot\-forwarder\fR=\fIIP_ADDRESS#HOSTNAME\fR
+-Add a DNS-over-TLS-enabled forwarder in the format of ip#hostname, e.g.: dns.example.com#1.2.3.4. This option can be used multiple times.
++Add a DNS-over-TLS-enabled forwarder in the format of ip#hostname, e.g.: 1.2.3.4#dns.example.com. This option can be used multiple times.
+ .TP
+ \fB\-\-dns\-over\-tls\-cert\fR=\fIFILE\fR
+ Certificate to use for DNS over TLS. If empty, a new certificate will be requested from IPA CA.
+diff --git a/install/tools/man/ipa-replica-install.1 b/install/tools/man/ipa-replica-install.1
+index c55d21253f8d565e04605ea7d632ab9794cdd938..637c5c1b55031c3c1636477f867e519fbe98efeb 100644
+--- a/install/tools/man/ipa-replica-install.1
++++ b/install/tools/man/ipa-replica-install.1
+@@ -228,7 +228,7 @@ Disable DNSSEC validation on this server.
+ Configure DNS over TLS.
+ .TP
+ \fB\-\-dot\-forwarder\fR=\fIIP_ADDRESS#HOSTNAME\fR
+-Add a DNS-over-TLS-enabled forwarder in the format of ip#hostname, e.g.: dns.example.com#1.2.3.4. This option can be used multiple times.
++Add a DNS-over-TLS-enabled forwarder in the format of ip#hostname, e.g.: 1.2.3.4#dns.example.com. This option can be used multiple times.
+ .TP
+ \fB\-\-dns\-over\-tls\-cert\fR=\fIFILE\fR
+ Certificate to use for DNS over TLS. If empty, a new certificate will be requested from IPA CA.
+diff --git a/install/tools/man/ipa-server-install.1 b/install/tools/man/ipa-server-install.1
+index 84d82531c50f05b9756eee967e13de90caf578f8..b9367ce1194724147a3f88d24f2d42854aff31a3 100644
+--- a/install/tools/man/ipa-server-install.1
++++ b/install/tools/man/ipa-server-install.1
+@@ -257,7 +257,7 @@ Allow creation of (reverse) zone even if the zone is already resolvable. Using t
+ Configure DNS over TLS.
+ .TP
+ \fB\-\-dot\-forwarder\fR=\fIIP_ADDRESS#HOSTNAME\fR
+-Add a DNS-over-TLS-enabled forwarder in the format of ip#hostname, e.g.: dns.example.com#1.2.3.4. This option can be used multiple times.
++Add a DNS-over-TLS-enabled forwarder in the format of ip#hostname, e.g.: 1.2.3.4#dns.example.com. This option can be used multiple times.
+ .TP
+ \fB\-\-dns\-over\-tls\-cert\fR=\fIFILE\fR
+ Certificate to use for DNS over TLS. If empty, a new certificate will be requested from IPA CA.
+-- 
+2.50.0
+

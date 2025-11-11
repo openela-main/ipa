@@ -1,0 +1,355 @@
+From 653b4b6971b1778988718840a301c10b3e35e700 Mon Sep 17 00:00:00 2001
+From: David Hanina <dhanina@redhat.com>
+Date: Thu, 6 Mar 2025 09:32:01 +0100
+Subject: [PATCH] Disable --raw and --structured together
+
+Disables --raw and --structured for dnsrecord-* command.
+This is being shown in help for structured, as raw is implemented in
+almost every command, therefore people are more likely to view
+structured. Also contains tests, even though this is newly noted, this
+combination has never worked in the past.
+
+Fixes: https://pagure.io/freeipa/issue/9756
+Signed-off-by: David Hanina <dhanina@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipaclient/remote_plugins/2_114/dns.py   | 15 +++++++----
+ ipaclient/remote_plugins/2_156/dns.py   | 15 +++++++----
+ ipaclient/remote_plugins/2_164/dns.py   | 15 +++++++----
+ ipaclient/remote_plugins/2_49/dns.py    | 15 +++++++----
+ ipaserver/plugins/dns.py                | 28 ++++++++++++++++++++
+ ipatests/test_xmlrpc/test_dns_plugin.py | 35 +++++++++++++++++++++++++
+ 6 files changed, 103 insertions(+), 20 deletions(-)
+
+diff --git a/ipaclient/remote_plugins/2_114/dns.py b/ipaclient/remote_plugins/2_114/dns.py
+index 6260420008e3371dc95317d67d2f37a46b4d5d42..2f414927bad2f0838bec42bab734d3a42e87005f 100644
+--- a/ipaclient/remote_plugins/2_114/dns.py
++++ b/ipaclient/remote_plugins/2_114/dns.py
+@@ -2625,7 +2625,8 @@ class dnsrecord_add(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -2991,7 +2992,8 @@ class dnsrecord_del(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -3405,7 +3407,8 @@ class dnsrecord_find(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -4290,7 +4293,8 @@ class dnsrecord_mod(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -4363,7 +4367,8 @@ class dnsrecord_show(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+diff --git a/ipaclient/remote_plugins/2_156/dns.py b/ipaclient/remote_plugins/2_156/dns.py
+index 4ebad93e79d38c1171b066cc5a1a0b8d6fce64b2..9ce8a7eef99eff7592f8550d0000506cc2d7824c 100644
+--- a/ipaclient/remote_plugins/2_156/dns.py
++++ b/ipaclient/remote_plugins/2_156/dns.py
+@@ -2540,7 +2540,8 @@ class dnsrecord_add(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -2861,7 +2862,8 @@ class dnsrecord_del(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -3230,7 +3232,8 @@ class dnsrecord_find(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -4065,7 +4068,8 @@ class dnsrecord_mod(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -4138,7 +4142,8 @@ class dnsrecord_show(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+diff --git a/ipaclient/remote_plugins/2_164/dns.py b/ipaclient/remote_plugins/2_164/dns.py
+index f5adb4d54e8501b6b4efed06404ff299aa918cfb..284ef2cdaa757341db4eed044be3bb051db83d99 100644
+--- a/ipaclient/remote_plugins/2_164/dns.py
++++ b/ipaclient/remote_plugins/2_164/dns.py
+@@ -2548,7 +2548,8 @@ class dnsrecord_add(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -2869,7 +2870,8 @@ class dnsrecord_del(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -3238,7 +3240,8 @@ class dnsrecord_find(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -4073,7 +4076,8 @@ class dnsrecord_mod(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -4146,7 +4150,8 @@ class dnsrecord_show(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+diff --git a/ipaclient/remote_plugins/2_49/dns.py b/ipaclient/remote_plugins/2_49/dns.py
+index 4b543a2c2539f7b67467b0a38ab8013a1ebe0840..1610f4af18ee46bc7304839ede2d587d61c6d0e2 100644
+--- a/ipaclient/remote_plugins/2_49/dns.py
++++ b/ipaclient/remote_plugins/2_49/dns.py
+@@ -2233,7 +2233,8 @@ class dnsrecord_add(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -2594,7 +2595,8 @@ class dnsrecord_del(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -3013,7 +3015,8 @@ class dnsrecord_find(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -4025,7 +4028,8 @@ class dnsrecord_mod(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+@@ -4094,7 +4098,8 @@ class dnsrecord_show(Method):
+         parameters.Flag(
+             'structured',
+             label=_(u'Structured'),
+-            doc=_(u'Parse all raw DNS records and return them in a structured way'),
++            doc=_(u'Parse all raw DNS records and return them in a '
++                  u'structured way. Can not be used with --raw.'),
+             default=False,
+             autofill=True,
+         ),
+diff --git a/ipaserver/plugins/dns.py b/ipaserver/plugins/dns.py
+index 0d6260cd6c4edb8c1a9d7ac8927b7595588fae58..ff2d3ff8a7c2839645c9906300cba0d399f2325a 100644
+--- a/ipaserver/plugins/dns.py
++++ b/ipaserver/plugins/dns.py
+@@ -3587,6 +3587,12 @@ class dnsrecord_add(LDAPCreate):
+ 
+     def pre_callback(self, ldap, dn, entry_attrs, attrs_list, *keys, **options):
+         assert isinstance(dn, DN)
++
++        if options.get('structured') and options.get('raw'):
++            raise errors.MutuallyExclusiveError(
++                reason=_("cannot use structured together with raw")
++            )
++
+         precallback_attrs = []
+         processed_attrs = []
+         for option, option_val in options.items():
+@@ -3729,6 +3735,12 @@ class dnsrecord_mod(LDAPUpdate):
+ 
+     def pre_callback(self, ldap, dn, entry_attrs, attrs_list,  *keys, **options):
+         assert isinstance(dn, DN)
++
++        if options.get('structured') and options.get('raw'):
++            raise errors.MutuallyExclusiveError(
++                reason=_("cannot use structured together with raw")
++            )
++
+         if options.get('rename') and self.obj.is_pkey_zone_record(*keys):
+             # zone rename is not allowed
+             raise errors.ValidationError(name='rename',
+@@ -3883,6 +3895,7 @@ class dnsrecord_del(LDAPUpdate):
+ 
+     def pre_callback(self, ldap, dn, entry_attrs, attrs_list, *keys, **options):
+         assert isinstance(dn, DN)
++
+         try:
+             old_entry = ldap.get_entry(dn, _record_attributes)
+         except errors.NotFound:
+@@ -3983,6 +3996,16 @@ class dnsrecord_show(LDAPRetrieve):
+         dnsrecord.structured_flag,
+     )
+ 
++    def pre_callback(self, ldap, dn, attrs_list, *keys, **options):
++        assert isinstance(dn, DN)
++
++        if options.get('structured') and options.get('raw'):
++            raise errors.MutuallyExclusiveError(
++                reason=_("cannot use structured together with raw")
++            )
++
++        return dn
++
+     def post_callback(self, ldap, dn, entry_attrs, *keys, **options):
+         assert isinstance(dn, DN)
+         if self.obj.is_pkey_zone_record(*keys):
+@@ -4013,6 +4036,11 @@ class dnsrecord_find(LDAPSearch):
+                      dnszoneidnsname, *args, **options):
+         assert isinstance(base_dn, DN)
+ 
++        if options.get('structured') and options.get('raw'):
++            raise errors.MutuallyExclusiveError(
++                reason=_("cannot use structured together with raw")
++            )
++
+         # validate if zone is master zone
+         self.obj.check_zone(dnszoneidnsname, **options)
+ 
+diff --git a/ipatests/test_xmlrpc/test_dns_plugin.py b/ipatests/test_xmlrpc/test_dns_plugin.py
+index 39d42e306d12c4f6623a1ed657aeac3d3bfa3e22..803b0a9571c2888dd02c4595c68403f37be7fed7 100644
+--- a/ipatests/test_xmlrpc/test_dns_plugin.py
++++ b/ipatests/test_xmlrpc/test_dns_plugin.py
+@@ -3426,6 +3426,41 @@ class test_dns(Declarative):
+             },
+         ),
+ 
++        dict(
++            desc="Ensure --raw and --structure does not work "
++                 "for ipa dnsrecord-add",
++            command=('dnrecord_add', [], {u'raw': True, u'structured': True}),
++            expected=errors.MutuallyExclusiveError(
++                reason=u"cannot use structured together with raw"
++            ),
++        ),
++
++        dict(
++            desc="Ensure --raw and --structure does not work "
++                 "for ipa dnsrecord-mod",
++            command=('dnrecord_add', [], {u'raw': True, u'structured': True}),
++            expected=errors.MutuallyExclusiveError(
++                reason=u"cannot use structured together with raw"
++            ),
++        ),
++
++        dict(
++            desc="Ensure --raw and --structure does not work "
++                 "for ipa dnsrecord-show",
++            command=('dnrecord_add', [], {u'raw': True, u'structured': True}),
++            expected=errors.MutuallyExclusiveError(
++                reason=u"cannot use structured together with raw"
++            ),
++        ),
++
++        dict(
++            desc="Ensure --raw and --structure does not work "
++                 "for ipa dnsrecord-find",
++            command=('dnrecord_add', [], {u'raw': True, u'structured': True}),
++            expected=errors.MutuallyExclusiveError(
++                reason=u"cannot use structured together with raw"
++            ),
++        ),
+     ]
+ 
+ 
+-- 
+2.48.1
+

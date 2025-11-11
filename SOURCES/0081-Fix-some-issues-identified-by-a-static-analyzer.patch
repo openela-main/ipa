@@ -1,0 +1,147 @@
+From 777f4c0ed631f70b64f6a972e7e6cb140155ef1f Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Thu, 8 May 2025 13:55:34 -0400
+Subject: [PATCH] Fix some issues identified by a static analyzer
+
+Remove resource leak when reading the IPA config in ipa-getkeytab
+Free popt in ipa-getkeytab
+
+Initialize ret in ipa-otpd/passkey.c
+
+Use the correct free function in util/ipa_krb5.c
+
+Related: https://pagure.io/freeipa/issue/9468
+Fixes: https://pagure.io/freeipa/issue/9365
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+---
+ client/ipa-getkeytab.c     | 13 ++++++++++++-
+ daemons/ipa-otpd/passkey.c |  2 +-
+ util/ipa_krb5.c            |  2 +-
+ 3 files changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/client/ipa-getkeytab.c b/client/ipa-getkeytab.c
+index 228b981c2c38c5f9227d84cbae20f598564b5dcf..8ca4b8130cd668cbbc03e969399b5fe47ce42f1e 100644
+--- a/client/ipa-getkeytab.c
++++ b/client/ipa-getkeytab.c
+@@ -866,6 +866,7 @@ static int read_ipa_config(struct ipa_config **ipacfg)
+         (*ipacfg)->domain = ini_get_string_config_value(obj, &ret);
+     }
+ 
++    ini_config_destroy(cfgctx);
+     return 0;
+ }
+ 
+@@ -984,7 +985,7 @@ int main(int argc, const char *argv[])
+ 	krb5_context krbctx;
+ 	krb5_ccache ccache;
+ 	krb5_principal uprinc = NULL;
+-	krb5_principal sprinc;
++	krb5_principal sprinc = NULL;
+ 	krb5_error_code krberr;
+ 	struct keys_container keys = { 0 };
+ 	krb5_keytab kt;
+@@ -1026,6 +1027,7 @@ int main(int argc, const char *argv[])
+ 			fprintf(stdout, "%s\n", enc);
+ 		}
+ 		ipa_krb5_free_ktypes(krbctx, ktypes);
++		poptFreeContext(pc);
+ 		exit (0);
+ 	}
+ 
+@@ -1033,6 +1035,7 @@ int main(int argc, const char *argv[])
+ 		if (!quiet) {
+ 			poptPrintUsage(pc, stderr, 0);
+ 		}
++		poptFreeContext(pc);
+ 		exit(2);
+ 	}
+ 
+@@ -1041,12 +1044,14 @@ int main(int argc, const char *argv[])
+ 		if (!quiet) {
+ 			poptPrintUsage(pc, stderr, 0);
+ 		}
++		poptFreeContext(pc);
+ 		exit(2);
+     }
+ 
+     if (askbindpw) {
+ 		bindpw = ask_password(krbctx, _("Enter LDAP password"), NULL, false);
+ 		if (!bindpw) {
++			poptFreeContext(pc);
+ 			exit(2);
+ 		}
+     }
+@@ -1056,6 +1061,7 @@ int main(int argc, const char *argv[])
+                         _("Bind password required when using a bind DN (-w or -W).\n"));
+ 		if (!quiet)
+ 			poptPrintUsage(pc, stderr, 0);
++		poptFreeContext(pc);
+ 		exit(10);
+ 	}
+ 
+@@ -1064,6 +1070,7 @@ int main(int argc, const char *argv[])
+                           "and bind DN simultaneously.\n"));
+         if (!quiet)
+             poptPrintUsage(pc, stderr, 0);
++        poptFreeContext(pc);
+         exit(2);
+     }
+ 
+@@ -1071,6 +1078,7 @@ int main(int argc, const char *argv[])
+         fprintf(stderr, _("Invalid SASL bind mechanism\n"));
+         if (!quiet)
+             poptPrintUsage(pc, stderr, 0);
++        poptFreeContext(pc);
+         exit(2);
+     }
+ 
+@@ -1083,8 +1091,10 @@ int main(int argc, const char *argv[])
+                           "simultaneously.\n"));
+         if (!quiet)
+             poptPrintUsage(pc, stderr, 0);
++        poptFreeContext(pc);
+         exit(2);
+     }
++    poptFreeContext(pc);
+ 
+     if (server && (strcasecmp(server, "_srv_") == 0)) {
+         struct srvrec *srvrecs, *srv;
+@@ -1119,6 +1129,7 @@ int main(int argc, const char *argv[])
+             /* Discovery failed, fall through to option methods */
+             server = NULL;
+         }
++        free(ipacfg);
+     }
+ 
+     if (!server && !ldap_uri) {
+diff --git a/daemons/ipa-otpd/passkey.c b/daemons/ipa-otpd/passkey.c
+index 8351f0fcf9e2245a83563eefe2c17b04c5b9f4e3..ad3c45467ba9af46cf2e333e2dbfd938c8c8d643 100644
+--- a/daemons/ipa-otpd/passkey.c
++++ b/daemons/ipa-otpd/passkey.c
+@@ -307,7 +307,7 @@ bool is_passkey(struct otpd_queue_item *item)
+ 
+ static json_t *ipa_passkey_to_json_array(char **ipa_passkey)
+ {
+-    int ret;
++    int ret = 0;
+     const char *sep;
+     char *start;
+     size_t c;
+diff --git a/util/ipa_krb5.c b/util/ipa_krb5.c
+index bb98ab897cf8ea933c025bdb9abf7d394cae4583..0087e53e689fc4dc5549908b3eadd6d963d94489 100644
+--- a/util/ipa_krb5.c
++++ b/util/ipa_krb5.c
+@@ -80,7 +80,7 @@ static krb5_error_code ipa_get_random_salt(krb5_context krbctx,
+ void
+ ipa_krb5_free_ktypes(krb5_context context, krb5_enctype *val)
+ {
+-    free(val);
++    krb5_free_enctypes(context, val);
+ }
+ 
+ /*
+-- 
+2.49.0
+

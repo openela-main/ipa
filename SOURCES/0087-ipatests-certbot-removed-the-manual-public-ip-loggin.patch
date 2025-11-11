@@ -1,0 +1,34 @@
+From 8ecf75b29429aa6f9e0fc0abfb1d74068b5d4f48 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 6 Jan 2025 14:37:42 +0100
+Subject: [PATCH] ipatests: certbot removed the --manual-public-ip-logging-ok
+ parameter
+
+The certbot CLI has deprecated the parameter --manual-public-ip-logging-ok
+and finally removed it from certbot 3.0.
+The test test_acme.py is using this parameter and fails in rawhide.
+
+Do not use this parameter any more.
+
+Fixes: https://pagure.io/freeipa/issue/9724
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipatests/test_integration/test_acme.py | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_acme.py b/ipatests/test_integration/test_acme.py
+index 4032d266a8dc72fae6ee11857c306aa3a21e51bc..b0d79182cfc98d23333266ee4c3d710bfffb4d73 100644
+--- a/ipatests/test_integration/test_acme.py
++++ b/ipatests/test_integration/test_acme.py
+@@ -311,7 +311,6 @@ class TestACME(CALessBase):
+             '--domain', self.clients[0].hostname,
+             '--preferred-challenges', 'dns',
+             '--manual',
+-            '--manual-public-ip-logging-ok',
+             '--manual-auth-hook', CERTBOT_DNS_IPA_SCRIPT,
+             '--manual-cleanup-hook', CERTBOT_DNS_IPA_SCRIPT,
+             '--key-type', 'rsa',
+-- 
+2.50.0
+

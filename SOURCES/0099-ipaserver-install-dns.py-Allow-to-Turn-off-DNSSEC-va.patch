@@ -1,0 +1,46 @@
+From 0412252dd9a27138411e942305cdf54e70c06f27 Mon Sep 17 00:00:00 2001
+From: Thomas Woerner <twoerner@redhat.com>
+Date: Mon, 23 Jun 2025 14:36:51 +0200
+Subject: [PATCH] ipaserver/install/dns.py: Allow to Turn off DNSSEC validation
+ for unbound
+
+Unbound is by default configured to do DNSSEC validation with the validator
+module. The solution is to set module-config to "iterator".
+
+When the server is built with EDNS client subnet support this should be
+changed to "subnetcache iterator" according to the unbound man page.
+
+Fixes: https://pagure.io/freeipa/issue/9805
+Signed-off-by: Thomas Woerner <twoerner@redhat.com>
+Reviewed-By: Antonio Torres <antorres@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ ipaserver/install/dns.py | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/ipaserver/install/dns.py b/ipaserver/install/dns.py
+index 470e1915971f66d84e4e4f279caaf81bd3a85cd3..ccec9d8019a250a275cbfac5a360fc3046bcb69c 100644
+--- a/ipaserver/install/dns.py
++++ b/ipaserver/install/dns.py
+@@ -133,13 +133,17 @@ def _setup_dns_over_tls(options):
+     if options.dot_forwarders:
+         forward_addrs = ["forward-addr: %s" % fw
+                          for fw in options.dot_forwarders]
++    # module_config_iterator is commented out if DNSSEC validation is
++    # not disabled.
++    module_config_iterator = '' if options.no_dnssec_validation else '# '
+     ipautil.copy_template_file(
+         paths.UNBOUND_CONF_SRC,
+         paths.UNBOUND_CONF,
+         dict(
+             TLS_CERT_BUNDLE_PATH=os.path.join(
+                 paths.OPENSSL_CERTS_DIR, "ca-bundle.crt"),
+-            FORWARD_ADDRS="\n".join(forward_addrs)
++            FORWARD_ADDRS="\n".join(forward_addrs),
++            MODULE_CONFIG_ITERATOR=module_config_iterator
+         )
+     )
+ 
+-- 
+2.50.0
+
