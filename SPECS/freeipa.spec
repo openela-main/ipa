@@ -77,8 +77,9 @@
 %global ds_version 1.4.3.16-12
 %global selinux_policy_version 3.14.3-107
 %else
-# version supporting LMDB and lib389.cli_ctl.dblib.run_dbscan utility
-%global ds_version 3.0.4
+# version for Allow Uniqueness plugin to search uniqueness attributes
+# using custom matching rules
+%global ds_version 3.1.3-5
 %global selinux_policy_version 38.1.1-1
 %endif
 
@@ -230,7 +231,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        24%{?rc_version:.%rc_version}%{?dist}
+Release:        24%{?rc_version:.%rc_version}%{?dist}.1
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -391,6 +392,9 @@ Patch0128:      0128-Use-correct-capitalization-for-GitHub-and-GitLab.patch
 Patch0129:      0129-kdb-prevent-double-crash-in-RBCD-ACL-free.patch
 Patch0130:      0130-ipatests-Tests-for-ipa-migrate-tool-with-ldif-file.patch
 Patch0131:      0131-dns-disable-all-previous-Unbound-configuration-befor.patch
+Patch0132:      0132-Enforce-uniqueness-across-krbprincipalname-and-krbca.patch
+Patch0133:      0133-ipa-kdb-enforce-PAC-presence-on-TGT-for-TGS-REQ.patch
+Patch0134:      0134-ipatests-extend-test-for-unique-krbcanonicalname.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -2053,6 +2057,9 @@ fi
 %endif
 
 %changelog
+* Tue Sep 30 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-24.1
+- Resolves: RHEL-118447 CVE-2025-7493 ipa: Privilege escalation from host to domain admin in FreeIPA
+
 * Tue Aug 19 2025 Rafael Jeffman <rjeffman@redhat.com> - 4.12.2-24
 - Resolves: RHEL-109895 Revert allow update of Kerberos master key
 
