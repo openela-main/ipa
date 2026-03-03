@@ -190,7 +190,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        20%{?rc_version:.%rc_version}%{?dist}
+Release:        21%{?rc_version:.%rc_version}%{?dist}
 Summary:        The Identity, Policy and Audit system
 
 License:        GPLv3+
@@ -253,6 +253,7 @@ Patch0041:      0041-Enforce-uniqueness-across-krbprincipalname-and-krbca_rhel#1
 Patch0042:      0042-ipa-kdb-enforce-PAC-presence-on-TGT-for-TGS-REQ_rhel#110061.patch
 Patch0043:      0043-ipatests-extend-test-for-unique-krbcanonicalname_rhel#110061.patch
 Patch0044:      0044-ipatests-refactor-krb-unique-tests_rhel#110061.patch
+Patch0045:      0045-fix-memory-leaks-in-IPA-plugins_rhel#145410.patch
 %if 0%{?rhel} >= 8
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
@@ -1767,6 +1768,10 @@ fi
 %endif
 
 %changelog
+* Fri Jan 30 2026 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-21
+- Fix memory leaks in IPA plugins
+  Resolves: RHEL-145410
+
 * Thu Sep 11 2025 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-20
 - Refactor ipatests for unique krbcanonicalname
   Resolves: RHEL-110061

@@ -1,0 +1,911 @@
+From aef72550a252d43423b99a179cb1e2ca3c2965e0 Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Sat, 8 Nov 2025 00:40:42 +0100
+Subject: [PATCH 01/16] ipa-graceperiod: fix memory leaks
+
+Direct return of invalid grace limit bypassed cleanup code.
+`tmpstr` variable was not freed in all code paths.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ daemons/ipa-slapi-plugins/ipa-graceperiod/ipa_graceperiod.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-graceperiod/ipa_graceperiod.c b/daemons/ipa-slapi-plugins/ipa-graceperiod/ipa_graceperiod.c
+index 345e1dee7..2912d5eb3 100644
+--- a/daemons/ipa-slapi-plugins/ipa-graceperiod/ipa_graceperiod.c
++++ b/daemons/ipa-slapi-plugins/ipa-graceperiod/ipa_graceperiod.c
+@@ -448,7 +448,8 @@ static int ipagraceperiod_preop(Slapi_PBlock *pb)
+         goto done;
+     } else if (grace_limit < -1) {
+         LOG_FATAL("Invalid passwordGraceLimit value %d\n", grace_limit);
+-        return LDAP_OPERATIONS_ERROR;
++        ret = LDAP_OPERATIONS_ERROR;
++        goto done;
+     }
+ 
+     grace_user_time = slapi_entry_attr_get_int(target_entry, "passwordGraceUserTime");
+@@ -500,6 +501,7 @@ done:
+         slapi_vattr_values_free(&values, &actual_type_name, attr_free_flags);
+     }
+     if (sdn) slapi_sdn_free(&sdn);
++    slapi_ch_free_string(&tmpstr);
+ 
+     LOG("preop returning %d: %s\n", ret, errstr ? errstr : "success\n");
+ 
+-- 
+2.51.0
+
+
+From 21471d2c34942bd2ef00850f22102f2006ec62ee Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Sat, 8 Nov 2025 00:44:35 +0100
+Subject: [PATCH 02/16] ipa-lockout: fix memory leaks
+
+Move cleanup of `unlock_time` to `done` label to ensure cleanup in all code paths.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ daemons/ipa-slapi-plugins/ipa-lockout/ipa_lockout.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-lockout/ipa_lockout.c b/daemons/ipa-slapi-plugins/ipa-lockout/ipa_lockout.c
+index a8095ccd3..9b157bcd3 100644
+--- a/daemons/ipa-slapi-plugins/ipa-lockout/ipa_lockout.c
++++ b/daemons/ipa-slapi-plugins/ipa-lockout/ipa_lockout.c
+@@ -812,7 +812,6 @@ static int ipalockout_preop(Slapi_PBlock *pb)
+                 goto done;
+             }
+         }
+-        slapi_ch_free_string(&unlock_time);
+     }
+ 
+     max_fail = slapi_entry_attr_get_uint(policy_entry, "krbPwdMaxFailure");
+@@ -837,6 +836,7 @@ static int ipalockout_preop(Slapi_PBlock *pb)
+ 
+ done:
+     if (lastfail) slapi_ch_free_string(&lastfail);
++    if (unlock_time) slapi_ch_free_string(&unlock_time);
+     slapi_entry_free(target_entry);
+     slapi_entry_free(policy_entry);
+     if (values != NULL) {
+-- 
+2.51.0
+
+
+From c84d394fc273baeafd6e56b2d2fc1b5f3a0c363b Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Sat, 8 Nov 2025 00:46:35 +0100
+Subject: [PATCH 03/16] ipa-pwd-extop: fix memory leaks
+
+`cur_pw` was allocated but not freed after password validation.
+`principal_expire` was allocated but not freed in all code paths.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c | 1 +
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c       | 4 ++++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c
+index 989f2a02e..94e0f9c70 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c
+@@ -483,6 +483,7 @@ parse_req_done:
+ 
+             slapi_value_free(&cpw[0]);
+             slapi_value_free(&pw);
++            slapi_ch_free_string(&cur_pw);
+ 
+             if (ret != 0) {
+                 LOG_TRACE("Invalid password!\n");
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+index 45626523f..7fab55c84 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+@@ -1489,6 +1489,7 @@ static int ipapwd_pre_bind(Slapi_PBlock *pb)
+ 
+             if (current_time > expire_time && expire_time > 0) {
+                 LOG_FATAL("kerberos principal in %s is expired\n", dn);
++                slapi_ch_free_string(&principal_expire);
+                 slapi_entry_free(entry);
+                 slapi_sdn_free(&sdn);
+                 slapi_send_ldap_result(pb, LDAP_UNWILLING_TO_PERFORM, NULL,
+@@ -1521,6 +1522,7 @@ static int ipapwd_pre_bind(Slapi_PBlock *pb)
+     /* Authenticate the user. */
+     ret = ipapwd_authenticate(dn, entry, credentials);
+     if (ret) {
++        slapi_ch_free_string(&principal_expire);
+         slapi_entry_free(entry);
+         slapi_sdn_free(&sdn);
+         return 0;
+@@ -1533,11 +1535,13 @@ static int ipapwd_pre_bind(Slapi_PBlock *pb)
+     /* Attempt to write out kerberos keys for the user. */
+     ipapwd_write_krb_keys(pb, discard_const(dn), entry, credentials);
+ 
++    slapi_ch_free_string(&principal_expire);
+     slapi_entry_free(entry);
+     slapi_sdn_free(&sdn);
+     return 0;
+ 
+ invalid_creds:
++    slapi_ch_free_string(&principal_expire);
+     slapi_entry_free(entry);
+     slapi_sdn_free(&sdn);
+     slapi_send_ldap_result(pb, rc, NULL, errMesg, 0, NULL);
+-- 
+2.51.0
+
+
+From d26414276d678b0624904ad472a6c8b6e7dde980 Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Sat, 8 Nov 2025 00:48:33 +0100
+Subject: [PATCH 04/16] ipa-sidgen: fix memory leaks
+
+In various code paths the `ctx` structure was freed, but not
+`ctx->base_dn` which may have been allocated.
+
+`sid` was duplicated, but the original memory was never freed.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.c        | 9 ++++++++-
+ daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h        | 2 +-
+ daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen_common.c | 3 ++-
+ 3 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.c b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.c
+index 99e6b850b..9418ec303 100644
+--- a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.c
++++ b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.c
+@@ -66,6 +66,8 @@ static int ipa_sidgen_close(Slapi_PBlock *pb)
+     if (ret == 0) {
+         free_ranges(&ctx->ranges);
+         slapi_ch_free_string(&ctx->dom_sid);
++        slapi_ch_free_string(&ctx->base_dn);
++        free(ctx);
+     } else {
+         LOG_FATAL("Missing private plugin context.\n");
+     }
+@@ -204,7 +206,10 @@ static int ipa_sidgen_init_ctx(Slapi_PBlock *pb, struct ipa_sidgen_ctx **_ctx)
+ 
+ done:
+     if (ret != 0) {
+-        free(ctx);
++        if (ctx) {
++            slapi_ch_free_string(&ctx->base_dn);
++            free(ctx);
++        }
+     } else {
+         *_ctx = ctx;
+     }
+@@ -237,6 +242,8 @@ int ipa_sidgen_init(Slapi_PBlock *pb)
+                          (void *) ipa_sidgen_add_post_op) != 0 ||
+         slapi_pblock_set(pb, SLAPI_PLUGIN_PRIVATE, ctx) != 0) {
+         LOG_FATAL("failed to register plugin\n");
++        slapi_ch_free_string(&ctx->base_dn);
++        free(ctx);
+         ret = EFAIL;
+     }
+ 
+diff --git a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h
+index aec862796..fbae87e4d 100644
+--- a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h
++++ b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen.h
+@@ -74,7 +74,7 @@ struct range_info {
+ 
+ struct ipa_sidgen_ctx {
+     Slapi_ComponentId *plugin_id;
+-    const char *base_dn;
++    char *base_dn;
+     char *dom_sid;
+     struct range_info **ranges;
+ };
+diff --git a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen_common.c b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen_common.c
+index 13f4de541..b26c2df52 100644
+--- a/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen_common.c
++++ b/daemons/ipa-slapi-plugins/ipa-sidgen/ipa_sidgen_common.c
+@@ -51,7 +51,7 @@ int get_dom_sid(Slapi_ComponentId *plugin_id, const char *base_dn, char **_sid)
+     int search_result;
+     Slapi_Entry **search_entries = NULL;
+     int ret;
+-    const char *sid;
++    char *sid = NULL;
+ 
+     search_pb = slapi_pblock_new();
+     if (search_pb == NULL) {
+@@ -114,6 +114,7 @@ int get_dom_sid(Slapi_ComponentId *plugin_id, const char *base_dn, char **_sid)
+     ret = 0;
+ 
+ done:
++    slapi_ch_free_string(&sid);
+     slapi_free_search_results_internal(search_pb);
+     slapi_pblock_destroy(search_pb);
+ 
+-- 
+2.51.0
+
+
+From 144b7c97aa29e8e99fe065d62643848a4eacc515 Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Sat, 8 Nov 2025 00:57:49 +0100
+Subject: [PATCH 05/16] ipa-range-check: fix memory leak
+
+`ipa_range_check_close` function didn't do any cleanup.
+The `ctx` structure was freed, but not `ctx->base_dn` which may have
+been allocated.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ .../ipa-range-check/ipa_range_check.c          | 18 ++++++++++++++++--
+ 1 file changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-range-check/ipa_range_check.c b/daemons/ipa-slapi-plugins/ipa-range-check/ipa_range_check.c
+index 5b53a2fe5..37840cd47 100644
+--- a/daemons/ipa-slapi-plugins/ipa-range-check/ipa_range_check.c
++++ b/daemons/ipa-slapi-plugins/ipa-range-check/ipa_range_check.c
+@@ -76,7 +76,7 @@ Slapi_PluginDesc ipa_range_check_plugin_desc = {
+ 
+ struct ipa_range_check_ctx {
+     Slapi_ComponentId *plugin_id;
+-    const char *base_dn;
++    char *base_dn;
+ };
+ 
+ typedef enum {
+@@ -469,6 +469,15 @@ static int ipa_range_check_start(Slapi_PBlock *pb)
+ 
+ static int ipa_range_check_close(Slapi_PBlock *pb)
+ {
++    int ret;
++    struct ipa_range_check_ctx *ctx;
++
++    ret = slapi_pblock_get(pb, SLAPI_PLUGIN_PRIVATE, &ctx);
++    if (ret == 0 && ctx != NULL) {
++        slapi_ch_free_string(&ctx->base_dn);
++        free(ctx);
++    }
++
+     return 0;
+ }
+ 
+@@ -752,7 +761,10 @@ static int ipa_range_check_init_ctx(Slapi_PBlock *pb,
+ 
+ done:
+     if (ret != 0) {
+-        free(ctx);
++        if (ctx) {
++            slapi_ch_free_string(&ctx->base_dn);
++            free(ctx);
++        }
+     } else {
+         *_ctx = ctx;
+     }
+@@ -787,6 +799,8 @@ int ipa_range_check_init(Slapi_PBlock *pb)
+                          (void *) ipa_range_check_add_pre_op) != 0 ||
+         slapi_pblock_set(pb, SLAPI_PLUGIN_PRIVATE, rc_ctx) != 0) {
+         LOG_FATAL("failed to register plugin\n");
++        slapi_ch_free_string(&rc_ctx->base_dn);
++        free(rc_ctx);
+         ret = EFAIL;
+     }
+ 
+-- 
+2.51.0
+
+
+From 13277d0b4a060d934946ee34ba69a82f93f6f083 Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Sat, 8 Nov 2025 00:59:58 +0100
+Subject: [PATCH 06/16] ipa-extdom-extop: fix memory leaks
+
+In various code paths the `ctx` structure was freed, but not `ctx`
+resources (`base_dn`, `nss_ctx`, `extdom_instance_counter`) which may
+have been allocated.
+
+Plugin didn't have SLAPI_PLUGIN_CLOSE_FN registered, so context was
+never freed on server shutdown.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ .../ipa-extdom-extop/ipa_extdom_extop.c       | 39 ++++++++++++++++++-
+ 1 file changed, 38 insertions(+), 1 deletion(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-extdom-extop/ipa_extdom_extop.c b/daemons/ipa-slapi-plugins/ipa-extdom-extop/ipa_extdom_extop.c
+index 5d22f9f2d..a180e3307 100644
+--- a/daemons/ipa-slapi-plugins/ipa-extdom-extop/ipa_extdom_extop.c
++++ b/daemons/ipa-slapi-plugins/ipa-extdom-extop/ipa_extdom_extop.c
+@@ -171,6 +171,26 @@ static int ipa_extdom_start(Slapi_PBlock *pb)
+     return LDAP_SUCCESS;
+ }
+ 
++static int ipa_extdom_close(Slapi_PBlock *pb)
++{
++    int ret;
++    struct ipa_extdom_ctx *ctx;
++
++    ret = slapi_pblock_get(pb, SLAPI_PLUGIN_PRIVATE, &ctx);
++    if (ret == 0 && ctx != NULL) {
++        if (ctx->extdom_instance_counter) {
++            slapi_counter_destroy(&ctx->extdom_instance_counter);
++        }
++        if (ctx->nss_ctx) {
++            back_extdom_free_context(&ctx->nss_ctx);
++        }
++        slapi_ch_free_string(&ctx->base_dn);
++        free(ctx);
++    }
++
++    return 0;
++}
++
+ static int ipa_extdom_extop(Slapi_PBlock *pb)
+ {
+     char *oid = NULL;
+@@ -360,7 +380,16 @@ static int ipa_extdom_init_ctx(Slapi_PBlock *pb, struct ipa_extdom_ctx **_ctx)
+ 
+ done:
+     if (ret) {
+-        free(ctx);
++        if (ctx) {
++            if (ctx->extdom_instance_counter) {
++                slapi_counter_destroy(&ctx->extdom_instance_counter);
++            }
++            if (ctx->nss_ctx) {
++                back_extdom_free_context(&ctx->nss_ctx);
++            }
++            slapi_ch_free_string(&ctx->base_dn);
++            free(ctx);
++        }
+     } else {
+         *_ctx = ctx;
+     }
+@@ -388,6 +417,10 @@ int ipa_extdom_init(Slapi_PBlock *pb)
+         ret = slapi_pblock_set(pb, SLAPI_PLUGIN_START_FN,
+                                (void *)ipa_extdom_start);
+     }
++    if (!ret) {
++        ret = slapi_pblock_set(pb, SLAPI_PLUGIN_CLOSE_FN,
++                               (void *)ipa_extdom_close);
++    }
+     if (!ret) {
+         ret = slapi_pblock_set(pb, SLAPI_PLUGIN_EXT_OP_OIDLIST,
+                                ipa_extdom_oid_list);
+@@ -405,6 +438,10 @@ int ipa_extdom_init(Slapi_PBlock *pb)
+     }
+     if (ret) {
+         LOG("Failed to set plug-in version, function, and OID.\n" );
++        slapi_counter_destroy(&extdom_ctx->extdom_instance_counter);
++        back_extdom_free_context(&extdom_ctx->nss_ctx);
++        slapi_ch_free_string(&extdom_ctx->base_dn);
++        free(extdom_ctx);
+         return -1;
+     }
+ 
+-- 
+2.51.0
+
+
+From a203332f0689dae88aa4e31f42eb22416e28ada5 Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Sat, 8 Nov 2025 01:03:52 +0100
+Subject: [PATCH 07/16] ipa-enrollment: fix memory leaks
+
+`smods`, `fqdn`, `sdn` were not freed.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c b/daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c
+index 26cbb69d7..70a297da0 100644
+--- a/daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c
++++ b/daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c
+@@ -136,7 +136,7 @@ ipa_join(Slapi_PBlock *pb)
+     int is_root=0;
+     char *krbLastPwdChange = NULL;
+     char *fqdn = NULL;
+-    Slapi_Mods *smods;
++    Slapi_Mods *smods = NULL;
+     char *attrlist[] = {"fqdn", "krbPrincipalKey", "krbLastPwdChange", "krbPrincipalName", NULL };
+     char * filter;
+ 
+@@ -328,8 +328,13 @@ free_and_return:
+     if (pbtm) {
+         slapi_pblock_destroy(pbtm);
+     }
++    if (smods) {
++        slapi_mods_free(&smods);
++    }
+ 
+     if (krbLastPwdChange) slapi_ch_free_string(&krbLastPwdChange);
++    if (fqdn) slapi_ch_free_string(&fqdn);
++    if (sdn) slapi_sdn_free(&sdn);
+ 
+     LOG("%s", errMesg ? errMesg : "success\n");
+     slapi_send_ldap_result(pb, rc, NULL, errMesg, 0, NULL);
+-- 
+2.51.0
+
+
+From d7ba4663a72bc0aacff6cea38f83561d39c7b365 Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Sat, 8 Nov 2025 01:05:15 +0100
+Subject: [PATCH 08/16] topology: fix memory leaks
+
+`agmt_attr_val`, `targetHost` and internal search results pblock were
+not freed.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ daemons/ipa-slapi-plugins/topology/topology_util.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/daemons/ipa-slapi-plugins/topology/topology_util.c b/daemons/ipa-slapi-plugins/topology/topology_util.c
+index de8147a4a..f8da3b073 100644
+--- a/daemons/ipa-slapi-plugins/topology/topology_util.c
++++ b/daemons/ipa-slapi-plugins/topology/topology_util.c
+@@ -678,6 +678,7 @@ ipa_topo_util_update_agmt_list(TopoReplica *conf, TopoReplicaSegmentList *repl_s
+                                               mattrs[i],
+                                               segm_attr_val);
+                     }
++                    slapi_ch_free_string(&agmt_attr_val);
+ 
+                 }
+             }
+@@ -711,10 +712,10 @@ ipa_topo_util_update_agmt_list(TopoReplica *conf, TopoReplicaSegmentList *repl_s
+                 ipa_topo_cfg_segment_set_visited(conf, topo_segm);
+             }
+         }
++        slapi_ch_free_string(&targetHost);
+ 
+         repl_agmt = entries[++nentries];
+     }
+-    slapi_free_search_results_internal(pb);
+ 
+ update_only:
+     /* check if segments not covered by agreement exist
+@@ -724,6 +725,7 @@ update_only:
+                                     ipa_topo_get_plugin_hostname());
+ 
+ error_return:
++    slapi_free_search_results_internal(pb);
+     slapi_ch_free_string(&filter);
+     slapi_pblock_destroy(pb);
+     return rc;
+-- 
+2.51.0
+
+
+From a1ebdf556d31f8ed5b1159674df9aff16f97ab2a Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Fri, 28 Nov 2025 12:19:05 +0100
+Subject: [PATCH 09/16] ipa-pwd-extop: fix memory leaks
+
+In `ipapwd_set_extradata` free `xdata` after it's not longer needed.  It
+was leaked because `slapi_value_new_berval()` makes a copy of the data.
+
+In `ipapwd_free_slapi_value_array` free `svals` (caller's pointer)
+instead of `sv` (local pointer).
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
+index 5251713c6..204b2c6d9 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
+@@ -1076,6 +1076,7 @@ int ipapwd_set_extradata(const char *dn,
+ 
+     slapi_value_free(&va[0]);
+     slapi_mods_free(&smods);
++    free(xdata);
+ 
+     return ret;
+ }
+@@ -1091,7 +1092,7 @@ void ipapwd_free_slapi_value_array(Slapi_Value ***svals)
+         }
+     }
+ 
+-    slapi_ch_free((void **)sv);
++    slapi_ch_free((void **)svals);
+ }
+ 
+ void free_ipapwd_krbcfg(struct ipapwd_krbcfg **cfg)
+-- 
+2.51.0
+
+
+From 7dd85cabad5b53f893cb1d1f4485608d54ee7c18 Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Thu, 11 Dec 2025 10:08:35 +0100
+Subject: [PATCH 10/16] ipa-pwd-extop: fix memory leaks of bind DN
+
+In `ipapwd_chpwop()`, `ipapwd_setkeytab()`, and `ipapwd_getkeytab()`
+functions, `bindDN`/`bind_dn` is obtained via `slapi_pblock_get()` with
+SLAPI_CONN_DN which returns an allocated string. This string was never
+freed in the cleanup sections of these functions.
+
+Add `slapi_ch_free_string()` calls for the bind DN variables in the
+`free_and_return` sections of all three functions.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c
+index 94e0f9c70..eb441003e 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c
+@@ -647,6 +647,7 @@ free_and_return:
+ 		}
+ 		slapi_pblock_destroy(chpwop_pb);
+ 	}
++	slapi_ch_free_string(&bindDN);
+ 	slapi_ch_free_string(&oldPasswd);
+ 	slapi_ch_free_string(&newPasswd);
+ 	/* Either this is the same pointer that we allocated and set above,
+@@ -1364,6 +1365,7 @@ static int ipapwd_setkeytab(Slapi_PBlock *pb, struct ipapwd_krbcfg *krbcfg)
+ 
+ 	/* Free anything that we allocated above */
+ free_and_return:
++	slapi_ch_free_string(&bindDN);
+ 	free(serviceName);
+ 	if (kset) ipapwd_keyset_free(&kset);
+ 
+@@ -1781,6 +1783,7 @@ free_and_return:
+     slapi_send_ldap_result(pb, rc, NULL, err_msg, 0, NULL);
+ 
+     /* Free anything that we allocated above */
++    slapi_ch_free_string(&bind_dn);
+     if (krbctx) krb5_free_context(krbctx);
+     free(kenctypes);
+     free(service_name);
+-- 
+2.51.0
+
+
+From 207f296ee4721d1fa51b03c3ecc843ef04fa2b5d Mon Sep 17 00:00:00 2001
+From: Rafael Guterres Jeffman <rjeffman@redhat.com>
+Date: Fri, 30 Jan 2026 17:01:06 -0300
+Subject: [PATCH 11/16] ipa-pwd-extop: fix memory leaks in `ipapwd_pre_add()`
+
+In `ipapwd_pre_add()`, when processing password from entry extension,
+`userpw` was reassigned without freeing the previous value.
+Additionally, `enabled` obtained from `ipapwd_getIpaConfigAttr()` was
+never freed, and early returns bypassed the cleanup section causing
+memory leaks.
+
+Free `userpw` before reassigning it.
+Free `enabled` after use.
+Replace early `return 0` statements with `goto done` to ensure proper
+cleanup of all allocated resources.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+index 7fab55c84..6fb6856b8 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+@@ -282,6 +282,7 @@ static int ipapwd_pre_add(Slapi_PBlock *pb)
+                 if (rc) {
+                     goto done;
+                 }
++                slapi_ch_free_string(&userpw);
+                 userpw = slapi_ch_strdup(userpw_clear);
+             }
+ 
+@@ -293,8 +294,11 @@ static int ipapwd_pre_add(Slapi_PBlock *pb)
+                 if (NULL == enabled) {
+                     LOG("no ipaMigrationEnabled in config, assuming FALSE\n");
+                 } else if (0 == strcmp(enabled, "TRUE")) {
+-                    return 0;
++                    slapi_ch_free_string(&enabled);
++                    rc = LDAP_SUCCESS;
++                    goto done;
+                 }
++                slapi_ch_free_string(&enabled);
+ 
+                 /* With User Life Cycle, it could be a stage user that is activated.
+                  * The userPassword and krb keys were set while the user was a stage user.
+@@ -306,7 +310,8 @@ static int ipapwd_pre_add(Slapi_PBlock *pb)
+                     LOG("User Life Cycle: %s is a activated stage user "
+                         "(with prehashed password and krb keys)\n",
+                         sdn ? slapi_sdn_get_dn(sdn) : "unknown");
+-                    return 0;
++                    rc = LDAP_SUCCESS;
++                    goto done;
+                 }
+ 
+                 LOG("pre-hashed passwords are not valid\n");
+-- 
+2.51.0
+
+
+From a3d6e658196665996932dd0d3f606673df8cee22 Mon Sep 17 00:00:00 2001
+From: Rafael Guterres Jeffman <rjeffman@redhat.com>
+Date: Fri, 30 Jan 2026 17:03:18 -0300
+Subject: [PATCH 12/16] ipa-pwd-extop: fix bind DN memory leaks in pre-op
+ handlers
+
+In `ipapwd_pre_add()` and `ipapwd_pre_mod()`, `binddn` is obtained via
+`slapi_pblock_get()` with SLAPI_CONN_DN which returns an allocated
+string. This string was never freed after use.
+
+Add `slapi_ch_free_string(&binddn)` calls after the bind DN is no longer
+needed in both functions.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+index 6fb6856b8..51c39bbfc 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+@@ -378,6 +378,7 @@ static int ipapwd_pre_add(Slapi_PBlock *pb)
+                 break;
+             }
+         }
++        slapi_ch_free_string(&binddn);
+     }
+ 
+     pwdop->pwdata.dn = slapi_ch_strdup(slapi_sdn_get_dn(sdn));
+@@ -873,6 +874,7 @@ static int ipapwd_pre_mod(Slapi_PBlock *pb)
+ 
+         slapi_sdn_free(&bdn);
+         slapi_sdn_free(&tdn);
++        slapi_ch_free_string(&binddn);
+ 
+     }
+ 
+-- 
+2.51.0
+
+
+From 549494b8d381a7960e232148ed676416dacad6fc Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Thu, 11 Dec 2025 13:13:45 +0100
+Subject: [PATCH 13/16] ipa-pwd-extop: fix NT hash string memory leak
+
+In `ipapwd_pre_add()` and `ipapwd_pre_mod()`, the `nt` string returned
+by `ipapwd_gen_hashes()` was only freed when `is_smb` was true.  When NT
+hashes are generated for `is_ipant` entries but `is_smb` is false, the
+`nt` string was leaked.
+
+Free `nt`, `ntvals` and `svals` unconditionally.
+
+Fix the error path in `ipapwd_pre_add()` where `nt` and `ntvals` were
+leaked when `slapi_entry_attr_replace_sv()` failed for `svals`.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c | 15 ++++++++-------
+ 1 file changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+index 51c39bbfc..02c7ed3c6 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+@@ -417,22 +417,23 @@ static int ipapwd_pre_add(Slapi_PBlock *pb)
+                 LOG_FATAL("failed to set encoded values in entry\n");
+                 rc = LDAP_OPERATIONS_ERROR;
+                 ipapwd_free_slapi_value_array(&svals);
++                slapi_ch_free_string(&nt);
++                ipapwd_free_slapi_value_array(&ntvals);
+                 goto done;
+             }
+-
+-            ipapwd_free_slapi_value_array(&svals);
+         }
++        ipapwd_free_slapi_value_array(&svals);
+ 
+         if (nt && is_smb) {
+             /* set value */
+             slapi_entry_attr_set_charptr(e, "sambaNTPassword", nt);
+-            slapi_ch_free_string(&nt);
+         }
++        slapi_ch_free_string(&nt);
+ 
+         if (ntvals && is_ipant) {
+             slapi_entry_attr_replace_sv(e, "ipaNTHash", ntvals);
+-            ipapwd_free_slapi_value_array(&ntvals);
+         }
++        ipapwd_free_slapi_value_array(&ntvals);
+ 
+         if (is_smb) {
+             /* with samba integration we need to also set sambaPwdLastSet or
+@@ -913,21 +914,21 @@ static int ipapwd_pre_mod(Slapi_PBlock *pb)
+             /* replace values */
+             slapi_mods_add_mod_values(smods, LDAP_MOD_REPLACE,
+                                       "krbPrincipalKey", svals);
+-            ipapwd_free_slapi_value_array(&svals);
+         }
++        ipapwd_free_slapi_value_array(&svals);
+ 
+         if (nt && is_smb) {
+             /* replace value */
+             slapi_mods_add_string(smods, LDAP_MOD_REPLACE,
+                                   "sambaNTPassword", nt);
+-            slapi_ch_free_string(&nt);
+         }
++        slapi_ch_free_string(&nt);
+ 
+         if (ntvals && is_ipant) {
+             slapi_mods_add_mod_values(smods, LDAP_MOD_REPLACE,
+                                       "ipaNTHash", ntvals);
+-            ipapwd_free_slapi_value_array(&ntvals);
+         }
++        ipapwd_free_slapi_value_array(&ntvals);
+ 
+         if (is_smb) {
+             /* with samba integration we need to also set sambaPwdLastSet or
+-- 
+2.51.0
+
+
+From dc07404f435b9efe3da1b3ba2d81a0fe3ab608cc Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Thu, 11 Dec 2025 14:34:47 +0100
+Subject: [PATCH 14/16] ipa-pwd-extop: fix password history values memory leak
+
+In `ipapwd_post_modadd()`, the `pwvals` array returned by
+`ipapwd_setPasswordHistory()` was passed to `slapi_mods_add_mod_values()`
+but never freed. The `slapi_mods_add_mod_values()` function makes a copy
+of the values, so the original array still needs to be freed.
+
+Add `ipapwd_free_slapi_value_array()` call in the cleanup section to
+free the array.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+index 02c7ed3c6..74688ac39 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+@@ -1073,7 +1073,7 @@ static int ipapwd_post_modadd(Slapi_PBlock *pb)
+     void *op;
+     struct ipapwd_operation *pwdop = NULL;
+     Slapi_Mods *smods;
+-    Slapi_Value **pwvals;
++    Slapi_Value **pwvals = NULL;
+     int ret;
+     char *errMsg = "Internal operations error\n";
+     struct ipapwd_krbcfg *krbcfg = NULL;
+@@ -1203,6 +1203,7 @@ done:
+     slapi_mods_free(&smods);
+     slapi_ch_free_string(&principal);
+     free_ipapwd_krbcfg(&krbcfg);
++    ipapwd_free_slapi_value_array(&pwvals);
+     return 0;
+ }
+ 
+-- 
+2.51.0
+
+
+From e9978a6a1e3997329b54573dce9f460a26284302 Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Thu, 11 Dec 2025 15:45:27 +0100
+Subject: [PATCH 15/16] ipa-pwd-extop: fix memory leaks in
+ `ipapwd_gen_hashes()` error path
+
+In `ipapwd_gen_hashes()`, when an error occurred after allocating output
+parameters, `*ntvals` was freed but `*nthash` was not.
+
+Add `slapi_ch_free_string(nthash)` to the error cleanup section.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/encoding.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/encoding.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/encoding.c
+index 7b2f34122..05b317e93 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/encoding.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/encoding.c
+@@ -220,6 +220,7 @@ int ipapwd_gen_hashes(struct ipapwd_krbcfg *krbcfg,
+ 
+     *svals = NULL;
+     *nthash = NULL;
++    *ntvals = NULL;
+     *errMesg = NULL;
+ 
+     if (is_krb) {
+@@ -281,6 +282,7 @@ done:
+     if (rc) {
+         ipapwd_free_slapi_value_array(svals);
+         ipapwd_free_slapi_value_array(ntvals);
++        slapi_ch_free_string(nthash);
+     }
+ 
+     return rc;
+-- 
+2.51.0
+
+
+From 6809fe26c08a3eca33be82448b248b7c330f5877 Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Thu, 11 Dec 2025 16:16:02 +0100
+Subject: [PATCH 16/16] ipa-pwd-extop: fix valueset memory leak in
+ `ipapwd_get_cur_kvno()`
+
+In `ipapwd_get_cur_kvno()`, the `Slapi_ValueSet` obtained via
+`slapi_attr_get_valueset()` was never freed. This function returns a
+copy of the valueset that must be freed by the caller using
+`slapi_valueset_free()`.
+
+Add `slapi_valueset_free(svs)` before returning from the function.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
+index 204b2c6d9..4c4240a98 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
+@@ -755,6 +755,7 @@ next:
+         hint = slapi_valueset_next_value(svs, hint, &sv);
+     }
+ 
++    slapi_valueset_free(svs);
+     return kvno;
+ }
+ 
+-- 
+2.51.0
+
