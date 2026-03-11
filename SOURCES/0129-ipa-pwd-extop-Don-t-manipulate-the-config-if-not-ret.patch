@@ -1,0 +1,41 @@
+From 53e568b8c5b0cd82568863cf582054244bf734d3 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Tue, 6 Jan 2026 14:44:50 -0500
+Subject: [PATCH] ipa-pwd-extop: Don't manipulate the config if not retrieved
+
+There is a non-zero chance that the Kerberos configuration can't
+be retrieved. If this fails it should report an error which will
+likely fail the operation but otherwise allow the server to
+remain running.
+
+A flag was added to not allow the Master key to be returned
+but since this manipulates *config and that is NULL...SEGV.
+
+Add a goto to skip that block in the case of failure.
+
+Credit to Viktor Ashirov for identifying the fix. All I did
+was write up the patch.
+
+Fixes: https://pagure.io/freeipa/issue/9914
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
+index 7179b1dc3847df5c2cd88065a5bfa66d886daa14..0e69f3410737ea1787e611846f1a8801239f4d2f 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
+@@ -585,6 +585,7 @@ int ipapwd_gen_checks(Slapi_PBlock *pb, char **errMesg,
+         LOG_FATAL("Error Retrieving Master Key\n");
+         *errMesg = "Fatal Internal Error";
+         rc = LDAP_OPERATIONS_ERROR;
++        goto done;
+     }
+ 
+     /* do not return the master key if asked */
+-- 
+2.52.0
+

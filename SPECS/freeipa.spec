@@ -232,7 +232,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        22%{?rc_version:.%rc_version}%{?dist}.1
+Release:        22%{?rc_version:.%rc_version}%{?dist}.3
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -367,6 +367,27 @@ Patch0108:      0108-ipatests-add-extensions-to-server-certificates-for-C.patch
 Patch0109:      0109-Enforce-uniqueness-across-krbprincipalname-and-krbca.patch
 Patch0110:      0110-ipa-kdb-enforce-PAC-presence-on-TGT-for-TGS-REQ.patch
 Patch0111:      0111-ipatests-extend-test-for-unique-krbcanonicalname.patch
+Patch0112:      0112-ipa-graceperiod-fix-memory-leaks.patch
+Patch0113:      0113-ipa-lockout-fix-memory-leaks.patch
+Patch0114:      0114-ipa-pwd-extop-fix-memory-leaks.patch
+Patch0115:      0115-ipa-sidgen-fix-memory-leaks.patch
+Patch0116:      0116-ipa-range-check-fix-memory-leak.patch
+Patch0117:      0117-ipa-extdom-extop-fix-memory-leaks.patch
+Patch0118:      0118-ipa-enrollment-fix-memory-leaks.patch
+Patch0119:      0119-topology-fix-memory-leaks.patch
+Patch0120:      0120-ipa-pwd-extop-free-krbcfg-in-all-exit-paths.patch
+Patch0121:      0121-ipa-pwd-extop-fix-memory-leaks.patch
+Patch0122:      0122-ipa-pwd-extop-fix-memory-leaks-of-bind-DN.patch
+Patch0123:      0123-ipa-pwd-extop-fix-memory-leaks-in-ipapwd_pre_add.patch
+Patch0124:      0124-ipa-pwd-extop-fix-bind-DN-memory-leaks-in-pre-op-han.patch
+Patch0125:      0125-ipa-pwd-extop-fix-NT-hash-string-memory-leak.patch
+Patch0126:      0126-ipa-pwd-extop-fix-password-history-values-memory-lea.patch
+Patch0127:      0127-ipa-pwd-extop-fix-memory-leaks-in-ipapwd_gen_hashes-.patch
+Patch0128:      0128-ipa-pwd-extop-fix-valueset-memory-leak-in-ipapwd_get.patch
+Patch0129:      0129-ipa-pwd-extop-Don-t-manipulate-the-config-if-not-ret.patch
+Patch0130:      0130-ipatests-fix-kdcproxy-tests-against-AD.patch
+Patch0131:      0131-ipatests-update-the-Let-s-Encrypt-cert-chain.patch
+Patch0132:      0132-ipa-join-initialize-pointer.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -2020,6 +2041,15 @@ fi
 %endif
 
 %changelog
+* Thu Feb 5 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-22.3
+- Resolves: RHEL-141322 Memory leaks in IPA plugins
+
+* Wed Jan 14 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-22.2
+- Resolves: RHEL-141322 Memory leaks in IPA plugins
+- Resolves: RHEL-141314 AddressSanitizer: SEGV ipa-pwd-extop/common.c:584 in ipapwd_gen_checks
+- Resolves: RHEL-129963 Fix ipatests for kdcproxy after CVE-2025-59088 fix
+- Resolves: RHEL-124424 test_cacert_manage fails due to expired Let's Encrypt R3 certificate
+
 * Tue Sep 30 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-22.1
 - Resolves: RHEL-118449 ipa: Privilege escalation from host to domain admin in FreeIPA
 
