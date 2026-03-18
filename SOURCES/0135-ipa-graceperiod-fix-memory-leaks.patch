@@ -1,0 +1,41 @@
+From 15170f11de1a8cf9eccf9eef761f46e5f2c8fb7d Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Sat, 8 Nov 2025 00:40:42 +0100
+Subject: [PATCH] ipa-graceperiod: fix memory leaks
+
+Direct return of invalid grace limit bypassed cleanup code.
+`tmpstr` variable was not freed in all code paths.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ daemons/ipa-slapi-plugins/ipa-graceperiod/ipa_graceperiod.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-graceperiod/ipa_graceperiod.c b/daemons/ipa-slapi-plugins/ipa-graceperiod/ipa_graceperiod.c
+index 7a2d4f2aaea677d1fb3553fe49e6aa17c3e7a38c..bb8559e3e4c665b3aedc0d5ce66f4b9a6bb64bfe 100644
+--- a/daemons/ipa-slapi-plugins/ipa-graceperiod/ipa_graceperiod.c
++++ b/daemons/ipa-slapi-plugins/ipa-graceperiod/ipa_graceperiod.c
+@@ -448,7 +448,8 @@ static int ipagraceperiod_preop(Slapi_PBlock *pb)
+         goto done;
+     } else if (grace_limit < -1) {
+         LOG_FATAL("Invalid passwordGraceLimit value %ld\n", grace_limit);
+-        return LDAP_OPERATIONS_ERROR;
++        ret = LDAP_OPERATIONS_ERROR;
++        goto done;
+     }
+ 
+     grace_user_time = slapi_entry_attr_get_int(target_entry, "passwordGraceUserTime");
+@@ -500,6 +501,7 @@ done:
+         slapi_vattr_values_free(&values, &actual_type_name, attr_free_flags);
+     }
+     if (sdn) slapi_sdn_free(&sdn);
++    slapi_ch_free_string(&tmpstr);
+ 
+     LOG("preop returning %d: %s\n", ret, errstr ? errstr : "success\n");
+ 
+-- 
+2.52.0
+

@@ -1,0 +1,81 @@
+From 8cfafeffd1ad5266b35a7eb796976e873278f500 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Wed, 14 May 2025 10:44:26 +0200
+Subject: [PATCH] ipatests: add extensions to server certificates for CAless
+ mode
+
+When installing the server in CA less mode, the tests generate
+server certificates but some extensions were missing.
+
+Generate server cert with an Authority Key Identifier extension
+using the CA's subject key identifier.
+
+Without this extension, replica installation fails with
+    certificate verify failed: Missing Authority Key Identifier
+in the step fetching the DM password from the server.
+
+Add KeyUsage and Extended Key Usage.
+
+Fixes: https://pagure.io/freeipa/issue/9787
+Related: https://github.com/dogtagpki/pki/issues/5051
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ .../integration/create_caless_pki.py          | 34 +++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+
+diff --git a/ipatests/pytest_ipa/integration/create_caless_pki.py b/ipatests/pytest_ipa/integration/create_caless_pki.py
+index 71d804c339cc71bc14e1f819639852e32b54c098..d06f1dd8c328628bd692c2abf3acfc88ba6a7408 100644
+--- a/ipatests/pytest_ipa/integration/create_caless_pki.py
++++ b/ipatests/pytest_ipa/integration/create_caless_pki.py
+@@ -199,6 +199,20 @@ def profile_server(builder, ca_nick, ca,
+             critical=False,
+         )
+ 
++    if ca:
++        try:
++            ski_ext = ca.cert.extensions.get_extension_for_class(
++                x509.SubjectKeyIdentifier)
++            builder = builder.add_extension(
++                x509.AuthorityKeyIdentifier.from_issuer_subject_key_identifier(
++                    ski_ext.value
++                ),
++                critical=False,
++            )
++        except x509.ExtensionNotFound:
++            # if the CA doesn't have a SKI, just ignore
++            pass
++
+     if badusage:
+         builder = builder.add_extension(
+             x509.KeyUsage(
+@@ -214,6 +228,26 @@ def profile_server(builder, ca_nick, ca,
+             ),
+             critical=False
+         )
++    else:
++        builder = builder.add_extension(
++            x509.KeyUsage(
++                digital_signature=True,
++                content_commitment=False,
++                key_encipherment=True,
++                data_encipherment=True,
++                key_agreement=False,
++                key_cert_sign=False,
++                crl_sign=False,
++                encipher_only=False,
++                decipher_only=False
++            ),
++            critical=False
++        )
++
++    builder = builder.add_extension(
++        x509.ExtendedKeyUsage([x509.ObjectIdentifier('1.3.6.1.5.5.7.3.1')]),
++        critical=False,
++    )
+ 
+     if wildcard:
+         names = [x509.DNSName(u'*.' + domain)]
+-- 
+2.52.0
+

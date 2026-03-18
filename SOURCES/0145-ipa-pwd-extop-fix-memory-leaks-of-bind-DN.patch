@@ -1,0 +1,51 @@
+From efd6cc2bd9002c927823880eb77fab66cfb0e6a2 Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Thu, 11 Dec 2025 10:08:35 +0100
+Subject: [PATCH] ipa-pwd-extop: fix memory leaks of bind DN
+
+In `ipapwd_chpwop()`, `ipapwd_setkeytab()`, and `ipapwd_getkeytab()`
+functions, `bindDN`/`bind_dn` is obtained via `slapi_pblock_get()` with
+SLAPI_CONN_DN which returns an allocated string. This string was never
+freed in the cleanup sections of these functions.
+
+Add `slapi_ch_free_string()` calls for the bind DN variables in the
+`free_and_return` sections of all three functions.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c
+index b2aa1c05fef6ccc6b1dfa583c00eba8a02f9cf2b..b50e4d5ca1e8fe89d5f67e22618415469eb5e4b5 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/ipa_pwd_extop.c
+@@ -650,6 +650,7 @@ free_and_return:
+ 		}
+ 		slapi_pblock_destroy(chpwop_pb);
+ 	}
++	slapi_ch_free_string(&bindDN);
+ 	slapi_ch_free_string(&oldPasswd);
+ 	slapi_ch_free_string(&newPasswd);
+ 	/* Either this is the same pointer that we allocated and set above,
+@@ -1372,6 +1373,7 @@ static int ipapwd_setkeytab(Slapi_PBlock *pb, struct ipapwd_krbcfg *krbcfg)
+ 
+ 	/* Free anything that we allocated above */
+ free_and_return:
++	slapi_ch_free_string(&bindDN);
+ 	free(serviceName);
+ 	if (kset) ipapwd_keyset_free(&kset);
+ 
+@@ -1790,6 +1792,7 @@ free_and_return:
+     slapi_send_ldap_result(pb, rc, NULL, err_msg, 0, NULL);
+ 
+     /* Free anything that we allocated above */
++    slapi_ch_free_string(&bind_dn);
+     if (krbctx) krb5_free_context(krbctx);
+     free(kenctypes);
+     free(service_name);
+-- 
+2.52.0
+

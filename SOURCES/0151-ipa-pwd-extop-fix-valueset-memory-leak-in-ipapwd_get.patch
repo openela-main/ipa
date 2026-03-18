@@ -1,0 +1,35 @@
+From 40217032aa201313f8bdfcb22abe0088749574f1 Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Thu, 11 Dec 2025 16:16:02 +0100
+Subject: [PATCH] ipa-pwd-extop: fix valueset memory leak in
+ `ipapwd_get_cur_kvno()`
+
+In `ipapwd_get_cur_kvno()`, the `Slapi_ValueSet` obtained via
+`slapi_attr_get_valueset()` was never freed. This function returns a
+copy of the valueset that must be freed by the caller using
+`slapi_valueset_free()`.
+
+Add `slapi_valueset_free(svs)` before returning from the function.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
+index de60d4e7bf1b8f0e313e5883041d3e28c09022b9..7179b1dc3847df5c2cd88065a5bfa66d886daa14 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
+@@ -786,6 +786,7 @@ next:
+         hint = slapi_valueset_next_value(svs, hint, &sv);
+     }
+ 
++    slapi_valueset_free(svs);
+     return kvno;
+ }
+ 
+-- 
+2.52.0
+

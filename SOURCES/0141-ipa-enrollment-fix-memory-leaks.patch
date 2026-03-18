@@ -1,0 +1,45 @@
+From c3c4eeaa81c75cdd04d74d7407c0b7103ac7558e Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Sat, 8 Nov 2025 01:03:52 +0100
+Subject: [PATCH] ipa-enrollment: fix memory leaks
+
+`smods`, `fqdn`, `sdn` were not freed.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c b/daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c
+index b72ad5ef1c81997d89b2f94528da516b5df3d285..3a70dd0a5594fc623e7e808ab8a734349a748a49 100644
+--- a/daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c
++++ b/daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c
+@@ -137,7 +137,7 @@ ipa_join(Slapi_PBlock *pb)
+     int is_root=0;
+     char *krbLastPwdChange = NULL;
+     char *fqdn = NULL;
+-    Slapi_Mods *smods;
++    Slapi_Mods *smods = NULL;
+     char *attrlist[] = {"fqdn", "krbPrincipalKey", "krbLastPwdChange", "krbPrincipalName", NULL };
+     char * filter;
+ 
+@@ -329,8 +329,13 @@ free_and_return:
+     if (pbtm) {
+         slapi_pblock_destroy(pbtm);
+     }
++    if (smods) {
++        slapi_mods_free(&smods);
++    }
+ 
+     if (krbLastPwdChange) slapi_ch_free_string(&krbLastPwdChange);
++    if (fqdn) slapi_ch_free_string(&fqdn);
++    if (sdn) slapi_sdn_free(&sdn);
+ 
+     LOG("%s", errMesg ? errMesg : "success\n");
+     slapi_send_ldap_result(pb, rc, NULL, errMesg, 0, NULL);
+-- 
+2.52.0
+

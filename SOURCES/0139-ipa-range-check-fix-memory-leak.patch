@@ -1,0 +1,70 @@
+From 0fc7c49f4805fa4633b4b816d6edb35633bd975d Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Sat, 8 Nov 2025 00:57:49 +0100
+Subject: [PATCH] ipa-range-check: fix memory leak
+
+`ipa_range_check_close` function didn't do any cleanup.
+The `ctx` structure was freed, but not `ctx->base_dn` which may have
+been allocated.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+---
+ .../ipa-range-check/ipa_range_check.c          | 18 ++++++++++++++++--
+ 1 file changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-range-check/ipa_range_check.c b/daemons/ipa-slapi-plugins/ipa-range-check/ipa_range_check.c
+index 5b53a2fe58e1ad0ad6067ea75287f023402bb1c4..37840cd4716741d4d3584a1cac4f447a4a733f9f 100644
+--- a/daemons/ipa-slapi-plugins/ipa-range-check/ipa_range_check.c
++++ b/daemons/ipa-slapi-plugins/ipa-range-check/ipa_range_check.c
+@@ -76,7 +76,7 @@ Slapi_PluginDesc ipa_range_check_plugin_desc = {
+ 
+ struct ipa_range_check_ctx {
+     Slapi_ComponentId *plugin_id;
+-    const char *base_dn;
++    char *base_dn;
+ };
+ 
+ typedef enum {
+@@ -469,6 +469,15 @@ static int ipa_range_check_start(Slapi_PBlock *pb)
+ 
+ static int ipa_range_check_close(Slapi_PBlock *pb)
+ {
++    int ret;
++    struct ipa_range_check_ctx *ctx;
++
++    ret = slapi_pblock_get(pb, SLAPI_PLUGIN_PRIVATE, &ctx);
++    if (ret == 0 && ctx != NULL) {
++        slapi_ch_free_string(&ctx->base_dn);
++        free(ctx);
++    }
++
+     return 0;
+ }
+ 
+@@ -752,7 +761,10 @@ static int ipa_range_check_init_ctx(Slapi_PBlock *pb,
+ 
+ done:
+     if (ret != 0) {
+-        free(ctx);
++        if (ctx) {
++            slapi_ch_free_string(&ctx->base_dn);
++            free(ctx);
++        }
+     } else {
+         *_ctx = ctx;
+     }
+@@ -787,6 +799,8 @@ int ipa_range_check_init(Slapi_PBlock *pb)
+                          (void *) ipa_range_check_add_pre_op) != 0 ||
+         slapi_pblock_set(pb, SLAPI_PLUGIN_PRIVATE, rc_ctx) != 0) {
+         LOG_FATAL("failed to register plugin\n");
++        slapi_ch_free_string(&rc_ctx->base_dn);
++        free(rc_ctx);
+         ret = EFAIL;
+     }
+ 
+-- 
+2.52.0
+

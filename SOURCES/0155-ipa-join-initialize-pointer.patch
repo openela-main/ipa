@@ -1,0 +1,47 @@
+From 0f691463c379861ca5be88f99d02a313941a39d3 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Wed, 4 Feb 2026 09:21:14 +0100
+Subject: [PATCH] ipa-join: initialize pointer
+
+OpenScanHub detected an uninitialized pointer in ipa_join:
+Slapi_DN *sdn;
+...
+if (sdn) slapi_sdn_free(&sdn);
+
+Initialize to NULL
+Also initialize Slapi_Backend *be=NULL and char * filter=NULL
+to avoid potential issues.
+
+Fixes: https://pagure.io/freeipa/issue/9936
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c b/daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c
+index 3a70dd0a5594fc623e7e808ab8a734349a748a49..2f8923e10310a8a6e19ac701070d6451915c3be3 100644
+--- a/daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c
++++ b/daemons/ipa-slapi-plugins/ipa-enrollment/ipa_enrollment.c
+@@ -129,8 +129,8 @@ ipa_join(Slapi_PBlock *pb)
+     Slapi_PBlock *pbte = NULL;
+     Slapi_PBlock *pbtm = NULL;
+     Slapi_Entry *targetEntry=NULL;
+-    Slapi_DN *sdn;
+-    Slapi_Backend *be;
++    Slapi_DN *sdn=NULL;
++    Slapi_Backend *be=NULL;
+     Slapi_Entry **es = NULL;
+     int rc=0, ret=0, res;
+     size_t i;
+@@ -139,7 +139,7 @@ ipa_join(Slapi_PBlock *pb)
+     char *fqdn = NULL;
+     Slapi_Mods *smods = NULL;
+     char *attrlist[] = {"fqdn", "krbPrincipalKey", "krbLastPwdChange", "krbPrincipalName", NULL };
+-    char * filter;
++    char * filter=NULL;
+ 
+     int scope = LDAP_SCOPE_SUBTREE;
+     char *principal = NULL;
+-- 
+2.52.0
+

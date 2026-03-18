@@ -1,0 +1,82 @@
+From 301cada8a1b5e7e5ad2c91111f51ef0649932eee Mon Sep 17 00:00:00 2001
+From: Viktor Ashirov <vashirov@redhat.com>
+Date: Thu, 11 Dec 2025 13:13:45 +0100
+Subject: [PATCH] ipa-pwd-extop: fix NT hash string memory leak
+
+In `ipapwd_pre_add()` and `ipapwd_pre_mod()`, the `nt` string returned
+by `ipapwd_gen_hashes()` was only freed when `is_smb` was true.  When NT
+hashes are generated for `is_ipant` entries but `is_smb` is false, the
+`nt` string was leaked.
+
+Free `nt`, `ntvals` and `svals` unconditionally.
+
+Fix the error path in `ipapwd_pre_add()` where `nt` and `ntvals` were
+leaked when `slapi_entry_attr_replace_sv()` failed for `svals`.
+
+Related: https://pagure.io/freeipa/issue/9895
+Signed-off-by: Viktor Ashirov <vashirov@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c | 15 ++++++++-------
+ 1 file changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+index 8f8d0a0929105869d9df15339d8c447d890f92bf..58f6926fe4f9894bc17f5ef34b02b5652cbb477f 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/prepost.c
+@@ -422,22 +422,23 @@ static int ipapwd_pre_add(Slapi_PBlock *pb)
+                 LOG_FATAL("failed to set encoded values in entry\n");
+                 rc = LDAP_OPERATIONS_ERROR;
+                 ipapwd_free_slapi_value_array(&svals);
++                slapi_ch_free_string(&nt);
++                ipapwd_free_slapi_value_array(&ntvals);
+                 goto done;
+             }
+-
+-            ipapwd_free_slapi_value_array(&svals);
+         }
++        ipapwd_free_slapi_value_array(&svals);
+ 
+         if (nt && is_smb) {
+             /* set value */
+             slapi_entry_attr_set_charptr(e, "sambaNTPassword", nt);
+-            slapi_ch_free_string(&nt);
+         }
++        slapi_ch_free_string(&nt);
+ 
+         if (ntvals && is_ipant) {
+             slapi_entry_attr_replace_sv(e, "ipaNTHash", ntvals);
+-            ipapwd_free_slapi_value_array(&ntvals);
+         }
++        ipapwd_free_slapi_value_array(&ntvals);
+ 
+         if (is_smb) {
+             /* with samba integration we need to also set sambaPwdLastSet or
+@@ -921,21 +922,21 @@ static int ipapwd_pre_mod(Slapi_PBlock *pb)
+             /* replace values */
+             slapi_mods_add_mod_values(smods, LDAP_MOD_REPLACE,
+                                       "krbPrincipalKey", svals);
+-            ipapwd_free_slapi_value_array(&svals);
+         }
++        ipapwd_free_slapi_value_array(&svals);
+ 
+         if (nt && is_smb) {
+             /* replace value */
+             slapi_mods_add_string(smods, LDAP_MOD_REPLACE,
+                                   "sambaNTPassword", nt);
+-            slapi_ch_free_string(&nt);
+         }
++        slapi_ch_free_string(&nt);
+ 
+         if (ntvals && is_ipant) {
+             slapi_mods_add_mod_values(smods, LDAP_MOD_REPLACE,
+                                       "ipaNTHash", ntvals);
+-            ipapwd_free_slapi_value_array(&ntvals);
+         }
++        ipapwd_free_slapi_value_array(&ntvals);
+ 
+         if (is_smb) {
+             /* with samba integration we need to also set sambaPwdLastSet or
+-- 
+2.52.0
+
