@@ -231,7 +231,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        24%{?rc_version:.%rc_version}%{?dist}.2
+Release:        24%{?rc_version:.%rc_version}%{?dist}.3
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -416,6 +416,18 @@ Patch0152:      0152-ipa-pwd-extop-Don-t-manipulate-the-config-if-not-ret.patch
 Patch0153:      0153-ipatests-fix-kdcproxy-tests-against-AD.patch
 Patch0154:      0154-ipatests-add-extensions-to-server-certificates-for-C.patch
 Patch0155:      0155-ipa-join-initialize-pointer.patch
+Patch0156:      0156-ipatests-remove-xfail-for-PKI-11.7.patch
+Patch0157:      0157-ipatests-update-the-Let-s-Encrypt-cert-chain.patch
+Patch0158:      0158-GetEntryFromLDIF-handle-DNs-case-insensitive.patch
+Patch0159:      0159-Tests-xmlrpc-mark-xfail-tests-requesting-cert-with-s.patch
+Patch0160:      0160-Manual-backport-of-8002.patch
+Patch0161:      0161-ipatests-Add-DNS-functional-integration-tests.patch
+Patch0162:      0162-ipatests-add-Random-Password-based-replica-promotion.patch
+Patch0163:      0163-ipatests-Add-integration-tests-for-ipa-join-command.patch
+Patch0164:      0164-ipatests-Add-DNS-bugzilla-integration-tests.patch
+Patch0165:      0165-ipatests-Add-DNS-integration-tests.patch
+Patch0166:      0166-Allow-32bit-gid.patch
+Patch0167:      0167-ipatests-Fix-test_allow_query_transfer_ipv6-when-IPv.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -2078,6 +2090,11 @@ fi
 %endif
 
 %changelog
+* Mon Mar 16 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-24.3
+- Resolves: RHEL-155026 Pagure #9953: Adding a group with 32Bit Idrange fails
+- Resolves: RHEL-153624 Pagure #9854: Erroneous case-sensitivity in offline DSE lookup
+- Resolves: RHEL-151763 Include test fixes for 10.1.z in python3-ipatests
+
 * Thu Feb 05 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-24.2
 - Resolves: RHEL-141303 AddressSanitizer: SEGV ipa-pwd-extop/common.c:584 in ipapwd_gen_checks
 - Resolves: RHEL-141317 Memory leaks in IPA plugins

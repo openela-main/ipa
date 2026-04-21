@@ -1,0 +1,138 @@
+From 7de7c0e2ed1afb2887bc7adeb7363109cbc5f3f9 Mon Sep 17 00:00:00 2001
+From: PRANAV THUBE <pthube@redhat.com>
+Date: Wed, 11 Mar 2026 20:13:31 +0530
+Subject: [PATCH] ipatests: Fix test_allow_query_transfer_ipv6 when IPv6 is
+ disabled
+
+The test was failing in environments where IPv6 is disabled at the
+kernel level because it attempted to add a temporary IPv6 address
+without first checking if IPv6 is enabled on the interface.
+
+This fix restructures the test to:
+- Check if IPv6 is disabled via sysctl before attempting IPv6 setup
+- Always run IPv4 allow-query and allow-transfer tests
+- Only run IPv6-related tests when IPv6 is available
+
+This ensures the test passes in IPv4-only environments while still
+providing full coverage when IPv6 is enabled.
+
+Fixes: https://pagure.io/freeipa/issue/9944
+Signed-off-by: Pranav Thube pthube@redhat.com
+Reviewed-By: David Hanina <dhanina@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+---
+ ipatests/test_integration/test_dns.py | 62 ++++++---------------------
+ 1 file changed, 14 insertions(+), 48 deletions(-)
+
+diff --git a/ipatests/test_integration/test_dns.py b/ipatests/test_integration/test_dns.py
+index 4b9ab1fe8d7b8884760ed637cb2fcc5d5a060df0..947cff5c02ea2662cc2de88860cfa294e396792d 100644
+--- a/ipatests/test_integration/test_dns.py
++++ b/ipatests/test_integration/test_dns.py
+@@ -5,6 +5,7 @@
+ 
+ from __future__ import absolute_import
+ 
++import pytest
+ import time
+ import dns.exception
+ import dns.resolver
+@@ -1714,13 +1715,12 @@ class TestDNSMisc(IntegrationTest):
+             tasks.del_dns_zone(self.master, zone, raiseonerr=False)
+ 
+     def test_allow_query_transfer_ipv6(self):
+-        """Test allow-query and allow-transfer with IPv4 and IPv6.
++        """Test allow-query and allow-transfer with IPv6.
+ 
+         Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=701677
+         """
+         tasks.kinit_admin(self.master)
+-        zone = "example.com"
+-        ipv4 = self.master.ip
++        zone = "example6.com"
+         ipv6_added = False
+         temp_ipv6 = '2001:0db8:0:f101::1/64'
+ 
+@@ -1732,6 +1732,13 @@ class TestDNSMisc(IntegrationTest):
+         ])
+         eth = result.stdout_text.strip()
+ 
++        # Check if IPv6 is disabled on the interface
++        result = self.master.run_command([
++            'sysctl', '-n', f'net.ipv6.conf.{eth}.disable_ipv6'
++        ])
++        if result.stdout_text.strip() == '1':
++            pytest.skip(f"IPv6 is disabled on interface {eth}")
++
+         # Add temporary IPv6 if none exists
+         result = self.master.run_command(
+             ['ip', 'addr', 'show', 'scope', 'global'], raiseonerr=False
+@@ -1754,62 +1761,21 @@ class TestDNSMisc(IntegrationTest):
+             tasks.add_dns_zone(self.master, zone, skip_overlap_check=True,
+                                admin_email=self.EMAIL)
+ 
+-            # Test allow-query: IPv4 allowed, IPv6 denied
+-            tasks.mod_dns_zone(
+-                self.master, zone,
+-                f"--allow-query={ipv4};!{ipv6};"
+-            )
+-            result = self.master.run_command(
+-                ['dig', f'@{ipv4}', '-t', 'soa', zone], raiseonerr=False
+-            )
+-            assert 'ANSWER SECTION' in result.stdout_text
+-            result = self.master.run_command(
+-                ['dig', f'@{ipv6}', '-t', 'soa', zone], raiseonerr=False
+-            )
+-            assert 'ANSWER SECTION' not in result.stdout_text
+-
+-            # Test allow-query: IPv6 allowed, IPv4 denied
++            # Test allow-query: IPv6 allowed
+             tasks.mod_dns_zone(
+                 self.master, zone,
+-                f"--allow-query={ipv6};!{ipv4};"
+-            )
+-            result = self.master.run_command(
+-                ['dig', f'@{ipv4}', '-t', 'soa', zone], raiseonerr=False
++                f"--allow-query={ipv6};"
+             )
+-            assert 'ANSWER SECTION' not in result.stdout_text
+             result = self.master.run_command(
+                 ['dig', f'@{ipv6}', '-t', 'soa', zone], raiseonerr=False
+             )
+             assert 'ANSWER SECTION' in result.stdout_text
+ 
+-            # Reset allow-query to any
+-            tasks.mod_dns_zone(
+-                self.master, zone, "--allow-query=any;"
+-            )
+-
+-            # Test allow-transfer: IPv4 allowed, IPv6 denied
+-            tasks.mod_dns_zone(
+-                self.master, zone,
+-                f"--allow-transfer={ipv4};!{ipv6};"
+-            )
+-            result = self.master.run_command(
+-                ['dig', f'@{ipv4}', zone, 'axfr'], raiseonerr=False
+-            )
+-            assert 'Transfer failed' not in result.stdout_text
+-            result = self.master.run_command(
+-                ['dig', f'@{ipv6}', zone, 'axfr'], raiseonerr=False
+-            )
+-            assert 'Transfer failed' in result.stdout_text
+-
+-            # Test allow-transfer: IPv6 allowed, IPv4 denied
++            # Test allow-transfer: IPv6 allowed
+             tasks.mod_dns_zone(
+                 self.master, zone,
+-                f"--allow-transfer={ipv6};!{ipv4};"
+-            )
+-            result = self.master.run_command(
+-                ['dig', f'@{ipv4}', zone, 'axfr'], raiseonerr=False
++                f"--allow-transfer={ipv6};"
+             )
+-            assert 'Transfer failed' in result.stdout_text
+             result = self.master.run_command(
+                 ['dig', f'@{ipv6}', zone, 'axfr'], raiseonerr=False
+             )
+-- 
+2.53.0
+

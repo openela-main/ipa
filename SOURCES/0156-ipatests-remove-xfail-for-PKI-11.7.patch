@@ -1,0 +1,37 @@
+From b923355ff04dd88b1530d0bb2e032280afc5d315 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Tue, 26 Aug 2025 09:00:48 +0200
+Subject: [PATCH] ipatests: remove xfail for PKI 11.7
+
+The test test_ca_show_error_handling is green with PKI 11.7
+because the PKI regression has been fixed.
+Update the xfail condition to 11.5 <= version < 11.7.
+
+Fixes: https://pagure.io/freeipa/issue/9606
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abbra@users.noreply.github.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipatests/test_integration/test_cert.py | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/ipatests/test_integration/test_cert.py b/ipatests/test_integration/test_cert.py
+index 05b20b910b249af24039a497538f96dad07162aa..84adf2ceafe013e6cfc973fb2cb650c40f36971d 100644
+--- a/ipatests/test_integration/test_cert.py
++++ b/ipatests/test_integration/test_cert.py
+@@ -558,8 +558,10 @@ class TestCAShowErrorHandling(IntegrationTest):
+         )
+         error_msg = 'ipa: ERROR: The certificate for ' \
+                     '{} is not available on this server.'.format(lwca)
+-        bad_version = (tasks.get_pki_version(self.master)
+-                       >= tasks.parse_version('11.5.0'))
++        pki_version = tasks.get_pki_version(self.master)
++        # The regression was introduced in 11.5 and fixed in 11.7
++        bad_version = (tasks.parse_version('11.5.0') <= pki_version
++                       < tasks.parse_version('11.7.0'))
+         with xfail_context(bad_version,
+                            reason="https://pagure.io/freeipa/issue/9606"):
+             assert error_msg in result.stderr_text
+-- 
+2.53.0
+
