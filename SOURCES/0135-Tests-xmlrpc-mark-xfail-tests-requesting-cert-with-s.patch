@@ -1,0 +1,70 @@
+From a1f2fef8c9f1c61392faf3e96a9e89b124221ba9 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Tue, 30 Sep 2025 09:46:09 +0200
+Subject: [PATCH] Tests xmlrpc: mark xfail tests requesting cert with subca
+
+With PKI 11.7, requesting a cert with a subca fails.
+Mark the tests as xfail for now.
+
+Related: RHEL-108293
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+---
+ ipatests/test_xmlrpc/test_caacl_profile_enforcement.py | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/ipatests/test_xmlrpc/test_caacl_profile_enforcement.py b/ipatests/test_xmlrpc/test_caacl_profile_enforcement.py
+index 98653904f91d6b2d670f04f32de9849250c1cb25..df20c55c5a62394eb085ea0bcca04a33e03a1fe9 100644
+--- a/ipatests/test_xmlrpc/test_caacl_profile_enforcement.py
++++ b/ipatests/test_xmlrpc/test_caacl_profile_enforcement.py
+@@ -306,6 +306,7 @@ class TestCertSignMIMEwithSubCA(XMLRPC_test):
+     def test_add_group_to_acl(self, smime_group, smime_acl):
+         smime_acl.add_user(group=smime_group)
+ 
++    @pytest.mark.xfail(reason='pki RHEL-108293')
+     def test_sign_smime_csr(self, smime_profile, smime_user, smime_signing_ca):
+         csr = generate_user_csr(smime_user)
+         with change_principal(smime_user, SMIME_USER_PW):
+@@ -313,6 +314,7 @@ class TestCertSignMIMEwithSubCA(XMLRPC_test):
+                                      profile_id=smime_profile.name,
+                                      cacn=smime_signing_ca.name)
+ 
++    @pytest.mark.xfail(reason='pki RHEL-108293')
+     def test_sign_smime_csr_full_principal(
+             self, smime_profile, smime_user, smime_signing_ca):
+         csr = generate_user_csr(smime_user)
+@@ -322,6 +324,7 @@ class TestCertSignMIMEwithSubCA(XMLRPC_test):
+                                      profile_id=smime_profile.name,
+                                      cacn=smime_signing_ca.name)
+ 
++    @pytest.mark.xfail(reason='pki RHEL-108293')
+     def test_verify_cert_issuer_dn_is_subca(
+             self, smime_profile, smime_user, smime_signing_ca):
+         csr = generate_user_csr(smime_user)
+@@ -541,6 +544,7 @@ class TestPrincipalAliasForSubjectAltNameDnsName(SubjectAltNameOneServiceBase):
+             santest_service_host_1.name,
+             santest_service_host_2.name)
+ 
++    @pytest.mark.xfail(reason='pki RHEL-108293')
+     def test_request_cert_with_SAN_matching_principal_alias(
+             self, santest_subca, santest_host_1,
+             santest_service_host_1, santest_csr):
+@@ -604,6 +608,7 @@ class TestSignServiceCertManagedByMultipleHosts(CAACLEnforcementOnCertBase):
+         santest_subca_acl.add_host(santest_host_2.name)
+         santest_subca_acl.add_service(santest_service_host_2.name)
+ 
++    @pytest.mark.xfail(reason='pki RHEL-108293')
+     def test_request_cert_with_additional_host(
+             self, santest_subca, santest_host_1, santest_host_2,
+             santest_service_host_1, santest_csr):
+@@ -696,6 +701,7 @@ class TestManagedByACIOnCertRequest(CAACLEnforcementOnCertBase):
+                         cacn=santest_subca.name
+                     )
+ 
++    @pytest.mark.xfail(reason='pki RHEL-108293')
+     def test_issuing_service_cert_by_related_host(self,
+                                                   santest_subca,
+                                                   santest_host_1,
+-- 
+2.52.0
+

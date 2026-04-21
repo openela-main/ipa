@@ -232,7 +232,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        22%{?rc_version:.%rc_version}%{?dist}.3
+Release:        22%{?rc_version:.%rc_version}%{?dist}.4
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -388,6 +388,17 @@ Patch0129:      0129-ipa-pwd-extop-Don-t-manipulate-the-config-if-not-ret.patch
 Patch0130:      0130-ipatests-fix-kdcproxy-tests-against-AD.patch
 Patch0131:      0131-ipatests-update-the-Let-s-Encrypt-cert-chain.patch
 Patch0132:      0132-ipa-join-initialize-pointer.patch
+Patch0133:      0133-ipatests-remove-xfail-for-PKI-11.7.patch
+Patch0134:      0134-GetEntryFromLDIF-handle-DNs-case-insensitive.patch
+Patch0135:      0135-Tests-xmlrpc-mark-xfail-tests-requesting-cert-with-s.patch
+Patch0136:      0136-Manual-backport-of-8002.patch
+Patch0137:      0137-ipatests-Add-DNS-functional-integration-tests.patch
+Patch0138:      0138-ipatests-add-Random-Password-based-replica-promotion.patch
+Patch0139:      0139-ipatests-Add-integration-tests-for-ipa-join-command.patch
+Patch0140:      0140-ipatests-Add-DNS-bugzilla-integration-tests.patch
+Patch0141:      0141-ipatests-Add-DNS-integration-tests.patch
+Patch0142:      0142-Allow-32bit-gid.patch
+Patch0143:      0143-ipatests-Fix-test_allow_query_transfer_ipv6-when-IPv.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -2041,6 +2052,11 @@ fi
 %endif
 
 %changelog
+* Mon Mar 16 2026 David Hanina <dhanina@redhat.com> - 4.12.2-22.4
+- Resolves: RHEL-155038 Pagure #9953: Adding a group with 32Bit Idrange fails.
+- Resolves: RHEL-153628 Include latest fixes in python3-ipatests package
+- Resolves: RHEL-153621 Pagure #9854: Erroneous case-sensitivity in offline DSE lookup
+
 * Thu Feb 5 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-22.3
 - Resolves: RHEL-141322 Memory leaks in IPA plugins
 
