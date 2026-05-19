@@ -1,0 +1,224 @@
+From 0800065ac5555dba102f05c947ca47b5dc9a81af Mon Sep 17 00:00:00 2001
+From: Rafael Guterres Jeffman <rjeffman@redhat.com>
+Date: Fri, 23 Jan 2026 16:49:31 -0300
+Subject: [PATCH] freeipa.spec.in: Use systemd-sysusers to setup users and
+ groups
+
+System accounts for `kdcproxy` and `ipaapi` are now created with
+sysusers configuration and macros. User `apache` is updated, by
+adding it to group `ipaapi` using sysusers configuration.
+
+Fixes: https://pagure.io/freeipa/issue/9572
+
+AI agent usage info:
+
+The initial changes were created by Claude by providing the following
+context:
+
+>> Add support for creating users through systemd-sysusers by creating
+>> a folder init/sysusersd, similar to init/tmpfilesd, changing install
+>> paths in init/sysusersd/Makefile.am, adding configure option
+>> --with-systemdsysusersdir similar to --with-systemdtmpfilesdir, and
+>> adding a new file init/sysusersd/freeeipo.sysusers.in with the
+>> contents:
+>> ```
+>> # system accounts for IPA
+>> u!  kdcproxy    -   "IPA KDC Proxy Uer"
+>> u!  ipaapi      -   "IPA Framework User"
+>> # - add Apache HTTPd user to ipaapi group
+>> m   apache      ipaapi
+>> ```
+>> and updating de spec file freeipa.spec.in
+
+LLM model used was Claude Sonnet 4.5, and a CLAUDE.md file was
+automatically created by claude based on the freeipa repository.
+No custom context was available for the agent.
+
+Assisted-by: Claude <noreply@anthropic.com>
+Signed-off-by: Rafael Guterres Jeffman <rjeffman@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ configure.ac               | 42 ++++++++++++++++++++++++++------------
+ freeipa.spec.in            | 16 +++------------
+ init/Makefile.am           |  2 +-
+ init/sysusersd/Makefile.am | 12 +++++++++++
+ init/sysusersd/ipa.conf.in |  8 ++++++++
+ 5 files changed, 53 insertions(+), 27 deletions(-)
+ create mode 100644 init/sysusersd/Makefile.am
+ create mode 100644 init/sysusersd/ipa.conf.in
+
+diff --git a/configure.ac b/configure.ac
+index 8b9adec1559c8831ef39c27860c1d31496ec5474..b0462bf779dedb7c2fe59494d4eb64a6dd121b1a 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -267,6 +267,13 @@ AC_ARG_WITH([systemdtmpfilesdir],
+         [systemdtmpfilesdir=$($PKG_CONFIG --define-variable=prefix='${prefix}' --variable=tmpfilesdir systemd)])
+ AC_SUBST([systemdtmpfilesdir])
+ 
++AC_ARG_WITH([systemdsysusersdir],
++            AS_HELP_STRING([--with-systemdsysusersdir=DIR],
++               [Directory for systemd-sysusers configuration files]),
++            [systemdsysusersdir=$with_systemdsysusersdir],
++        [systemdsysusersdir=$($PKG_CONFIG --define-variable=prefix='${prefix}' --variable=sysusersdir systemd)])
++AC_SUBST([systemdsysusersdir])
++
+ AC_ARG_WITH([systemdcatalogdir],
+             AS_HELP_STRING([--with-systemdcatalogdir=DIR],
+                [Directory for systemd journal catalog files]),
+@@ -398,22 +405,29 @@ AC_SUBST([IPAPLATFORM])
+ AC_MSG_RESULT([${IPAPLATFORM}])
+ 
+ if test "x${IPAPLATFORM}" == "xdebian"; then
+-    HTTPD_GROUP="www-data"
+-    KRB5KDC_SERVICE="krb5-kdc.service"
+-    NAMED_GROUP="bind"
+-    ODS_USER="opendnssec"
+-    ODS_GROUP="opendnssec"
+-    # see https://www.debian.org/doc/packaging-manuals/python-policy/ap-packaging_tools.html
+-    PYTHON_INSTALL_EXTRA_OPTIONS="--install-layout=deb"
++	dnl Ubuntu http user is www-data
++	HTTPD_USER="www-data"
++	HTTPD_GROUP="www-data"
++	KRB5KDC_SERVICE="krb5-kdc.service"
++	NAMED_GROUP="bind"
++	ODS_USER="opendnssec"
++	ODS_GROUP="opendnssec"
++	# see https://www.debian.org/doc/packaging-manuals/python-policy/ap-packaging_tools.html
++	PYTHON_INSTALL_EXTRA_OPTIONS="--install-layout=deb"
+ else
+-    HTTPD_GROUP="apache"
+-    KRB5KDC_SERVICE="krb5kdc.service"
+-    NAMED_GROUP="named"
+-    ODS_USER="ods"
+-    ODS_GROUP="ods"
+-    PYTHON_INSTALL_EXTRA_OPTIONS=""
++	HTTPD_USER="apache"
++	HTTPD_GROUP="apache"
++	KRB5KDC_SERVICE="krb5kdc.service"
++	NAMED_GROUP="named"
++	ODS_USER="ods"
++	ODS_GROUP="ods"
++	PYTHON_INSTALL_EXTRA_OPTIONS=""
+ fi
+ 
++AC_MSG_CHECKING([HTTPD_USER])
++AC_SUBST([HTTPD_USER])
++AC_MSG_RESULT([${HTTPD_USER}])
++
+ AC_MSG_CHECKING([HTTPD_GROUP])
+ AC_SUBST([HTTPD_GROUP])
+ AC_MSG_RESULT([${HTTPD_GROUP}])
+@@ -654,6 +668,7 @@ AC_CONFIG_FILES([
+     daemons/ipa-slapi-plugins/topology/Makefile
+     init/systemd/Makefile
+     init/tmpfilesd/Makefile
++    init/sysusersd/Makefile
+     init/Makefile
+     install/Makefile
+     install/certmonger/Makefile
+@@ -736,6 +751,7 @@ AM_COND_IF([ENABLE_SERVER], [
+         KRAD libs:                ${KRAD_LIBS}
+         krb5rundir:               ${krb5rundir}
+         systemdtmpfilesdir:       ${systemdtmpfilesdir}
++        systemdsysusersdir:       ${systemdsysusersdir}
+         build mode:               server & client"
+ ], [
+     echo "\
+diff --git a/freeipa.spec.in b/freeipa.spec.in
+index f3b45a5308f93928a4d4bb4cbb2ae96c487cf88a..48912185073472c11f08d000dacf3a0b7f2ec668 100644
+--- a/freeipa.spec.in
++++ b/freeipa.spec.in
+@@ -620,7 +620,7 @@ Requires: systemd-units >= %{systemd_version}
+ Requires: system-logos-ipa >= 80.4
+ %endif
+ 
+-# The list below is automatically generated by `fix-spec.sh -i` 
++# The list below is automatically generated by `fix-spec.sh -i`
+ # from the install/freeipa-webui
+ Provides: bundled(npm(attr-accept)) = 2.2.5
+ Provides: bundled(npm(cookie)) = 1.0.2
+@@ -1274,6 +1274,7 @@ fi
+ /bin/systemctl reload-or-try-restart dbus
+ /bin/systemctl reload-or-try-restart oddjobd
+ 
++%sysusers_create %{_sysusersdir}/ipa.conf
+ %tmpfiles_create ipa.conf
+ %journal_catalog_update
+ 
+@@ -1331,18 +1332,6 @@ if [ -e /usr/sbin/ipa_kpasswd ]; then
+ fi
+ 
+ 
+-%pre server-common
+-# create users and groups
+-# create kdcproxy group and user
+-getent group kdcproxy >/dev/null || groupadd -f -r kdcproxy
+-getent passwd kdcproxy >/dev/null || useradd -r -g kdcproxy -s /sbin/nologin -d / -c "IPA KDC Proxy User" kdcproxy
+-# create ipaapi group and user
+-getent group ipaapi >/dev/null || groupadd -f -r ipaapi
+-getent passwd ipaapi >/dev/null || useradd -r -g ipaapi -s /sbin/nologin -d / -c "IPA Framework User" ipaapi
+-# add apache to ipaaapi group
+-id -Gn apache | grep '\bipaapi\b' >/dev/null || usermod apache -a -G ipaapi
+-
+-
+ %post server-dns
+ %systemd_post ipa-dnskeysyncd.service ipa-ods-exporter.socket ipa-ods-exporter.service
+ 
+@@ -1729,6 +1718,7 @@ fi
+ %dir %attr(0755,root,root) %{_sysconfdir}/ipa/kdcproxy
+ %config(noreplace) %{_sysconfdir}/ipa/kdcproxy/kdcproxy.conf
+ # NOTE: systemd specific section
++%{_sysusersdir}/ipa.conf
+ %{_tmpfilesdir}/ipa.conf
+ %attr(644,root,root) %{_unitdir}/ipa-custodia.service
+ %ghost %attr(644,root,root) %{etc_systemd_dir}/httpd.d/ipa.conf
+diff --git a/init/Makefile.am b/init/Makefile.am
+index 8f4d1d0a8f7e9739cf7587de6e000dd027a85146..1d4a85ab20e892c8a7c428b84a6393d29e9616e5 100644
+--- a/init/Makefile.am
++++ b/init/Makefile.am
+@@ -2,7 +2,7 @@
+ #
+ AUTOMAKE_OPTIONS = 1.7
+ 
+-SUBDIRS = systemd tmpfilesd
++SUBDIRS = systemd tmpfilesd sysusersd
+ 
+ dist_sysconfenv_DATA = 		\
+ 	ipa-dnskeysyncd		\
+diff --git a/init/sysusersd/Makefile.am b/init/sysusersd/Makefile.am
+new file mode 100644
+index 0000000000000000000000000000000000000000..8577255a61ac796353995d3d1f99de195f9bd7c0
+--- /dev/null
++++ b/init/sysusersd/Makefile.am
+@@ -0,0 +1,12 @@
++dist_noinst_DATA =     \
++	ipa.conf.in
++
++systemdsysusers_DATA =         \
++	ipa.conf
++
++CLEANFILES = $(systemdsysusers_DATA)
++
++%: %.in Makefile
++	sed \
++		-e 's|@HTTPD_USER[@]|$(HTTPD_USER)|g' \
++		'$(srcdir)/$@.in' >$@
+diff --git a/init/sysusersd/ipa.conf.in b/init/sysusersd/ipa.conf.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..dcddfc2fc7969b86913ffcd8c397152e4f800fda
+--- /dev/null
++++ b/init/sysusersd/ipa.conf.in
+@@ -0,0 +1,8 @@
++# IPA KDC Proxy user and group
++u  kdcproxy    -   "IPA KDC Proxy User"
++
++# IPA API user and group
++u  ipaapi      -   "IPA API User"
++
++# - add Apache system account to ipaapi group (platform-specific)
++m   @HTTPD_USER@      ipaapi
+-- 
+2.52.0
+

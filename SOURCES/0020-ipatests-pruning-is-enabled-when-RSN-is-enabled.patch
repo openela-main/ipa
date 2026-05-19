@@ -1,0 +1,39 @@
+From d5efb4decb74b50c05b1d252add1c075e660d154 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Wed, 11 Feb 2026 10:23:36 +0100
+Subject: [PATCH] ipatests: pruning is enabled when RSN is enabled
+
+The test TestACMEPrune installs the server with --random-serial-numbers
+but expects pruning to be disabled if the 389ds backend is BDB.
+
+This is a wrong expectation as pruning is enabled as soon as RSN
+are enabled (since commit 3777d2b).
+Fix the test expectation.
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+---
+ ipatests/test_integration/test_acme.py | 8 ++------
+ 1 file changed, 2 insertions(+), 6 deletions(-)
+
+diff --git a/ipatests/test_integration/test_acme.py b/ipatests/test_integration/test_acme.py
+index 4c66e4348beeaca95577a786a46e53fdc1532ef7..bedec9d1f9f0c168c11aceb155978b6a0dae8dd7 100644
+--- a/ipatests/test_integration/test_acme.py
++++ b/ipatests/test_integration/test_acme.py
+@@ -718,12 +718,8 @@ class TestACMEPrune(IntegrationTest):
+            < tasks.parse_version('11.3.0')):
+             raise pytest.skip("Certificate pruning is not available")
+ 
+-        # Pruning is enabled by default when the host supports lmdb
+-        if get_389ds_backend(self.master) == 'bdb':
+-            cs_cfg = self.master.get_file_contents(paths.CA_CS_CFG_PATH)
+-            assert "jobsScheduler.job.pruning.enabled=false".encode() in cs_cfg
+-            self.master.run_command(['ipa-acme-manage', 'pruning', '--enable'])
+-
++        # Pruning is enabled by default when server is installed
++        # with --random-serial-numbers
+         cs_cfg = self.master.get_file_contents(paths.CA_CS_CFG_PATH)
+         assert "jobsScheduler.enabled=true".encode() in cs_cfg
+         assert "jobsScheduler.job.pruning.enabled=true".encode() in cs_cfg
+-- 
+2.52.0
+

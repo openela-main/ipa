@@ -1,0 +1,321 @@
+From 257740b66daf004a7333bfaeddece4732be5a48c Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Tue, 9 Dec 2025 17:52:36 +0100
+Subject: [PATCH] Revert "Stop using deprecated pkg_resources"
+
+This reverts commit ac791f7372d32d25c75eb61f949f1db38fe2f0d6.
+---
+ freeipa.spec.in                                     |  6 +++++-
+ ipaplatform/base/tasks.py                           |  2 +-
+ ipapython/version.py.in                             |  2 +-
+ ipaserver/custodia/server/__init__.py               | 13 +++++++++----
+ ipaserver/install/cainstance.py                     |  2 +-
+ ipaserver/install/krbinstance.py                    |  2 +-
+ ipaserver/install/server/replicainstall.py          |  2 +-
+ ipaserver/install/server/upgrade.py                 |  2 +-
+ .../pytest_ipa/integration/create_caless_pki.py     |  2 +-
+ ipatests/pytest_ipa/integration/tasks.py            |  2 +-
+ ipatests/test_custodia/test_plugins.py              | 13 ++++++++-----
+ ipatests/test_integration/test_adtrust_install.py   |  2 +-
+ ipatests/test_integration/test_cert.py              |  2 +-
+ ipatests/test_integration/test_commands.py          |  2 +-
+ ipatests/test_integration/test_idp.py               |  2 +-
+ ipatests/test_integration/test_ipahealthcheck.py    |  2 +-
+ ipatests/test_webui/ui_driver.py                    |  2 +-
+ ipatests/test_xmlrpc/test_automember_plugin.py      |  1 +
+ 18 files changed, 37 insertions(+), 24 deletions(-)
+
+diff --git a/freeipa.spec.in b/freeipa.spec.in
+index b93199a5783a89e0ff58affd3d416556f72dd00c..bf6fa216dcc4cfbac903aad43c6219f1e57db4dd 100644
+--- a/freeipa.spec.in
++++ b/freeipa.spec.in
+@@ -983,7 +983,6 @@ Requires: python3-jwcrypto >= 0.4.2
+ Requires: python3-libipa_hbac
+ Requires: python3-netaddr >= %{python_netaddr_version}
+ Requires: python3-netifaces >= 0.10.4
+-Requires: python3-packaging
+ Requires: python3-pyasn1 >= 0.3.2-2
+ Requires: python3-pyasn1-modules >= 0.3.2-2
+ Requires: python3-pyusb
+@@ -992,6 +991,11 @@ Requires: python3-requests
+ Requires: python3-six
+ Requires: python3-sss-murmur
+ Requires: python3-yubico >= 1.3.2-7
++%if 0%{?rhel} && 0%{?rhel} == 8
++Requires: platform-python-setuptools
++%else
++Requires: python3-setuptools
++%endif
+ %if 0%{?rhel}
+ Requires: python3-urllib3 >= 1.24.2-3
+ %else
+diff --git a/ipaplatform/base/tasks.py b/ipaplatform/base/tasks.py
+index 9e221d872e7ca9ac0607ff29e1b51dedcf688d75..ab3563aba3decf370a72c9ec273c8bccc2d85ca2 100644
+--- a/ipaplatform/base/tasks.py
++++ b/ipaplatform/base/tasks.py
+@@ -29,7 +29,7 @@ import os
+ import logging
+ import textwrap
+ 
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ 
+ from ipaplatform.paths import paths
+ from ipapython import ipautil
+diff --git a/ipapython/version.py.in b/ipapython/version.py.in
+index eee8900be5fa72759fd7ee87f72952599231e138..a8f4218a7bac2a2f52389ad3dc5f31a98a822e82 100644
+--- a/ipapython/version.py.in
++++ b/ipapython/version.py.in
+@@ -17,7 +17,7 @@
+ # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ #
+ 
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ 
+ # The full version including strings
+ VERSION = "@VERSION@"
+diff --git a/ipaserver/custodia/server/__init__.py b/ipaserver/custodia/server/__init__.py
+index 26ca0a481559da101891034798e0434f063367b8..e713de20d0e9ff42e65ed3d2170d6446baa8d4e8 100644
+--- a/ipaserver/custodia/server/__init__.py
++++ b/ipaserver/custodia/server/__init__.py
+@@ -2,9 +2,10 @@
+ from __future__ import absolute_import
+ 
+ import importlib
+-import importlib.metadata
+ import os
+ 
++import pkg_resources
++
+ import six
+ 
+ from ipaserver.custodia import log
+@@ -36,13 +37,17 @@ def _load_plugin_class(menu, name):
+     Entry points are preferred over dotted import path.
+     """
+     group = 'custodia.{}'.format(menu)
+-    eps = importlib.metadata.entry_points(group=group, name=name)
++    eps = list(pkg_resources.iter_entry_points(group, name))
+     if len(eps) > 1:
+         raise ValueError(
+             "Multiple entry points for {} {}: {}".format(menu, name, eps))
+     elif len(eps) == 1:
+-        ep, *_ = eps
+-        return ep.load(require=False)
++        # backwards compatibility with old setuptools
++        ep = eps[0]
++        if hasattr(ep, 'resolve'):
++            return ep.resolve()
++        else:
++            return ep.load(require=False)
+     elif '.' in name:
+         # fall back to old style dotted name
+         module, classname = name.rsplit('.', 1)
+diff --git a/ipaserver/install/cainstance.py b/ipaserver/install/cainstance.py
+index b8267a625554f9375d27160f39b67ee2e64a2dbb..a92b3ed6f01db97a86464e5cb77a084f8a1de90f 100644
+--- a/ipaserver/install/cainstance.py
++++ b/ipaserver/install/cainstance.py
+@@ -35,7 +35,7 @@ import syslog
+ import time
+ import tempfile
+ from configparser import RawConfigParser
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ 
+ from ipalib import api
+ from ipalib import x509
+diff --git a/ipaserver/install/krbinstance.py b/ipaserver/install/krbinstance.py
+index 4a521a611bd1bebf925061ea88a60876dff48467..0f568122c94aab8e55604179003276d29580de76 100644
+--- a/ipaserver/install/krbinstance.py
++++ b/ipaserver/install/krbinstance.py
+@@ -27,7 +27,7 @@ import tempfile
+ import dbus
+ 
+ import dns.name
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ 
+ from ipalib import x509
+ from ipalib.install import certstore
+diff --git a/ipaserver/install/server/replicainstall.py b/ipaserver/install/server/replicainstall.py
+index b4d06d8e24097e12c97a8b881dfcc9b028467272..5b4f0161083bbf65ac423ebacad30c5743ffab8e 100644
+--- a/ipaserver/install/server/replicainstall.py
++++ b/ipaserver/install/server/replicainstall.py
+@@ -18,7 +18,7 @@ import tempfile
+ import textwrap
+ import traceback
+ 
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ import six
+ 
+ from ipaclient.install.client import check_ldap_conf, sssd_enable_ifp
+diff --git a/ipaserver/install/server/upgrade.py b/ipaserver/install/server/upgrade.py
+index 548ee02e1e8524ce0002dca1764d48728eb0509a..d9cb6656b4731b5cb803b870469635862f4269e5 100644
+--- a/ipaserver/install/server/upgrade.py
++++ b/ipaserver/install/server/upgrade.py
+@@ -17,7 +17,7 @@ import sys
+ import tempfile
+ from contextlib import contextmanager
+ from augeas import Augeas
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ 
+ from ipalib import api, x509
+ from ipalib.constants import RENEWAL_CA_NAME, RA_AGENT_PROFILE, IPA_CA_RECORD
+diff --git a/ipatests/pytest_ipa/integration/create_caless_pki.py b/ipatests/pytest_ipa/integration/create_caless_pki.py
+index d06f1dd8c328628bd692c2abf3acfc88ba6a7408..01d64462ce76eb76cf7efdbeb850955ca4990535 100644
+--- a/ipatests/pytest_ipa/integration/create_caless_pki.py
++++ b/ipatests/pytest_ipa/integration/create_caless_pki.py
+@@ -26,7 +26,7 @@ from cryptography.hazmat.backends import default_backend
+ from cryptography.hazmat.primitives import hashes, serialization
+ from cryptography.hazmat.primitives.asymmetric import rsa
+ from cryptography.x509.oid import NameOID
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ from pyasn1.type import univ, char, namedtype, tag
+ from pyasn1.codec.der import encoder as der_encoder
+ from pyasn1.codec.native import decoder as native_decoder
+diff --git a/ipatests/pytest_ipa/integration/tasks.py b/ipatests/pytest_ipa/integration/tasks.py
+index 3ef361807ee0e1c858f4bef8b7d9e26c5f0fa20a..c6e0cf3937a12c7bb13da4b83250ecced470b543 100755
+--- a/ipatests/pytest_ipa/integration/tasks.py
++++ b/ipatests/pytest_ipa/integration/tasks.py
+@@ -36,7 +36,7 @@ import time
+ from shlex import quote
+ import configparser
+ from contextlib import contextmanager
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ import uuid
+ 
+ import dns
+diff --git a/ipatests/test_custodia/test_plugins.py b/ipatests/test_custodia/test_plugins.py
+index 9d3f6c24ff2eecad9e9a1c574aaae2edd30e4921..be8aa936db2bc553e0a13bb0975e88d186e3da1c 100644
+--- a/ipatests/test_custodia/test_plugins.py
++++ b/ipatests/test_custodia/test_plugins.py
+@@ -1,6 +1,5 @@
+ # Copyright (C) 2016  Custodia Project Contributors - see LICENSE file
+-import importlib.metadata
+-
++import pkg_resources
+ import pytest
+ 
+ from ipaserver.custodia.plugin import (
+@@ -13,8 +12,8 @@ class TestCustodiaPlugins:
+ 
+     def get_entry_points(self, group):
+         eps = []
+-        for e in importlib.metadata.entry_points(group=group):
+-            if e.dist.name != self.project_name:
++        for e in pkg_resources.iter_entry_points(group):
++            if e.dist.project_name != self.project_name:
+                 # only interested in our own entry points
+                 continue
+             eps.append(e)
+@@ -22,7 +21,11 @@ class TestCustodiaPlugins:
+ 
+     def assert_ep(self, ep, basecls):
+         try:
+-            cls = ep.load(require=False)
++            # backwards compatibility with old setuptools
++            if hasattr(ep, "resolve"):
++                cls = ep.resolve()
++            else:
++                cls = ep.load(require=False)
+         except Exception as e:  # pylint: disable=broad-except
+             pytest.fail("Failed to load %r: %r" % (ep, e))
+         if not issubclass(cls, basecls):
+diff --git a/ipatests/test_integration/test_adtrust_install.py b/ipatests/test_integration/test_adtrust_install.py
+index 09e227ec8125e90b37d1d92f0512f9819f5b48c3..ac7e5663aa1c70184f5a09ea5e14cca8c671d78e 100644
+--- a/ipatests/test_integration/test_adtrust_install.py
++++ b/ipatests/test_integration/test_adtrust_install.py
+@@ -13,7 +13,7 @@ from ipaplatform.paths import paths
+ from ipapython.dn import DN
+ from ipatests.pytest_ipa.integration import tasks
+ from ipatests.test_integration.base import IntegrationTest
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ 
+ import pytest
+ 
+diff --git a/ipatests/test_integration/test_cert.py b/ipatests/test_integration/test_cert.py
+index 21568c2421c21855df06bcf5fbb4d52b3651a523..03ea5cfb000200d4d77b97d8808e30dbd5392871 100644
+--- a/ipatests/test_integration/test_cert.py
++++ b/ipatests/test_integration/test_cert.py
+@@ -20,7 +20,7 @@ from ipapython.dn import DN
+ from cryptography import x509
+ from cryptography.x509.oid import ExtensionOID
+ from cryptography.hazmat.backends import default_backend
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ 
+ from ipatests.pytest_ipa.integration import tasks
+ from ipatests.test_integration.base import IntegrationTest
+diff --git a/ipatests/test_integration/test_commands.py b/ipatests/test_integration/test_commands.py
+index 5bc871ab71bc05ec1c26df8352e996a9e627b466..04d8f71ff922f98c71331fa9a5f0f6508dd3fc12 100644
+--- a/ipatests/test_integration/test_commands.py
++++ b/ipatests/test_integration/test_commands.py
+@@ -41,7 +41,7 @@ from ipatests.test_ipalib.test_x509 import good_pkcs7, badcert
+ from ipapython.ipautil import realm_to_suffix, ipa_generate_password
+ from ipatests.test_integration.test_topology import find_segment
+ from ipaserver.install.installutils import realm_to_serverid
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ 
+ logger = logging.getLogger(__name__)
+ 
+diff --git a/ipatests/test_integration/test_idp.py b/ipatests/test_integration/test_idp.py
+index 9983b3c9d62826afa395c2739b4fb9945afed80d..a29333ef232b0ae8229484e404866d8bb720554a 100644
+--- a/ipatests/test_integration/test_idp.py
++++ b/ipatests/test_integration/test_idp.py
+@@ -12,7 +12,7 @@ from ipatests.pytest_ipa.integration import tasks, create_keycloak
+ user_code_script = textwrap.dedent("""
+ from selenium import webdriver
+ from datetime import datetime
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ from selenium.webdriver.firefox.options import Options
+ from selenium.webdriver.common.by import By
+ from selenium.webdriver.support.ui import WebDriverWait
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index 47392cec9345b6d2447b728fc21050edabe8f0cd..15fc38a6e155b343259ee61c6c7c5c561c7f6410 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -28,7 +28,7 @@ from ipaplatform.osinfo import osinfo
+ from ipaserver.install.installutils import resolve_ip_addresses_nss
+ from ipatests.test_integration.test_caless import CALessBase
+ from ipatests.test_integration.base import IntegrationTest
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ from ipatests.test_integration.test_cert import get_certmonger_fs_id
+ from ipatests.test_integration.test_external_ca import (
+     install_server_external_ca_step1,
+diff --git a/ipatests/test_webui/ui_driver.py b/ipatests/test_webui/ui_driver.py
+index 356c4a0998cf01a6dbf1f207f38db87504aa5522..5dcea8979346119b2c11af7cf3f0b8c9b438cb40 100644
+--- a/ipatests/test_webui/ui_driver.py
++++ b/ipatests/test_webui/ui_driver.py
+@@ -29,7 +29,7 @@ import re
+ import time
+ from datetime import datetime
+ from functools import wraps
+-from packaging.version import parse as parse_version
++from pkg_resources import parse_version
+ from urllib.error import URLError
+ 
+ import pytest
+diff --git a/ipatests/test_xmlrpc/test_automember_plugin.py b/ipatests/test_xmlrpc/test_automember_plugin.py
+index aa7c1d65a7059a6a1e911f31204c05a42b6d9c3f..94f1b10985de61046bb65c092ab3d31c6f99e17c 100644
+--- a/ipatests/test_xmlrpc/test_automember_plugin.py
++++ b/ipatests/test_xmlrpc/test_automember_plugin.py
+@@ -35,6 +35,7 @@ from ipaserver.plugins.automember import REBUILD_TASK_CONTAINER
+ 
+ import time
+ import pytest
++from pkg_resources import parse_version
+ 
+ try:
+     from ipaserver.plugins.ldap2 import ldap2
+-- 
+2.52.0
+

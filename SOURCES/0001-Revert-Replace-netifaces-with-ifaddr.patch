@@ -45,9 +45,9 @@ index 6803de752bc122bf6e1eafd610d399cde994cad5..a532fe85c34a523519187b6fd1297c19
  Requires: python3-netaddr >= %{python_netaddr_version}
 -Requires: python3-ifaddr
 +Requires: python3-netifaces >= 0.10.4
+ Requires: python3-packaging
  Requires: python3-pyasn1 >= 0.3.2-2
  Requires: python3-pyasn1-modules >= 0.3.2-2
- Requires: python3-pyusb
 diff --git a/ipaclient/install/client.py b/ipaclient/install/client.py
 index 29aff5f413e7f27136e236382031171f068284c5..263dc8e302cccd76412c294e0740af9744a2c62d 100644
 --- a/ipaclient/install/client.py
