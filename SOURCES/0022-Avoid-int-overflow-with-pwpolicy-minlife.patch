@@ -1,0 +1,154 @@
+From 7b0ac4f3dd8febf0c22a11bf2db9b780a242e302 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Mon, 26 Jan 2026 19:25:17 -0500
+Subject: [PATCH] Avoid int overflow with pwpolicy minlife
+
+This converts the value to an unsigned integer instead and
+sets the max value to match the maxlife (~54 years).
+
+A syslog log message was added to explain why the "too young"
+message is returned
+
+Fixes: https://pagure.io/freeipa/issue/9929
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+Reviewed-By: Rafael Guterres Jeffman <rjeffman@redhat.com>
+---
+ .../ipa-slapi-plugins/ipa-pwd-extop/common.c  |  2 +-
+ ipaserver/plugins/pwpolicy.py                 |  1 +
+ ipatests/test_integration/test_pwpolicy.py    | 50 ++++++++++++++++---
+ util/ipa_pwd.c                                |  1 +
+ util/ipa_pwd.h                                |  2 +-
+ 5 files changed, 48 insertions(+), 8 deletions(-)
+
+diff --git a/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c b/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
+index 0e69f3410..71642540a 100644
+--- a/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
++++ b/daemons/ipa-slapi-plugins/ipa-pwd-extop/common.c
+@@ -407,7 +407,7 @@ int ipapwd_getPolicy(const char *dn,
+     }
+ 
+     /* read data out of policy object */
+-    policy->min_pwd_life = slapi_entry_attr_get_int(pe, "krbMinPwdLife");
++    policy->min_pwd_life = slapi_entry_attr_get_uint(pe, "krbMinPwdLife");
+ 
+     policy->max_pwd_life = slapi_entry_attr_get_int(pe, "krbMaxPwdLife");
+ 
+diff --git a/ipaserver/plugins/pwpolicy.py b/ipaserver/plugins/pwpolicy.py
+index e49a2e1cd..2d9907d9d 100644
+--- a/ipaserver/plugins/pwpolicy.py
++++ b/ipaserver/plugins/pwpolicy.py
+@@ -338,6 +338,7 @@ class pwpolicy(LDAPObject):
+             label=_('Min lifetime (hours)'),
+             doc=_('Minimum password lifetime (in hours)'),
+             minvalue=0,
++            maxvalue=480000,  # about 54 years, same as maxlife
+         ),
+         Int('krbpwdhistorylength?',
+             cli_name='history',
+diff --git a/ipatests/test_integration/test_pwpolicy.py b/ipatests/test_integration/test_pwpolicy.py
+index a627b66ce..f7fd40ada 100644
+--- a/ipatests/test_integration/test_pwpolicy.py
++++ b/ipatests/test_integration/test_pwpolicy.py
+@@ -16,17 +16,14 @@ PASSWORD = 'Secret123'
+ POLICY = 'test'
+ 
+ 
+-class TestPWPolicy(IntegrationTest):
++class BasePWpolicy(IntegrationTest):
+     """
+-    Test password policy in action.
++    Base class for testing password policies including libpwquality
+     """
+-    num_replicas = 1
+-
+-    topology = 'line'
+ 
+     @classmethod
+     def install(cls, mh):
+-        super(TestPWPolicy, cls).install(mh)
++        tasks.install_master(cls.master, setup_dns=True)
+ 
+         tasks.kinit_admin(cls.master)
+         cls.master.run_command(['ipa', 'user-add', USER,
+@@ -66,6 +63,15 @@ class TestPWPolicy(IntegrationTest):
+             host.run_command(['ipa', 'user-unlock', user])
+         tasks.kdestroy_all(host)
+ 
++
++class TestPWquality(BasePWpolicy):
++    """
++    libpwquality tests
++    """
++    num_replicas = 1
++
++    topology = 'line'
++
+     def set_pwpolicy(self, minlength=None, maxrepeat=None, maxsequence=None,
+                      dictcheck=None, usercheck=None, minclasses=None,
+                      dcredit=None, ucredit=None, lcredit=None, ocredit=None):
+@@ -534,3 +540,35 @@ class TestPWPolicy(IntegrationTest):
+             self.master, dn, ['passwordgraceusertime',],
+         )
+         assert 'passwordgraceusertime: 0' in result.stdout_text.lower()
++
++
++class TestPWpolicy(BasePWpolicy):
++    """
++    Tests for original/Kerberos password policies. Excludes libpwquality
++    """
++
++    # NOTE: set/reset/clear methods to be added later once there is more
++    #       than a single test.
++
++    def test_minlife_overflow(self):
++        """Test that a large minlife doesn't overflow an unsigned int."""
++        newpassword = "Secret.1234"
++
++        tasks.kinit_admin(self.master)
++
++        self.master.run_command(
++            ["ipa", "pwpolicy-mod", POLICY, "--minlife", "480000",
++             "--maxlife", "20000",]
++        )
++
++        self.kinit_as_user(self.master, PASSWORD, PASSWORD)
++
++        result = self.master.run_command(
++            ["ipa", "passwd", USER],
++            raiseonerr=False,
++            stdin_text='{password}\n{password}\n{newpassword}'.format(
++                password=PASSWORD, newpassword=newpassword
++            ))
++
++        assert result.returncode == 1
++        assert "Too soon to change password" in result.stderr_text
+diff --git a/util/ipa_pwd.c b/util/ipa_pwd.c
+index ba6860106..56135aaff 100644
+--- a/util/ipa_pwd.c
++++ b/util/ipa_pwd.c
+@@ -561,6 +561,7 @@ int ipapwd_check_policy(struct ipapwd_policy *policy,
+              * policy is set */
+ 
+             if (cur_time < last_pwd_change + policy->min_pwd_life) {
++                syslog(LOG_ERR, "Password too young. %d seconds since last change, policy requires %u seconds.\n", (cur_time - last_pwd_change), policy->min_pwd_life);
+                 return IPAPWD_POLICY_PWD_TOO_YOUNG;
+             }
+         }
+diff --git a/util/ipa_pwd.h b/util/ipa_pwd.h
+index aa2c6e978..d3c5f8be7 100644
+--- a/util/ipa_pwd.h
++++ b/util/ipa_pwd.h
+@@ -54,7 +54,7 @@ enum ipapwd_error {
+ };
+ 
+ struct ipapwd_policy {
+-    int min_pwd_life;
++    unsigned int min_pwd_life;
+     int max_pwd_life;
+     int min_pwd_length;
+     int history_length;
+-- 
+2.52.0
+

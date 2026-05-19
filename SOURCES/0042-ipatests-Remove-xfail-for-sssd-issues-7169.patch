@@ -1,0 +1,48 @@
+From a1b1a45c45f521659ee25709141b6470599030d0 Mon Sep 17 00:00:00 2001
+From: David Hanina <dhanina@redhat.com>
+Date: Mon, 13 Apr 2026 16:23:24 +0200
+Subject: [PATCH] ipatests-Remove xfail for sssd/issues/7169
+
+4 of the failing tests are now succeeding, removing the xfail.
+
+Signed-off-by: David Hanina <dhanina@redhat.com>
+---
+ ipatests/test_integration/test_trust.py | 18 +++---------------
+ 1 file changed, 3 insertions(+), 15 deletions(-)
+
+diff --git a/ipatests/test_integration/test_trust.py b/ipatests/test_integration/test_trust.py
+index 0cab277c910a6d35f35b57e3068ee6f38706af59..d7f25d658b24f3b261260e735d3679e81e35ed15 100644
+--- a/ipatests/test_integration/test_trust.py
++++ b/ipatests/test_integration/test_trust.py
+@@ -1219,14 +1219,7 @@ class TestNonPosixAutoPrivateGroup(BaseTestTrust):
+                 assert (uid == self.uid_override and gid == self.gid_override)
+             test_group = self.clients[0].run_command(
+                 ["id", nonposixuser]).stdout_text
+-            cond2 = (((type == 'false'
+-                       and sssd_version >= tasks.parse_version("2.9.4"))
+-                      or type == 'hybrid')
+-                     and sssd_version < tasks.parse_version("2.12.0"))
+-            with xfail_context(cond2,
+-                               'https://github.com/SSSD/sssd/issues/5989 '
+-                               'and 7169'):
+-                assert "domain users@{0}".format(self.ad_domain) in test_group
++            assert "domain users@{0}".format(self.ad_domain) in test_group
+ 
+     @pytest.mark.parametrize('type', ['hybrid', 'true', "false"])
+     def test_nonposixuser_nondefault_primary_group(self, type):
+@@ -1347,10 +1340,5 @@ class TestPosixAutoPrivateGroup(BaseTestTrust):
+             assert (uid == self.uid_override
+                     and gid == self.gid_override)
+             result = self.clients[0].run_command(['id', posixuser])
+-            sssd_version = tasks.get_sssd_version(self.clients[0])
+-            bad_version = (tasks.parse_version("2.9.4") <= sssd_version
+-                           < tasks.parse_version("2.12.0"))
+-            with xfail_context(bad_version and type in ('false', 'hybrid'),
+-                 "https://github.com/SSSD/sssd/issues/7169"):
+-                assert "10047(testgroup@{0})".format(
+-                    self.ad_domain) in result.stdout_text
++            assert "10047(testgroup@{0})".format(
++                self.ad_domain) in result.stdout_text
+-- 
+2.52.0
+

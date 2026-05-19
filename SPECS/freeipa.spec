@@ -229,7 +229,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        3%{?rc_version:.%rc_version}%{?dist}
+Release:        3%{?rc_version:.%rc_version}%{?dist}.2
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -267,6 +267,30 @@ Patch0017:	0017-Replace-None-with-when-uninstalling-CA.patch
 Patch0018:	0018-ipatests-Add-xmlrpc-tests-for-ipa-delegation-cli.patch
 Patch0019:	0019-ipa-join-initialize-pointer.patch
 Patch0020:      0020-ipatests-pruning-is-enabled-when-RSN-is-enabled.patch
+Patch0021:      0021-ipatests-Add-DNS-bugzilla-integration-tests.patch
+Patch0022:      0022-Avoid-int-overflow-with-pwpolicy-minlife.patch
+Patch0023:      0023-ipatests-fix-install-method-for-BasePWpolicy.patch
+Patch0024:      0024-webui-tests-update-expected-max-value-for-krbminpwdl.patch
+Patch0025:      0025-ipatests-Add-DNS-integration-tests.patch
+Patch0026:      0026-ipatest-make-tests-compatible-with-Pytest-9.patch
+Patch0027:      0027-ipatests-Add-ipa-selfservice-BZ-tests-to-xmlrpc.patch
+Patch0028:      0028-Allow-32bit-gid.patch
+Patch0029:      0029-ipatests-Add-ipa-selfservice-users-tests-to-xmlrpc.patch
+Patch0030:      0030-ipatests-Fix-test_allow_query_transfer_ipv6-when-IPv.patch
+Patch0031:      0031-ipatests-Add-XML-RPC-tests-for-i18n-user-attributes.patch
+Patch0032:      0032-ipatests-Add-selfservice-add-and-selfservice-del-cli.patch
+Patch0033:      0033-ipatests-Additional-tests-for-32BitIdranges.patch
+Patch0034:      0034-ipatests-add-HTTP-GSSAPI-Kerberos-authentication-tes.patch
+Patch0035:      0035-ipatests-Extend-netgroup-test-coverage.patch
+Patch0036:      0036-ipatests-Add-user-principal-ipa-getkeytab-and-ipa-rm.patch
+Patch0037:      0037-ipatests-Additional-tests-for-ipa-ipa-migration-test.patch
+Patch0038:      0038-ipatests-ipa-migrate-ds-test-scenarios.patch
+Patch0039:      0039-ipatests-Add-ipa-selfservice-show-and-selfservice-mo.patch
+Patch0040:      0040-ipatests-Add-selfservice-find-cli-tests-to-xmlrpc-Ad.patch
+Patch0041:      0041-ipatests-fix-the-method-add_a_record.patch
+Patch0042:      0042-ipatests-Remove-xfail-for-sssd-issues-7169.patch
+Patch0043:      0043-Fix-ipa-ca-show-ipa-all-not-listing-RSN-version.patch
+Patch0044:      0044-ipatests-fix-migration-test.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -1979,6 +2003,15 @@ fi
 %endif
 
 %changelog
+* Thu Apr 16 2026 David Hanina <dhanina@redhat.com> - 4.13.1-3.2
+- Related: RHEL-166865 Include latest fixes in python3-ipatests package [rhel-9.8.z]
+
+* Mon Apr 13 2026 David Hanina <dhanina@redhat.com> - 4.13.1-3.1
+- Resolves: RHEL-166865 Include latest fixes in python3-ipatests package [rhel-9.8.z]
+- Resolves: RHEL-155037 Pagure #9953: Adding a group with 32Bit Idrange fails. [rhel-9.8.z]
+- Resolves: RHEL-153146 IdM password policy Min lifetime is not enforced when high minlife is set [rhel-9.8.z]
+- Resolves: RHEL-168047 ipa ca-show ipa --all failing to list RSN version
+
 * Tue Feb 10 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.13.1-3
 - RHEL-148282 ipa-replica-conncheck fails with "an internal error has occured"
 - RHEL-148481 Pruning is enabled by default with RSN on RHEL 9.8

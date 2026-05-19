@@ -1,0 +1,42 @@
+From 5cd2639f539ce220c291b00afafa72fd35e1d07e Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 16 Feb 2026 15:47:32 +0100
+Subject: [PATCH] ipatests: fix install method for BasePWpolicy
+
+The test was broken by the previous commit, which creates a
+new test class TestPWquality that inherits from BasePWpolicy.
+
+As BasePWpolicy overrides the install method with
+task.install_master instead of super(TestPWPolicy, cls).install(mh),
+only the master gets installed.
+
+Fix the BasePWpolicy class.
+
+Fixes: https://pagure.io/freeipa/issue/9946
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+---
+ ipatests/test_integration/test_pwpolicy.py | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_pwpolicy.py b/ipatests/test_integration/test_pwpolicy.py
+index f7fd40ada..a68252bf9 100644
+--- a/ipatests/test_integration/test_pwpolicy.py
++++ b/ipatests/test_integration/test_pwpolicy.py
+@@ -21,9 +21,12 @@ class BasePWpolicy(IntegrationTest):
+     Base class for testing password policies including libpwquality
+     """
+ 
++    num_replicas = 0
++    topology = 'line'
++
+     @classmethod
+     def install(cls, mh):
+-        tasks.install_master(cls.master, setup_dns=True)
++        super(BasePWpolicy, cls).install(mh)
+ 
+         tasks.kinit_admin(cls.master)
+         cls.master.run_command(['ipa', 'user-add', USER,
+-- 
+2.52.0
+
