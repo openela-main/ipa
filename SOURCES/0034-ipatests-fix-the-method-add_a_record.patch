@@ -1,0 +1,36 @@
+From 628404016d7ab8bcfc6f940e7ef40928f375168e Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Thu, 9 Apr 2026 12:49:18 +0200
+Subject: [PATCH] ipatests: fix the method add_a_record
+
+The method add_a_record first checks if a DNS record exists.
+If it finds one, it assumes there is already a DNS A record for
+the host but this assumption is wrong. The dnsrecord-show command
+may return another type of DNS record (for instance an SSHFP record).
+
+Create the A record if dnsrecord-show fails or if it doesn't return
+any A record.
+
+Fixes: https://pagure.io/freeipa/issue/9972
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Anuja More <amore@redhat.com>
+---
+ ipatests/pytest_ipa/integration/tasks.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ipatests/pytest_ipa/integration/tasks.py b/ipatests/pytest_ipa/integration/tasks.py
+index ee2befd6998da3b8035e4e015d7528b5a9676a7b..5ce18483d6c1049104afc1cef6524a7a19fc9047 100755
+--- a/ipatests/pytest_ipa/integration/tasks.py
++++ b/ipatests/pytest_ipa/integration/tasks.py
+@@ -1620,7 +1620,7 @@ def add_a_record(master, host):
+                              raiseonerr=False)
+ 
+     # If not, add it
+-    if cmd.returncode != 0:
++    if cmd.returncode != 0 or 'A record' not in cmd.stdout_text:
+         master.run_command(['ipa',
+                             'dnsrecord-add',
+                             master.domain.name,
+-- 
+2.53.0
+

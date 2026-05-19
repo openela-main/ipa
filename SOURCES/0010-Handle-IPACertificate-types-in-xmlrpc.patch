@@ -1,0 +1,43 @@
+From 8deb4be0962b25dfd43e1245307a8bb9d58cfc48 Mon Sep 17 00:00:00 2001
+From: Rob Crittenden <rcritten@redhat.com>
+Date: Tue, 3 Feb 2026 09:46:25 -0500
+Subject: [PATCH] Handle IPACertificate types in xmlrpc
+
+The wrapping code didn't understand the IPACertificate class
+so retrieving any entry that contained one would fail.
+
+Treat it the same was as its parent class cryptography.Certificate.
+
+Fixes: https://pagure.io/freeipa/issue/9935
+
+Signed-off-by: Rob Crittenden <rcritten@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+---
+ ipalib/rpc.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/ipalib/rpc.py b/ipalib/rpc.py
+index ed35afc965308e03269f05e01400660b207b548d..9773626eb054dd404256267c5fffbba1aa0579dd 100644
+--- a/ipalib/rpc.py
++++ b/ipalib/rpc.py
+@@ -56,7 +56,7 @@ from ipalib.errors import (errors_by_code, UnknownError, NetworkError,
+                            XMLRPCMarshallError, JSONError)
+ from ipalib import errors, capabilities
+ from ipalib.request import context, Connection
+-from ipalib.x509 import Encoding as x509_Encoding
++from ipalib.x509 import Encoding as x509_Encoding, IPACertificate
+ from ipapython import ipautil
+ from ipapython import session_storage
+ from ipapython.cookie import Cookie
+@@ -220,7 +220,7 @@ def xml_wrap(value, version):
+     if isinstance(value, Principal):
+         return unicode(value)
+ 
+-    if isinstance(value, crypto_x509.Certificate):
++    if isinstance(value, (crypto_x509.Certificate, IPACertificate)):
+         return base64.b64encode(
+             value.public_bytes(x509_Encoding.DER)).decode('ascii')
+ 
+-- 
+2.52.0
+

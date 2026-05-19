@@ -69,19 +69,17 @@
 %global krb5_kdb_version 9.0
 # 0.7.16: https://github.com/drkjam/netaddr/issues/71
 %global python_netaddr_version 0.7.19
-%global samba_version 4.22.2
+%global samba_version 4.23.0
 %global slapi_nis_version 0.70.0
 %global python_ldap_version 3.1.0-1
-%if 0%{?rhel} < 9
-# Bug 1929067 - PKI instance creation failed with new 389-ds-base build
-%global ds_version 1.4.3.16-12
-%global selinux_policy_version 3.14.3-107
+# version supporting Allow Uniqueness plugin to search uniqueness attributes
+# using custom matching rules - 389-ds-base 6857
+%if 0%{?rhel} == 9
+%global ds_version 2.7.0-7
 %else
-# version for Allow Uniqueness plugin to search uniqueness attributes
-# using custom matching rules
 %global ds_version 3.1.3-5
-%global selinux_policy_version 38.1.1-1
 %endif
+%global selinux_policy_version 38.1.1-1
 
 %if 0%{?rhel} >= 10
 %global krb5_version 1.21.3-6
@@ -110,8 +108,19 @@
 %global alt_name ipa
 # 0.7.16: https://github.com/drkjam/netaddr/issues/71
 %global python_netaddr_version 0.7.16
-# Require 4.20.0 for libndr4
-%global samba_version 2:4.20.0
+# Require 4.7.0 which brings Python 3 bindings
+# Require 4.12 which has DsRGetForestTrustInformation access rights fixes
+%if 0%{?fedora} <= 40
+%global samba_version 2:4.12.10
+%elif 0%{?fedora} == 41
+# Require 4.20.0 or later for libndr4, latest F41 is 4.21.7 already
+%global samba_version 2:4.21.7
+%elif 0%{?fedora} == 42
+%global samba_version 2:4.22.0
+%else
+# Require 4.23 for passdb ABI bump
+%global samba_version 2:4.23.0
+%endif
 
 # 38.28 or later includes passkey-related fixes
 %global selinux_policy_version 38.28-1
@@ -124,17 +133,11 @@
 # fix for segfault in python3-ldap, https://pagure.io/freeipa/issue/7324
 %global python_ldap_version 3.1.0-1
 
-# Make sure to use 389-ds-base versions that fix https://github.com/389ds/389-ds-base/issues/4700
-# and has DNA interval enabled
-# version supporting LMDB and lib389.cli_ctl.dblib.run_dbscan utility
-%if 0%{?fedora} < 34
-%global ds_version 1.4.4.16-1
-%elif 0%{?fedora} == 40
-%global ds_version 3.0.4-3
-%elif 0%{?fedora} >= 41
-%global ds_version 3.1.1-3
+# Make sure to use 389-ds-base versions that fix https://github.com/389ds/389-ds-base/issues/6857
+%if 0%{?fedora} <= 42
+%global ds_version 3.1.3-2
 %else
-%global ds_version 2.1.0
+%global ds_version 3.1.3-7
 %endif
 
 %if 0%{?fedora} >= 42
@@ -177,11 +180,11 @@
 %global pki_version 10.10.5
 %else
 # Make sure to use PKI versions that work with 389-ds fix for https://github.com/389ds/389-ds-base/issues/4609
-%global pki_version 10.10.5
+%global pki_version 11.7.1
 %endif
 
-# RHEL 8.3+, F32+ has 0.79.13
-%global certmonger_version 0.79.17-1
+# for PKI-API to function
+%global certmonger_version 0.79.21-1
 
 # RHEL 8.2+, F32+ has 3.58
 %global nss_version 3.44.0-4
@@ -218,7 +221,7 @@
 
 # Work-around fact that RPM SPEC parser does not accept
 # "Version: @VERSION@" in freeipa.spec.in used for Autoconf string replacement
-%define IPA_VERSION 4.12.2
+%define IPA_VERSION 4.13.1
 # Release candidate version -- uncomment with one percent for RC versions
 #%%global rc_version
 %define AT_SIGN @
@@ -231,7 +234,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        24%{?rc_version:.%rc_version}%{?dist}.3
+Release:        3%{?rc_version:.%rc_version}%{?dist}.2
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -258,176 +261,42 @@ Source2:        gpgkey-0E63D716D76AC080A4A33513F40800B6298EB963.asc
 
 # RHEL spec file only: START
 %if %{NON_DEVELOPER_BUILD}
-%if 0%{?rhel} == 8
-Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
-Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
-%endif
 %if 0%{?rhel} >= 9
-Patch0002:      0002-freeipa-disable-nis.patch
-Patch0003:      0003-ipatests-Check-Default-PAC-type-is-added-to-config.patch
-Patch0004:      0004-selinux-add-all-IPA-log-files-to-ipa_log_t-file-cont.patch
-Patch0005:      0005-Add-ipa-idrange-fix.patch
-Patch0006:      0006-ipatests-Add-missing-comma-in-test_idrange_no_rid_ba.patch
-Patch0007:      0007-ipatests-Update-ipa-adtrust-install-test.patch
-Patch0008:      0008-Installer-activate-ssh-service-in-sssd.conf.patch
-Patch0009:      0009-ipa-migrate-fix-migration-issues-with-entries-using-.patch
-Patch0010:      0010-ipa-migrate-fix-alternate-entry-search-filter.patch
-Patch0011:      0011-Custodia-in-fips-mode-add-nomac-or-nomacver-to-opens.patch
-Patch0012:      0012-ipatests-make-TestDuplicates-teardowns-order-agnosti.patch
-Patch0013:      0013-UnsafeIPAddress-pass-flag-0-to-IPNetwork.patch
-Patch0014:      0014-ipatests-provide-a-ccache-to-rpcclient-deletetrustdo.patch
-Patch0015:      0015-test_adtrust_install-add-use-krb5-ccache-to-smbclien.patch
-Patch0016:      0016-Don-t-rely-on-removing-the-CA-to-uninstall-the-ACME-.patch
-Patch0017:      0017-ipatests-Fixes-for-ipa-idrange-fix-testsuite.patch
-Patch0018:      0018-spec-Use-nodejs22-on-RHEL-10-and-ELN.patch
-Patch0019:      0019-Do-not-let-user-with-an-expired-OTP-token-to-log-in-.patch
-Patch0020:      0020-ipatests-Activate-ssh-in-sssd.conf.patch
-Patch0021:      0021-ipa-migrate-man-page-fix-typos-and-errors.patch
-Patch0022:      0022-ipatests-Test-for-ipa-hbac-rule-duplication.patch
-Patch0023:      0023-ipatests-refactor-password-file-handling-in-TestHSMI.patch
-Patch0024:      0024-ipatests-2FA-test-cases.patch
-Patch0025:      0025-Small-fixup-to-determine-which-ACME-uninstaller-to-u.patch
-Patch0026:      0026-Fix-a-couple-of-instances-of-the-no-break-control-ch.patch
-Patch0027:      0027-ipa-migrate-dryrun-write-updates-crashes-when-removi.patch
-Patch0028:      0028-ipa-migrate-should-migrate-dns-forward-zones.patch
-Patch0029:      0029-vault-handle-pyca-InternalError-exception-for-PKCS-1.patch
-Patch0030:      0030-ipatests-Tests-for-ipa-migrate-tool.patch
-Patch0031:      0031-Fix-Organization-field-in-Okta-not-required.patch
-Patch0033:      0033-selinux-allow-Cockpit-to-use-HTTP-keytab-on-IPA-serv.patch
-Patch0034:      0034-Minimal-test-for-Cockpit-integration-on-IPA-master.patch
-Patch0035:      0035-ipatests-install-master-with-allow-zone-overlap.patch
-Patch0036:      0036-ipaserver-dcerpc-support-Samba-4.21.patch
-Patch0037:      0037-Change-default-to-RSN-when-389-ds-uses-the-mdb-backe.patch
-Patch0038:      0038-ipatests-Test-that-when-lmdb-is-available-enable-RSN.patch
-Patch0039:      0039-Set-required-version-of-389-ds-for-VLV-fix-on-F40-41.patch
-Patch0040:      0040-Enable-pruning-when-Random-Serial-Numbers-are-enable.patch
-Patch0041:      0041-Don-t-drop-certificates-in-cert-find-if-the-LWCA-was.patch
-Patch0042:      0042-ipatests-pruning-is-enabled-by-default-with-LMDB.patch
-Patch0043:      0043-webuitests-adapt-to-Random-Serial-Numbers.patch
-Patch0044:      0044-Allow-looking-up-constants.Group-by-gid-in-addition-.patch
-Patch0045:      0045-Pass-all-pkiuser-groups-as-suplementary-when-validat.patch
-Patch0046:      0046-ipalib-x509-support-PyCA-44.0.patch
-Patch0047:      0047-pyca-adapt-import-paths-for-TripleDES-cipher.patch
-Patch0048:      0048-ipa-pwd-extop-clarify-OTP-use-over-LDAP-binds.patch
-Patch0049:      0049-adtrust-add-missing-ipaAllowedOperations-objectclass.patch
-Patch0050:      0050-Fix-the-typo-in-ipa_migrate_constants.patch
-Patch0051:      0051-test_ipahealthcheck-skip-connectivity_and_data-check.patch
-Patch0052:      0052-ipatests-Fixes-for-ipa-ipa-migration-tool.patch
-Patch0053:      0053-Installation-test-KRA-on-replica-after-cert-renewal.patch
-Patch0054:      0054-KRA-cert-renewal-update-ca.connector.KRA.transportCe.patch
-Patch0055:      0055-Add-30-second-timeout-for-certmonger-request-start-t.patch
-Patch0056:      0056-Unify-use-of-option-parsers.patch
-Patch0057:      0057-ipa-tools-remove-sensitive-material-from-the-command.patch
-Patch0058:      0058-ipa-otpd-use-oidc_child-s-client-secret-stdin-option.patch
-Patch0059:      0059-Fix-pylint-issue-in-ipatests-i18n.py.patch
-Patch0060:      0060-ipatests-skip-test_ipahealthcheck_ds_configcheck-for.patch
-Patch0061:      0061-ipatests-restart-dirsrv-after-time-jumps.patch
-Patch0062:      0062-ipa-otpd-do-not-pass-OIDC-client-secret-if-there-is-.patch
-Patch0063:      0063-Migrate-Keycloak-tests-to-JDK-21-and-Keycloak-26.patch
-Patch0064:      0064-Apply-certmonger_timeout-to-start_tracking-and-reque.patch
-Patch0065:      0065-Add-DNS-over-TLS-support.patch
-Patch0066:      0066-ipatests-on-rhel10-do-not-install-firefox.patch
-Patch0067:      0067-Configure-the-pki-tomcatd-service-systemd-timeout.patch
-Patch0068:      0068-Align-startup_timeout-with-the-systemd-default-and-d.patch
-Patch0069:      0069-dns-only-disable-unbound-when-DoT-is-enabled.patch
-Patch0070:      0070-ipa-migrate-do-not-migrate-tombstone-entries-ignore-.patch
-Patch0071:      0071-Replace-fips-mode-setup.patch
-Patch0072:      0072-Skip-for-unpatched-freeipa-healthcheck.patch
-Patch0073:      0073-WebUI-fix-the-tooltip-for-Search-Size-limit.patch
-Patch0074:      0074-Leapp-upgrade-skip-systemctl-calls.patch
-Patch0075:      0075-Disable-raw-and-structured-together.patch
-Patch0076:      0076-config-mod-allow-disabling-subordinate-ID-integratio.patch
-Patch0077:      0077-update_dna_shared_config-do-not-fail-when-config-is-.patch
-Patch0078:      0078-baseuser-allow-uidNumber-and-gidNumber-of-32-bit-ran.patch
-Patch0079:      0079-ipatests-add-a-test-to-use-full-32-bit-ID-range-spac.patch
-Patch0080:      0080-idrange-use-minvalue-0-for-baserid-and-secondarybase.patch
-Patch0081:      0081-ipatests-Tests-to-check-data-in-journal-log.patch
-Patch0082:      0082-Disallow-removal-of-dogtag-and-ipa-dnskeysyncd-servi.patch
-Patch0083:      0083-Don-t-require-certificates-to-have-unique-ipaCertSub.patch
-Patch0084:      0084-dns-don-t-populate-forwarders-with-DoT-forwarders.patch
-Patch0085:      0085-Correct-dnsrecord_-tests-for-raw-structured.patch
-Patch0086:      0086-ipatests-Fix-for-ipa-healthcheck-test-in-FIPS-Mode.patch
-Patch0087:      0087-ipa-sidgen-fix-memory-leak-in-ipa_sidgen_add_post_op.patch
-Patch0088:      0088-Add-a-check-into-ipa-cert-fix-tool-to-avoid-updating.patch
-Patch0089:      0089-Test-fix-for-the-update.patch
-Patch0090:      0090-ipa-migrate-remove-replication-state-information.patch
-Patch0091:      0091-ipa-migrate-do-not-process-AD-entgries-in-staging-mo.patch
-Patch0092:      0092-ipa-migrate-improve-suffix-replacement.patch
-Patch0093:      0093-kdb-keep-ipadb_get_connection-from-succeeding-with-n.patch
-Patch0094:      0094-Use-OpenSSL-provider-with-BIND-for-Fedora-42-and-RHE.patch
-Patch0095:      0095-DNS-detect-when-OpenSSL-engine-should-be-removed-on-.patch
-Patch0096:      0096-ipa-dnskeysyncd-use-systemd-tmpfiles-to-handle-token.patch
-Patch0097:      0097-freeipa.spec.in-update-BIND-related-dependencies.patch
-Patch0098:      0098-freeipa.spec.in-do-not-recommend-encrypted-DNS-on-pr.patch
-Patch0099:      0099-dns-install-fix-selinux-avc-relabelto.patch
-Patch0100:      0100-ipatests-test_manual_renewal_master_transfer-must-wa.patch
-Patch0101:      0101-Require-baserid-and-secondarybaserid.patch
-Patch0102:      0102-ipa-config-mod-fix-internalerror-when-setting-an-emp.patch
-Patch0103:      0103-ipatests-Test-to-check-dot-forwarders-are-added-to-u.patch
-Patch0104:      0104-Fix-some-issues-identified-by-a-static-analyzer.patch
-Patch0105:      0105-ipatests-Ignore-run-log-journal-in-test_uninstallati.patch
-Patch0106:      0106-ipatests-Tests-for-krbLastSuccessfulAuth-warning.patch
-Patch0107:      0107-ipatests-ipahealthcheck-warns-for-user-provided-cert.patch
-Patch0108:      0108-Warn-when-UID-is-out-of-local-ID-ranges.patch
-Patch0109:      0109-ipatests-fix-invalid-range-creation-in-test_ipa_idra.patch
-Patch0110:      0110-ipatests-fix-xfail-annotation-for-test_ipa_healthche.patch
-Patch0111:      0111-ipatests-certbot-removed-the-manual-public-ip-loggin.patch
-Patch0112:      0112-ipatests-adapt-error-code-and-message-for-samba-4.22.patch
-Patch0113:      0113-Fix-inconsistency-in-manpage-for-DoT-forwarder-optio.patch
-Patch0114:      0114-Set-krbCanonicalName-admin-REALM-on-the-admin-user.patch
-Patch0115:      0115-ipa-client-install-Fix-nsupdate-issues-when-dns_over.patch
-Patch0116:      0116-ipatests-fix-test_adtrust_install_with_non_ipa_user.patch
-Patch0117:      0117-ipa-idrange-fix-check-that-IPA-server-is-installed.patch
-Patch0118:      0118-ipa-migrate-only-remove-repl-state-attribute-options.patch
-# Patch0119:      0119-ipa-kdb-support-storing-multiple-KVNO-for-the-same-p.patch
-# Patch0120:      0120-Use-ipaplatform-tasks-for-krb5-enctypes.patch
-# Patch0121:      0121-Add-test-for-master-key-upgrade.patch
-Patch0122:      0122-ipa-client-install-New-no-dnssec-validation-option.patch
-Patch0123:      0123-ipaserver-install-dns.py-Allow-to-Turn-off-DNSSEC-va.patch
-Patch0124:      0124-ipatests-Tests-for-32BitIdranges.patch
-Patch0125:      0125-Replica-Request-cert-for-DoT-before-setting-up-bind.patch
-Patch0126:      0126-ipatests-use-sos-report-instead-of-sosreport-command.patch
-Patch0127:      0127-dns-only-overwrite-resolv.conf-during-eDNS-setup-whe.patch
-Patch0128:      0128-Use-correct-capitalization-for-GitHub-and-GitLab.patch
-Patch0129:      0129-kdb-prevent-double-crash-in-RBCD-ACL-free.patch
-Patch0130:      0130-ipatests-Tests-for-ipa-migrate-tool-with-ldif-file.patch
-Patch0131:      0131-dns-disable-all-previous-Unbound-configuration-befor.patch
-Patch0132:      0132-Enforce-uniqueness-across-krbprincipalname-and-krbca.patch
-Patch0133:      0133-ipa-kdb-enforce-PAC-presence-on-TGT-for-TGS-REQ.patch
-Patch0134:      0134-ipatests-extend-test-for-unique-krbcanonicalname.patch
-Patch0135:      0135-ipa-graceperiod-fix-memory-leaks.patch
-Patch0136:      0136-ipa-lockout-fix-memory-leaks.patch
-Patch0137:      0137-ipa-pwd-extop-fix-memory-leaks.patch
-Patch0138:      0138-ipa-sidgen-fix-memory-leaks.patch
-Patch0139:      0139-ipa-range-check-fix-memory-leak.patch
-Patch0140:      0140-ipa-extdom-extop-fix-memory-leaks.patch
-Patch0141:      0141-ipa-enrollment-fix-memory-leaks.patch
-Patch0142:      0142-topology-fix-memory-leaks.patch
-Patch0143:      0143-ipa-pwd-extop-free-krbcfg-in-all-exit-paths.patch
-Patch0144:      0144-ipa-pwd-extop-fix-memory-leaks.patch
-Patch0145:      0145-ipa-pwd-extop-fix-memory-leaks-of-bind-DN.patch
-Patch0146:      0146-ipa-pwd-extop-fix-memory-leaks-in-ipapwd_pre_add.patch
-Patch0147:      0147-ipa-pwd-extop-fix-bind-DN-memory-leaks-in-pre-op-han.patch
-Patch0148:      0148-ipa-pwd-extop-fix-NT-hash-string-memory-leak.patch
-Patch0149:      0149-ipa-pwd-extop-fix-password-history-values-memory-lea.patch
-Patch0150:      0150-ipa-pwd-extop-fix-memory-leaks-in-ipapwd_gen_hashes-.patch
-Patch0151:      0151-ipa-pwd-extop-fix-valueset-memory-leak-in-ipapwd_get.patch
-Patch0152:      0152-ipa-pwd-extop-Don-t-manipulate-the-config-if-not-ret.patch
-Patch0153:      0153-ipatests-fix-kdcproxy-tests-against-AD.patch
-Patch0154:      0154-ipatests-add-extensions-to-server-certificates-for-C.patch
-Patch0155:      0155-ipa-join-initialize-pointer.patch
-Patch0156:      0156-ipatests-remove-xfail-for-PKI-11.7.patch
-Patch0157:      0157-ipatests-update-the-Let-s-Encrypt-cert-chain.patch
-Patch0158:      0158-GetEntryFromLDIF-handle-DNs-case-insensitive.patch
-Patch0159:      0159-Tests-xmlrpc-mark-xfail-tests-requesting-cert-with-s.patch
-Patch0160:      0160-Manual-backport-of-8002.patch
-Patch0161:      0161-ipatests-Add-DNS-functional-integration-tests.patch
-Patch0162:      0162-ipatests-add-Random-Password-based-replica-promotion.patch
-Patch0163:      0163-ipatests-Add-integration-tests-for-ipa-join-command.patch
-Patch0164:      0164-ipatests-Add-DNS-bugzilla-integration-tests.patch
-Patch0165:      0165-ipatests-Add-DNS-integration-tests.patch
-Patch0166:      0166-Allow-32bit-gid.patch
-Patch0167:      0167-ipatests-Fix-test_allow_query_transfer_ipv6-when-IPv.patch
+Patch0001:      0001-ipatests-Move-expire_password-fixture-into-TestIPACo.patch
+Patch0002:      0002-ipatests-Fix-xfail-assertion-for-sssd-2.12.0.patch
+Patch0003:      0003-ipatests-Add-DNS-functional-integration-tests.patch
+Patch0004:      0004-ipa-advise-smart-card-client-script-does-not-need-kr.patch
+Patch0005:      0005-ipatests-Fix-resolver-state-tracking-in-enforced-DNS.patch
+Patch0006:      0006-freeipa.spec.in-Use-systemd-sysusers-to-setup-users-.patch
+Patch0007:      0007-ipatests-add-Random-Password-based-replica-promotion.patch
+Patch0008:      0008-ipatests-Add-integration-tests-for-ipa-join-command.patch
+Patch0009:      0009-fetch_domains-Use-case-insensitive-comparison-for-do.patch
+Patch0010:      0010-Handle-IPACertificate-types-in-xmlrpc.patch
+Patch0011:      0011-Replace-None-with-when-uninstalling-CA.patch
+Patch0012:      0012-ipatests-Add-xmlrpc-tests-for-ipa-delegation-cli.patch
+Patch0013:      0013-ipa-join-initialize-pointer.patch
+Patch0014:      0014-ipatests-Add-DNS-bugzilla-integration-tests.patch
+Patch0015:      0015-Avoid-int-overflow-with-pwpolicy-minlife.patch
+Patch0016:      0016-ipatests-fix-install-method-for-BasePWpolicy.patch
+Patch0017:      0017-webui-tests-update-expected-max-value-for-krbminpwdl.patch
+Patch0018:      0018-ipatests-Add-DNS-integration-tests.patch
+Patch0019:      0019-ipatests-Add-ipa-selfservice-BZ-tests-to-xmlrpc.patch
+Patch0020:      0020-Allow-32bit-gid.patch
+Patch0021:      0021-ipatests-Add-ipa-selfservice-users-tests-to-xmlrpc.patch
+Patch0022:      0022-ipatests-Fix-test_allow_query_transfer_ipv6-when-IPv.patch
+Patch0023:      0023-ipatests-Add-XML-RPC-tests-for-i18n-user-attributes.patch
+Patch0024:      0024-ipatests-Add-selfservice-add-and-selfservice-del-cli.patch
+Patch0025:      0025-ipatests-Additional-tests-for-32BitIdranges.patch
+Patch0026:      0026-ipatests-add-HTTP-GSSAPI-Kerberos-authentication-tes.patch
+Patch0027:      0027-ipatests-Extend-netgroup-test-coverage.patch
+Patch0028:      0028-ipatests-Add-user-principal-ipa-getkeytab-and-ipa-rm.patch
+Patch0029:      0029-ipatests-Additional-tests-for-ipa-ipa-migration-test.patch
+Patch0030:      0030-ipatests-ipa-migrate-ds-test-scenarios.patch
+Patch0031:      0031-ipatests-Add-ipa-selfservice-show-and-selfservice-mo.patch
+Patch0032:      0032-ipatests-Add-selfservice-find-cli-tests-to-xmlrpc-Ad.patch
+Patch0033:      0033-ipatest-make-tests-compatible-with-Pytest-9.patch
+Patch0034:      0034-ipatests-fix-the-method-add_a_record.patch
+Patch0035:      0035-ipatests-fix-migration-test.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 %endif
 %endif
@@ -481,7 +350,7 @@ BuildRequires:  libsss_idmap-devel
 BuildRequires:  libsss_certmap-devel
 BuildRequires:  libsss_nss_idmap-devel >= %{sssd_version}
 %if 0%{?fedora} >= 41 || 0%{?rhel} >= 10
-# Do not use nodejs-24
+# on fedora 41+, stick to nodejs22
 # Do not use nodejs22 on fedora < 41, https://pagure.io/freeipa/issue/9643
 BuildRequires: nodejs(abi) == 127
 %elif 0%{?fedora} >= 39
@@ -490,6 +359,8 @@ BuildRequires:  nodejs(abi) < 127
 %else
 BuildRequires:  nodejs(abi) < 111
 %endif
+# Copr explicitely says no weak refs, so this has to be included
+BuildRequires:  nodejs-npm
 # use old dependency on RHEL 8 for now
 %if 0%{?fedora} >= 31 || 0%{?rhel} >= 9
 BuildRequires:  python3-rjsmin
@@ -764,6 +635,48 @@ Requires: systemd-units >= %{systemd_version}
 %if 0%{?rhel} >= 8 && ! 0%{?eln}
 Requires: system-logos-ipa >= 80.4
 %endif
+
+# The list below is automatically generated by `fix-spec.sh -i`
+# from the install/freeipa-webui
+Provides: bundled(npm(attr-accept)) = 2.2.5
+Provides: bundled(npm(cookie)) = 1.0.2
+Provides: bundled(npm(csstype)) = 3.1.3
+Provides: bundled(npm(file-selector)) = 2.1.2
+Provides: bundled(npm(focus-trap)) = 7.6.4
+Provides: bundled(npm(freeipa-webui)) = 0.1.9
+Provides: bundled(npm(immer)) = 10.1.1
+Provides: bundled(npm(js-tokens)) = 4.0.0
+Provides: bundled(npm(lodash)) = 4.17.21
+Provides: bundled(npm(loose-envify)) = 1.4.0
+Provides: bundled(npm(object-assign)) = 4.1.1
+Provides: bundled(npm(@patternfly/patternfly)) = 6.3.1
+Provides: bundled(npm(@patternfly/react-core)) = 6.3.1
+Provides: bundled(npm(@patternfly/react-icons)) = 6.3.1
+Provides: bundled(npm(@patternfly/react-styles)) = 6.3.1
+Provides: bundled(npm(@patternfly/react-table)) = 6.3.1
+Provides: bundled(npm(@patternfly/react-tokens)) = 6.3.1
+Provides: bundled(npm(prop-types)) = 15.8.1
+Provides: bundled(npm(qrcode.react)) = 4.2.0
+Provides: bundled(npm(react)) = 18.3.1
+Provides: bundled(npm(react-dom)) = 18.3.1
+Provides: bundled(npm(react-dropzone)) = 14.3.8
+Provides: bundled(npm(react-is)) = 16.13.1
+Provides: bundled(npm(react-redux)) = 9.2.0
+Provides: bundled(npm(react-router)) = 7.12.0
+Provides: bundled(npm(redux)) = 5.0.1
+Provides: bundled(npm(@reduxjs/toolkit)) = 2.6.1
+Provides: bundled(npm(redux-thunk)) = 3.1.0
+Provides: bundled(npm(reselect)) = 5.1.1
+Provides: bundled(npm(scheduler)) = 0.23.2
+Provides: bundled(npm(set-cookie-parser)) = 2.7.1
+Provides: bundled(npm(tabbable)) = 6.2.0
+Provides: bundled(npm(tiny-invariant)) = 1.3.3
+Provides: bundled(npm(tslib)) = 2.8.1
+Provides: bundled(npm(@types/prop-types)) = 15.7.14
+Provides: bundled(npm(@types/react)) = 18.3.20
+Provides: bundled(npm(@types/use-sync-external-store)) = 0.0.6
+Provides: bundled(npm(use-sync-external-store)) = 1.5.0
+# end of generated list
 
 Provides: %{alt_name}-server-common = %{version}
 Conflicts: %{alt_name}-server-common
@@ -1082,6 +995,7 @@ Requires: python3-jwcrypto >= 0.4.2
 Requires: python3-libipa_hbac
 Requires: python3-netaddr >= %{python_netaddr_version}
 Requires: python3-ifaddr >= 0.1.7
+Requires: python3-packaging
 Requires: python3-pyasn1 >= 0.3.2-2
 Requires: python3-pyasn1-modules >= 0.3.2-2
 Requires: python3-pyusb
@@ -1090,11 +1004,6 @@ Requires: python3-requests
 Requires: python3-six
 Requires: python3-sss-murmur
 Requires: python3-yubico >= 1.3.2-7
-%if 0%{?rhel} && 0%{?rhel} == 8
-Requires: platform-python-setuptools
-%else
-Requires: python3-setuptools
-%endif
 # For urllib3.util.ssl_match_hostname
 Requires: python3-urllib3 >= 1.25.8
 Requires: python3-systemd
@@ -1229,7 +1138,12 @@ for i in *.po ; do
 done
 popd
 
-%autopatch -p1
+%if 0%{?fedora}>=41
+    %global autopatch_options -q -p1
+%else
+    %global autopatch_options -p1
+%endif
+%autopatch %{autopatch_options}
 
 %build
 # PATH is workaround for https://bugzilla.redhat.com/show_bug.cgi?id=1005235
@@ -1262,7 +1176,7 @@ make %{?_smp_mflags} check VERBOSE=yes LIBDIR=%{_libdir}
 # (These are typically configuration files created by IPA installer.)
 # All other artifacts should be created by make install.
 
-%make_install
+%make_install PACKAGE_NAME=%{package_name}
 
 # don't package ipasphinx for now
 rm -rf %{buildroot}%{python3_sitelib}/ipasphinx*
@@ -1292,6 +1206,9 @@ rm -f %{buildroot}%{_usr}/share/ipa/ui/images/header-logo.png
 rm -f %{buildroot}%{_usr}/share/ipa/ui/images/login-screen-background.jpg
 rm -f %{buildroot}%{_usr}/share/ipa/ui/images/login-screen-logo.png
 rm -f %{buildroot}%{_usr}/share/ipa/ui/images/product-name.png
+rm -f %{buildroot}%{_usr}/share/ipa/modern-ui/assets/images/header-logo.png
+rm -f %{buildroot}%{_usr}/share/ipa/modern-ui/assets/images/login-screen-background.jpg
+rm -f %{buildroot}%{_usr}/share/ipa/modern-ui/assets/images/product-name.png
 %endif
 # RHEL spec file only: END
 
@@ -1338,9 +1255,6 @@ mkdir -p %{buildroot}%{_sysconfdir}/httpd/conf.d/
 /bin/touch %{buildroot}%{_sysconfdir}/httpd/conf.d/ipa-pki-proxy.conf
 /bin/touch %{buildroot}%{_sysconfdir}/httpd/conf.d/ipa-rewrite.conf
 /bin/touch %{buildroot}%{_usr}/share/ipa/html/ca.crt
-/bin/touch %{buildroot}%{_usr}/share/ipa/html/krb.con
-/bin/touch %{buildroot}%{_usr}/share/ipa/html/krb5.ini
-/bin/touch %{buildroot}%{_usr}/share/ipa/html/krbrealm.con
 
 mkdir -p %{buildroot}%{_libdir}/krb5/plugins/libkrb5
 touch %{buildroot}%{_libdir}/krb5/plugins/libkrb5/winbind_krb5_locator.so
@@ -1359,6 +1273,9 @@ mkdir -p %{buildroot}%{_sysconfdir}/cron.d
 %if ! %{ONLY_CLIENT}
 
 %post server
+# Drop the systemd users file BEFORE restarting dbus and oddjob
+# Otherwise dbus doesn't recognize ipaapi user
+%sysusers_create %{_sysusersdir}/ipa.conf
 # NOTE: systemd specific section
     /bin/systemctl --system daemon-reload 2>&1 || :
 # END
@@ -1425,18 +1342,6 @@ if [ -e /usr/sbin/ipa_kpasswd ]; then
 fi
 
 
-%pre server-common
-# create users and groups
-# create kdcproxy group and user
-getent group kdcproxy >/dev/null || groupadd -f -r kdcproxy
-getent passwd kdcproxy >/dev/null || useradd -r -g kdcproxy -s /sbin/nologin -d / -c "IPA KDC Proxy User" kdcproxy
-# create ipaapi group and user
-getent group ipaapi >/dev/null || groupadd -f -r ipaapi
-getent passwd ipaapi >/dev/null || useradd -r -g ipaapi -s /sbin/nologin -d / -c "IPA Framework User" ipaapi
-# add apache to ipaaapi group
-id -Gn apache | grep '\bipaapi\b' >/dev/null || usermod apache -a -G ipaapi
-
-
 %post server-dns
 %systemd_post ipa-dnskeysyncd.service ipa-ods-exporter.socket ipa-ods-exporter.service
 
@@ -1458,8 +1363,8 @@ fi
 %post server-trust-ad
 %{_sbindir}/update-alternatives --install %{_libdir}/krb5/plugins/libkrb5/winbind_krb5_locator.so \
         winbind_krb5_locator.so /dev/null 90
-/bin/systemctl reload-or-try-restart dbus
-/bin/systemctl reload-or-try-restart oddjobd
+/bin/systemctl reload-or-try-restart dbus >/dev/null 2>&1 || :
+/bin/systemctl reload-or-try-restart oddjobd >/dev/null 2>&1 || :
 
 
 %posttrans server-trust-ad
@@ -1476,8 +1381,8 @@ if [ $1 -eq 0 ]; then
     %{_sbindir}/update-alternatives --remove winbind_krb5_locator.so /dev/null
     # Skip systemctl calls when leapp upgrade is in progress
     if [ -z "$LEAPP_IPU_IN_PROGRESS" ] ; then
-        /bin/systemctl reload-or-try-restart dbus
-        /bin/systemctl reload-or-try-restart oddjobd
+        /bin/systemctl reload-or-try-restart dbus >/dev/null 2>&1 || :
+        /bin/systemctl reload-or-try-restart oddjobd >/dev/null 2>&1 || :
     fi
 fi
 
@@ -1532,6 +1437,17 @@ if [ $1 -gt 1 ] ; then
                 sed -E --in-place=.orig 's/^(GlobalKnownHostsFile \/var\/lib\/sss\/pubconf\/known_hosts)$/# disabled by ipa-client update\n# \1/' $SSH_CLIENT_SYSTEM_CONF
                 sed -E --in-place=.orig 's/(ProxyCommand \/usr\/bin\/sss_ssh_knownhostsproxy -p \%p \%h)/# replaced by ipa-client update\n    KnownHostsCommand \/usr\/bin\/sss_ssh_knownhosts \%H/' $SSH_CLIENT_SYSTEM_CONF
             fi
+        fi
+    fi
+
+    UNBOUND_CFG=/etc/unbound/conf.d/zzz-ipa.conf
+    if [ -f "$UNBOUND_CFG" -a $restore -ge 2 ]; then
+        # The client has been configured for Dot
+        # replace the line tls-cert-bundle: /etc/pki/tls/certs/ca-bundle.crt
+        # with tls-system-cert: yes
+        # See https://fedoraproject.org/wiki/Changes/droppingOfCertPemFile
+        if grep -E -q 'tls-cert-bundle: \/etc\/pki\/tls\/certs\/ca-bundle.crt'  $UNBOUND_CFG 2>/dev/null; then
+            sed -E --in-place=.orig 's/tls-cert-bundle: \/etc\/pki\/tls\/certs\/ca-bundle.crt/tls-system-cert: yes/' $UNBOUND_CFG
         fi
     fi
 fi
@@ -1807,10 +1723,12 @@ fi
 %files server-common
 %doc README.md Contributors.txt
 %license COPYING
+%license %{_defaultlicensedir}/%{package_name}-server-common/modern-ui/COPYING
 %ghost %verify(not owner group) %dir %{_sharedstatedir}/kdcproxy
 %dir %attr(0755,root,root) %{_sysconfdir}/ipa/kdcproxy
 %config(noreplace) %{_sysconfdir}/ipa/kdcproxy/kdcproxy.conf
 # NOTE: systemd specific section
+%{_sysusersdir}/ipa.conf
 %{_tmpfilesdir}/ipa.conf
 %attr(644,root,root) %{_unitdir}/ipa-custodia.service
 %ghost %attr(644,root,root) %{etc_systemd_dir}/httpd.d/ipa.conf
@@ -1834,6 +1752,7 @@ fi
 %dir %{_usr}/share/ipa/migration
 %{_usr}/share/ipa/migration/index.html
 %{_usr}/share/ipa/migration/migration.py*
+%{_usr}/share/ipa/modern-ui
 %dir %{_usr}/share/ipa/ui
 %{_usr}/share/ipa/ui/index.html
 %{_usr}/share/ipa/ui/reset_password.html
@@ -1875,9 +1794,6 @@ fi
 %ghost %attr(0644,root,root) %config(noreplace) %{_usr}/share/ipa/html/ca.crt
 %ghost %attr(0640,root,named) %config(noreplace) %{_sysconfdir}/named/ipa-ext.conf
 %ghost %attr(0640,root,named) %config(noreplace) %{_sysconfdir}/named/ipa-options-ext.conf
-%ghost %attr(0644,root,root) %{_usr}/share/ipa/html/krb.con
-%ghost %attr(0644,root,root) %{_usr}/share/ipa/html/krb5.ini
-%ghost %attr(0644,root,root) %{_usr}/share/ipa/html/krbrealm.con
 %dir %{_usr}/share/ipa/updates/
 %{_usr}/share/ipa/updates/*
 %dir %{_localstatedir}/lib/ipa
@@ -2090,19 +2006,54 @@ fi
 %endif
 
 %changelog
-* Mon Mar 16 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-24.3
-- Resolves: RHEL-155026 Pagure #9953: Adding a group with 32Bit Idrange fails
-- Resolves: RHEL-153624 Pagure #9854: Erroneous case-sensitivity in offline DSE lookup
-- Resolves: RHEL-151763 Include test fixes for 10.1.z in python3-ipatests
+* Wed Apr 15 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.13.1-3.2
+- Resolves: RHEL-168516 TestIPAMigrationProdMode tests are missing
 
-* Thu Feb 05 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-24.2
-- Resolves: RHEL-141303 AddressSanitizer: SEGV ipa-pwd-extop/common.c:584 in ipapwd_gen_checks
-- Resolves: RHEL-141317 Memory leaks in IPA plugins
-- Resolves: RHEL-129968 Fix ipatests for kdcproxy after CVE-2025-59088 fix
-- Resolves: RHEL-107483 ipa-ca-install fails on CA-less replica due to inadequate key usage in master certificate
+* Fri Apr 10 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.13.1-3.1
+- Resolves: RHEL-155027 Adding a group with 32Bit Idrange fails
+- Resolves: RHEL-153145 IdM password policy Min lifetime is not enforced when high minlife is set
+- Resolves: RHEL-166864 Include latest fixes in python3-ipatests package
 
-* Tue Sep 30 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-24.1
-- Resolves: RHEL-118447 CVE-2025-7493 ipa: Privilege escalation from host to domain admin in FreeIPA
+* Wed Feb 11 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.13.1-3
+- Resolves:  RHEL-4895 ipa use systemd-sysusers
+
+* Fri Feb 06 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.13.1-2
+- Resolves: RHEL-146023 When using xmlrpc, ipa server failed with assert type(value) in (unicode, float, int, bool, type(None))
+- Resolves:  RHEL-145855 Include latest fixes in python3-ipatests package
+- Resolves:  RHEL-88855 ipa uninstallation is failing with message "'NoneType' object has no attribute 'lower'"
+- Resolves:  RHEL-43143 ipa-advise client script requires keytab (should just require root access on client system)
+- Resolves:  RHEL-4895 ipa use systemd-sysusers
+- Resolves:  RHEL-4823 Names of domains from a trusted forest should be compared case-insentive
+
+* Fri Jan 16 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.13.1-1
+- Resolves: RHEL-140587 Support replaceable WebUI artwork for RHEL and CentOS
+- Resolves: RHEL-113778 Command that retrieve and install new CA certificates
+- Resolves: RHEL-141296 AddressSanitizer: SEGV ipa-pwd-extop/common.c:584 in ipapwd_gen_checks
+- Resolves: RHEL-141011 Include latest fixes in python3-ipatests package
+- Resolves: RHEL-119339 Memory leaks in IPA plugins
+
+* Mon Dec 08 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.13.0-1
+- Resolves: RHEL-120956 Rebase ipa to latest 4.13.x version for RHEL 10.2
+- Resolves: RHEL-90121 Add modern WebUI as submodule and enable routing in Apache
+- Resolves: RHEL-132337 Include latest fixes in python3-ipatests package
+- Resolves: RHEL-129965 Fix ipatests for kdcproxy after CVE-2025-59088 fix
+- Resolves: RHEL-129547 Switch IPA to use the PKI python API directly rather than RPC calls
+- Resolves: RHEL-133342 After upgrade from 9.7 to 9.8 ipactl restart fails to restart winbind service
+
+* Mon Nov 17 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-27
+- Resolves: RHEL-122767 ATTR_NAME_BY_OID is missing OID 2.5.4.97, organizationIdentifier
+- Resolves: RHEL-119628 Include fixes in python3-ipatests
+- Resolves: RHEL-110204 RFE: Enable external password reset agents to use ipa_pwd_extop in RHEL IdM
+- Resolves: RHEL-119481 RFE: Update IdM password policy configurations to meet M-22-09 by restricting spaces and require number character class
+- Resolves: RHEL-126761 [RFE] Support storing LWCA private keys on an HSM
+- Resolves: RHEL-86030 [RFE] ipa-client-automount should have an option to include domain of the machine.
+- Resolves: RHEL-119617 test_cacert_manage fails due to expired Let's Encrypt R3 certificate
+
+* Tue Sep 30 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-26
+- Resolves: RHEL-118446 ipa: Privilege escalation from host to domain admin in FreeIPA
+
+* Thu Sep 18 2025 Florence Blanc-Renaud <flo@redhat.com> - 4.12.2-25
+- Related: RHEL-114545 Rebase Samba to the latest 4.23.x release
 
 * Tue Aug 19 2025 Rafael Jeffman <rjeffman@redhat.com> - 4.12.2-24
 - Resolves: RHEL-109895 Revert allow update of Kerberos master key

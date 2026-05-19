@@ -1,0 +1,506 @@
+From 51e669d46f912d39841bc40560682f9f414f68fe Mon Sep 17 00:00:00 2001
+From: Jay Gondaliya <jgondali@redhat.com>
+Date: Mon, 16 Mar 2026 15:03:17 +0530
+Subject: [PATCH] ipatests: Add ipa selfservice-show and selfservice-mod CLI
+ tests to xmlrpc
+
+Add two new Declarative test classes to test_selfservice_plugin.py covering the selfservice-show and selfservice-mod CLI command options, converted from the legacy bash test suite (selfservice_show_1001-1003 and selfservice_mod_1002-1008).
+
+test_selfservice_show_cli covers:
+- selfservice-show --all
+- selfservice-show --all --raw
+- selfservice-show --raw
+
+test_selfservice_mod_cli covers:
+- selfservice-mod with invalid attrs (negative)
+- selfservice-mod with invalid permissions (negative)
+- selfservice-mod with no changes / EmptyModlist (negative)
+- selfservice-mod with bad attrs must not delete the entry (BZ 747741)
+- selfservice-mod changing and expanding attrs (positive)
+- selfservice-mod with invalid/same permissions (negative)
+- selfservice-mod changing and expanding permissions (positive)
+
+Tests for selfservice_mod_1001 and selfservice_mod_1009, which require interactive input and are not valid in a non-interactive context, are covered as integration tests in test_commands.py by test_selfservice_mod_no_attrs_or_permissions_all and test_selfservice_mod_no_attrs_or_permissions_raw. Tests for BZ 772675 (mod --raw) and BZ 747741 (bad attrs) cross-reference existing coverage in test_selfservice_misc.
+
+Fixes: https://pagure.io/freeipa/issue/9945
+Assisted-by: Claude <noreply@anthropic.com>
+Signed-off-by: Jay Gondaliya <jgondali@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+---
+ ipatests/test_integration/test_commands.py    |  54 +++
+ .../test_xmlrpc/test_selfservice_plugin.py    | 396 ++++++++++++++++++
+ 2 files changed, 450 insertions(+)
+
+diff --git a/ipatests/test_integration/test_commands.py b/ipatests/test_integration/test_commands.py
+index 6d7ee8f2d9b2d9b6e73436b6815c27414a098e60..5021747b67e0b97d322b13261f7e90e688f50cfe 100644
+--- a/ipatests/test_integration/test_commands.py
++++ b/ipatests/test_integration/test_commands.py
+@@ -391,6 +391,60 @@ class TestIPACommand(IntegrationTest):
+         assert result.returncode == 1
+         assert "Number of permissions added 0" in result.stdout_text
+ 
++    def test_selfservice_mod_no_attrs_or_permissions_all(self):
++        """selfservice-mod --all with no --attrs or --permissions fails.
++
++        When selfservice-mod is invoked with only --all and neither --attrs
++        nor --permissions is supplied, the CLI has no modifications to apply
++        and must return a non-zero exit code with an appropriate error message.
++        """
++        entry = 'test_selfservice_mod_all'
++        tasks.kinit_admin(self.master)
++        self.master.run_command(
++            ['ipa', 'selfservice-add', entry,
++             '--attrs=l', '--permissions=write']
++        )
++        try:
++            result = self.master.run_command(
++                ['ipa', 'selfservice-mod', entry, '--all'],
++                stdin_text='\n',
++                raiseonerr=False,
++            )
++            assert result.returncode != 0
++            assert 'no modifications to be performed' in result.stderr_text
++        finally:
++            self.master.run_command(
++                ['ipa', 'selfservice-del', entry],
++                raiseonerr=False,
++            )
++
++    def test_selfservice_mod_no_attrs_or_permissions_raw(self):
++        """selfservice-mod --raw with no --attrs or --permissions fails.
++
++        When selfservice-mod is invoked with only --raw and neither --attrs
++        nor --permissions is supplied, the CLI has no modifications to apply
++        and must return a non-zero exit code with an appropriate error message.
++        """
++        entry = 'test_selfservice_mod_raw'
++        tasks.kinit_admin(self.master)
++        self.master.run_command(
++            ['ipa', 'selfservice-add', entry,
++             '--attrs=l', '--permissions=write']
++        )
++        try:
++            result = self.master.run_command(
++                ['ipa', 'selfservice-mod', entry, '--raw'],
++                stdin_text='\n',
++                raiseonerr=False,
++            )
++            assert result.returncode != 0
++            assert 'no modifications to be performed' in result.stderr_text
++        finally:
++            self.master.run_command(
++                ['ipa', 'selfservice-del', entry],
++                raiseonerr=False,
++            )
++
+     def test_change_sysaccount_password_issue7561(self):
+         sysuser = 'system'
+         original_passwd = 'Secret123'
+diff --git a/ipatests/test_xmlrpc/test_selfservice_plugin.py b/ipatests/test_xmlrpc/test_selfservice_plugin.py
+index 8f2307a20cbbaa5e17a1425aea4d254382779a6a..48dfd7cc30e4519c3cbc7f3b97ea73539bf4e500 100644
+--- a/ipatests/test_xmlrpc/test_selfservice_plugin.py
++++ b/ipatests/test_xmlrpc/test_selfservice_plugin.py
+@@ -942,3 +942,399 @@ class test_selfservice_cli_add_del(Declarative):
+         ),
+ 
+     ]
++
++
++# selfservice-show & selfservice-mod CLI test rule names
++
++SS_CLI_SHOW = 'SELFSERVICE_SHOW_TEST'
++
++
++@pytest.mark.tier1
++class test_selfservice_show_cli(Declarative):
++    """Test selfservice-show CLI options."""
++
++    cleanup_commands = [
++        ('selfservice_del', [SS_CLI_SHOW], {}),
++    ]
++
++    tests = [
++        dict(
++            desc='Create %r for show tests' % SS_CLI_SHOW,
++            command=(
++                'selfservice_add',
++                [SS_CLI_SHOW],
++                dict(
++                    attrs=['l'],
++                    permissions='write',
++                ),
++            ),
++            expected=dict(
++                value=SS_CLI_SHOW,
++                summary='Added selfservice "%s"' % SS_CLI_SHOW,
++                result=dict(
++                    attrs=['l'],
++                    permissions=['write'],
++                    selfaci=True,
++                    aciname=SS_CLI_SHOW,
++                ),
++            ),
++        ),
++
++        # Show with --all (positive test)
++        dict(
++            desc='Show %r with --all' % SS_CLI_SHOW,
++            command=(
++                'selfservice_show',
++                [SS_CLI_SHOW],
++                {'all': True},
++            ),
++            expected=dict(
++                value=SS_CLI_SHOW,
++                summary=None,
++                result=dict(
++                    attrs=['l'],
++                    permissions=['write'],
++                    selfaci=True,
++                    aciname=SS_CLI_SHOW,
++                ),
++            ),
++        ),
++
++        # Show with --all and --raw (positive test)
++        dict(
++            desc='Show %r with --all and --raw' % SS_CLI_SHOW,
++            command=(
++                'selfservice_show',
++                [SS_CLI_SHOW],
++                {'all': True, 'raw': True},
++            ),
++            expected=dict(
++                value=SS_CLI_SHOW,
++                summary=None,
++                result={
++                    'aci': '(targetattr = "l")'
++                           '(version 3.0;acl '
++                           '"selfservice:%s";'
++                           'allow (write) '
++                           'userdn = "ldap:///self";)'
++                           % SS_CLI_SHOW,
++                },
++            ),
++        ),
++
++        # Show with --raw (positive test)
++        dict(
++            desc='Show %r with --raw' % SS_CLI_SHOW,
++            command=(
++                'selfservice_show',
++                [SS_CLI_SHOW],
++                {'raw': True},
++            ),
++            expected=dict(
++                value=SS_CLI_SHOW,
++                summary=None,
++                result={
++                    'aci': '(targetattr = "l")'
++                           '(version 3.0;acl '
++                           '"selfservice:%s";'
++                           'allow (write) '
++                           'userdn = "ldap:///self";)'
++                           % SS_CLI_SHOW,
++                },
++            ),
++        ),
++
++        dict(
++            desc='Delete %r' % SS_CLI_SHOW,
++            command=('selfservice_del', [SS_CLI_SHOW], {}),
++            expected=dict(
++                result=True,
++                value=SS_CLI_SHOW,
++                summary='Deleted selfservice "%s"' % SS_CLI_SHOW,
++            ),
++        ),
++
++    ]
++
++
++SS_CLI_MOD = 'SELFSERVICE_MOD_TEST'
++
++
++@pytest.mark.tier1
++class test_selfservice_mod_cli(Declarative):
++    """Test selfservice-mod CLI options."""
++
++    cleanup_commands = [
++        ('selfservice_del', [SS_CLI_MOD], {}),
++    ]
++
++    tests = [
++        dict(
++            desc='Create %r for mod tests' % SS_CLI_MOD,
++            command=(
++                'selfservice_add',
++                [SS_CLI_MOD],
++                dict(
++                    attrs=['l'],
++                    permissions='write',
++                ),
++            ),
++            expected=dict(
++                value=SS_CLI_MOD,
++                summary='Added selfservice "%s"' % SS_CLI_MOD,
++                result=dict(
++                    attrs=['l'],
++                    permissions=['write'],
++                    selfaci=True,
++                    aciname=SS_CLI_MOD,
++                ),
++            ),
++        ),
++
++        # test_selfservice_mod_no_attrs_or_permissions_all and
++        # test_selfservice_mod_no_attrs_or_permissions_raw are covered in
++        # integration tests in test_commands.py since they are
++        # interactive tests.
++
++        # Modify with --all --attrs=badattr --permissions=write --raw
++        # (negative test - invalid attr value)
++        dict(
++            desc='Try to modify %r with invalid attrs' % SS_CLI_MOD,
++            command=(
++                'selfservice_mod',
++                [SS_CLI_MOD],
++                dict(
++                    attrs=['badattr'],
++                    permissions='write',
++                    all=True,
++                    raw=True,
++                ),
++            ),
++            expected=errors.InvalidSyntax(
++                attr=(
++                    r'targetattr "badattr" does not exist in schema. '
++                    r'Please add attributeTypes "badattr" to '
++                    r'schema if necessary. '
++                    r'ACL Syntax Error(-5):'
++                    r'(targetattr = \22badattr\22)'
++                    r'(version 3.0;acl '
++                    r'\22selfservice:%s\22;'
++                    r'allow (write) userdn = \22ldap:///self\22;)'
++                ) % SS_CLI_MOD,
++            ),
++        ),
++
++        # Modify with --all --attrs=l --permissions=badperm --raw
++        # (negative test - invalid permission value)
++        dict(
++            desc=(
++                'Try to modify %r with invalid permissions'
++                % SS_CLI_MOD
++            ),
++            command=(
++                'selfservice_mod',
++                [SS_CLI_MOD],
++                dict(
++                    attrs=['l'],
++                    permissions='badperm',
++                    all=True,
++                    raw=True,
++                ),
++            ),
++            expected=errors.ValidationError(
++                name='permissions',
++                error='"badperm" is not a valid permission',
++            ),
++        ),
++
++        # Modify with same attrs and perms already set
++        # (negative test - no modifications error)
++        dict(
++            desc='Try to modify %r with no changes' % SS_CLI_MOD,
++            command=(
++                'selfservice_mod',
++                [SS_CLI_MOD],
++                dict(
++                    attrs=['l'],
++                    permissions='write',
++                    all=True,
++                    raw=True,
++                ),
++            ),
++            expected=errors.EmptyModlist(),
++        ),
++
++        # Modify with --attrs=badattrs (negative test,
++        # BZ 747741 - a bad attrs mod must not delete the entry).
++        dict(
++            desc=(
++                'Try to modify %r with bad attrs (BZ 747741)'
++                % SS_CLI_MOD
++            ),
++            command=(
++                'selfservice_mod',
++                [SS_CLI_MOD],
++                dict(attrs=['badattrs']),
++            ),
++            expected=errors.InvalidSyntax(
++                attr=(
++                    r'targetattr "badattrs" does not exist in schema. '
++                    r'Please add attributeTypes "badattrs" to '
++                    r'schema if necessary. '
++                    r'ACL Syntax Error(-5):'
++                    r'(targetattr = \22badattrs\22)'
++                    r'(version 3.0;acl '
++                    r'\22selfservice:%s\22;'
++                    r'allow (write) userdn = \22ldap:///self\22;)'
++                ) % SS_CLI_MOD,
++            ),
++        ),
++
++        # Verify entry still exists after failed mod (BZ 747741)
++        dict(
++            desc=(
++                'Verify %r still exists after failed mod'
++                % SS_CLI_MOD
++            ),
++            command=('selfservice_show', [SS_CLI_MOD], {}),
++            expected=dict(
++                value=SS_CLI_MOD,
++                summary=None,
++                result=dict(
++                    attrs=['l'],
++                    permissions=['write'],
++                    selfaci=True,
++                    aciname=SS_CLI_MOD,
++                ),
++            ),
++        ),
++
++        # Modify with --attrs=mobile (positive test - change attr)
++        dict(
++            desc='Modify %r attrs to mobile' % SS_CLI_MOD,
++            command=(
++                'selfservice_mod',
++                [SS_CLI_MOD],
++                dict(attrs=['mobile']),
++            ),
++            expected=dict(
++                value=SS_CLI_MOD,
++                summary='Modified selfservice "%s"' % SS_CLI_MOD,
++                result=dict(
++                    attrs=['mobile'],
++                    permissions=['write'],
++                    selfaci=True,
++                    aciname=SS_CLI_MOD,
++                ),
++            ),
++        ),
++
++        # Modify with --attrs={mobile,l} (positive test - add attr)
++        dict(
++            desc='Modify %r attrs to mobile and l' % SS_CLI_MOD,
++            command=(
++                'selfservice_mod',
++                [SS_CLI_MOD],
++                dict(attrs=['mobile', 'l']),
++            ),
++            expected=dict(
++                value=SS_CLI_MOD,
++                summary='Modified selfservice "%s"' % SS_CLI_MOD,
++                result=dict(
++                    attrs=['mobile', 'l'],
++                    permissions=['write'],
++                    selfaci=True,
++                    aciname=SS_CLI_MOD,
++                ),
++            ),
++        ),
++
++        # Modify with --permissions=badperm
++        # (negative test - invalid permission string)
++        dict(
++            desc=(
++                'Try to modify %r with invalid permissions'
++                % SS_CLI_MOD
++            ),
++            command=(
++                'selfservice_mod',
++                [SS_CLI_MOD],
++                dict(permissions='badperm'),
++            ),
++            expected=errors.ValidationError(
++                name='permissions',
++                error='"badperm" is not a valid permission',
++            ),
++        ),
++
++        # Modify with --permissions=write
++        # (negative test - same perm already set, no modification)
++        dict(
++            desc='Try to modify %r with same permissions' % SS_CLI_MOD,
++            command=(
++                'selfservice_mod',
++                [SS_CLI_MOD],
++                dict(permissions='write'),
++            ),
++            expected=errors.EmptyModlist(),
++        ),
++
++        # Modify with --permissions=read (positive test - change perm)
++        dict(
++            desc='Modify %r permissions to read' % SS_CLI_MOD,
++            command=(
++                'selfservice_mod',
++                [SS_CLI_MOD],
++                dict(permissions='read'),
++            ),
++            expected=dict(
++                value=SS_CLI_MOD,
++                summary='Modified selfservice "%s"' % SS_CLI_MOD,
++                result=dict(
++                    attrs=['mobile', 'l'],
++                    permissions=['read'],
++                    selfaci=True,
++                    aciname=SS_CLI_MOD,
++                ),
++            ),
++        ),
++
++        # Modify with --permissions={read,write} (positive test - add perm)
++        dict(
++            desc=(
++                'Modify %r permissions to read and write'
++                % SS_CLI_MOD
++            ),
++            command=(
++                'selfservice_mod',
++                [SS_CLI_MOD],
++                dict(permissions=['read', 'write']),
++            ),
++            expected=dict(
++                value=SS_CLI_MOD,
++                summary='Modified selfservice "%s"' % SS_CLI_MOD,
++                result=dict(
++                    attrs=['mobile', 'l'],
++                    permissions=['read', 'write'],
++                    selfaci=True,
++                    aciname=SS_CLI_MOD,
++                ),
++            ),
++        ),
++
++        # test_selfservice_mod_no_attrs_or_permissions_all and
++        # test_selfservice_mod_no_attrs_or_permissions_raw are covered in
++        # integration tests in test_commands.py since they are
++        # interactive tests.
++
++        dict(
++            desc='Delete %r' % SS_CLI_MOD,
++            command=('selfservice_del', [SS_CLI_MOD], {}),
++            expected=dict(
++                result=True,
++                value=SS_CLI_MOD,
++                summary='Deleted selfservice "%s"' % SS_CLI_MOD,
++            ),
++        ),
++
++    ]
+-- 
+2.53.0
+

@@ -1,0 +1,35 @@
+From 8a7486bc980b7f9b19e6b15dee6642679198c40f Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 16 Feb 2026 16:18:06 +0100
+Subject: [PATCH] webui tests: update expected max value for krbminpwdlife
+
+The Maximum allowed value for krbminpwdlife has been changed
+by a recent commit to 480000.
+Update the test to be consistent.
+
+Fixes: https://pagure.io/freeipa/issue/9947
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Carla Martinez <carlmart@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+---
+ ipatests/test_webui/test_pwpolicy.py | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/ipatests/test_webui/test_pwpolicy.py b/ipatests/test_webui/test_pwpolicy.py
+index 74484ab1bbeb1522e6e0efe8e12ee8bcf66ddebb..d84bcea410647248c9082aeb64cfca4164ecb03d 100644
+--- a/ipatests/test_webui/test_pwpolicy.py
++++ b/ipatests/test_webui/test_pwpolicy.py
+@@ -151,6 +151,10 @@ class test_pwpolicy(UI_driver):
+             elif field == 'krbpwdmindiffchars':
+                 self.check_expected_error(field, 'Maximum value is 5',
+                                           maximum_value)
++            # verifying if field value is more than 480000
++            elif field == 'krbminpwdlife':
++                self.check_expected_error(field, 'Maximum value is 480000',
++                                          maximum_value)
+             # verifying if field value is more than 2147483647
+             else:
+                 self.check_expected_error(field, 'Maximum value is 2147483647',
+-- 
+2.53.0
+

@@ -1,0 +1,42 @@
+From 0bf2a549a8a858c393ef59487bc1d395e5535c07 Mon Sep 17 00:00:00 2001
+From: Stanislav Levin <slev@altlinux.org>
+Date: Tue, 24 Feb 2026 19:44:51 +0300
+Subject: [PATCH] ipatest: make tests compatible with Pytest 9
+
+https://docs.pytest.org/en/stable/deprecations.html#applying-a-mark-to-a-fixture-function
+
+> Applying a mark to a fixture function never had any effect, but it is a common user error.
+
+Move marks from the fixture to test class.
+
+Fixes: https://pagure.io/freeipa/issue/9950
+Signed-off-by: Stanislav Levin <slev@altlinux.org>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+---
+ ipatests/test_ipapython/test_ldap_cache.py | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/ipatests/test_ipapython/test_ldap_cache.py b/ipatests/test_ipapython/test_ldap_cache.py
+index c960db027e1cc377687490105e04fb8880cd35d0..49724ad2fc5aaa083f21422de7eec22009e97f15 100644
+--- a/ipatests/test_ipapython/test_ldap_cache.py
++++ b/ipatests/test_ipapython/test_ldap_cache.py
+@@ -20,8 +20,6 @@ def hits_and_misses(cache, hits, misses):
+ 
+ 
+ @pytest.fixture(scope='class')
+-@pytest.mark.tier1
+-@pytest.mark.needs_ipaapi
+ def class_cache(request):
+     cache = ipaldap.LDAPCache(api.env.ldap_uri)
+     hits_and_misses(cache, 0, 0)
+@@ -56,6 +54,7 @@ def class_cache(request):
+ @pytest.mark.usefixtures('class_cache')
+ @pytest.mark.skip_ipaclient_unittest
+ @pytest.mark.needs_ipaapi
++@pytest.mark.tier1
+ class TestLDAPCache:
+ 
+     def test_one(self):
+-- 
+2.53.0
+

@@ -1,0 +1,159 @@
+From a583b0dc08536a50e10b76e27861864b61906355 Mon Sep 17 00:00:00 2001
+From: David Hanina <dhanina@redhat.com>
+Date: Mon, 2 Feb 2026 11:14:48 +0100
+Subject: [PATCH] Replace None with '' when uninstalling CA
+
+At many places we're obtaining records from a config file and expect the
+config to have those keys, but the user may delete the line instead of
+setting the value to false, this then leads to failed uninstall. This
+patch replaces None with '' at some places that do not check for None.
+
+Fixes: https://pagure.io/freeipa/issue/9921
+Signed-off-by: David Hanina <dhanina@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+Reviewed-By: Rob Crittenden <rcritten@redhat.com>
+---
+ ipaserver/install/ca.py                       | 12 ++++--
+ ipaserver/install/cainstance.py               | 14 ++++++-
+ ipaserver/install/server/upgrade.py           |  3 +-
+ .../test_integration/test_crlgen_manage.py    |  3 +-
+ .../test_integration/test_uninstallation.py   | 41 +++++++++++++++++++
+ 5 files changed, 66 insertions(+), 7 deletions(-)
+
+diff --git a/ipaserver/install/ca.py b/ipaserver/install/ca.py
+index 5a026aa4c556f7012552052cd08223746f3c39ae..2e953a567a3a230cb2a5e35192af76c61f8c1047 100644
+--- a/ipaserver/install/ca.py
++++ b/ipaserver/install/ca.py
+@@ -340,14 +340,20 @@ def uninstall_crl_check(options):
+ 
+     try:
+         crlgen_enabled = ca.is_crlgen_enabled()
+-    except cainstance.InconsistentCRLGenConfigException:
++    except cainstance.InconsistentCRLGenConfigException as e:
+         # If config is inconsistent, let's be safe and act as if
+         # crl gen was enabled
++        print(e)
+         crlgen_enabled = True
+ 
+     if crlgen_enabled:
+-        print("Deleting this server will leave your installation "
+-              "without a CRL generation master.")
++        if not options.ignore_last_of_role:
++            print("Deleting this server will leave your installation "
++                  "without a CRL generation master. Use --ignore-last-of-role "
++                  "to bypass this check.")
++        else:
++            print("Deleting this server will leave your installation "
++                  "without a CRL generation master.")
+         if (options.unattended and not options.ignore_last_of_role) or \
+            not (options.unattended or ipautil.user_input(
+                 "Are you sure you want to continue with the uninstall "
+diff --git a/ipaserver/install/cainstance.py b/ipaserver/install/cainstance.py
+index b8267a625554f9375d27160f39b67ee2e64a2dbb..4933ad23d7323859af92bd02f6ae156803e29997 100644
+--- a/ipaserver/install/cainstance.py
++++ b/ipaserver/install/cainstance.py
+@@ -1421,12 +1421,22 @@ class CAInstance(DogtagInstance):
+         try:
+             cache = directivesetter.get_directive(
+                 self.config, 'ca.crl.MasterCRL.enableCRLCache', '=')
++
++            if cache is None:
++                raise InconsistentCRLGenConfigException(
++                    "Configuration is inconsistent, please check "
++                    "ca.crl.MasterCRL.enableCRLCache, "
++                    "ca.crl.MasterCRL.enableCRLUpdates and "
++                    "ca.listenToCloneModifications in {} and "
++                    "run ipa-crlgen-manage [enable|disable] to repair".format(
++                        self.config))
++
+             enableCRLCache = cache.lower() == 'true'
+             updates = directivesetter.get_directive(
+-                self.config, 'ca.crl.MasterCRL.enableCRLUpdates', '=')
++                self.config, 'ca.crl.MasterCRL.enableCRLUpdates', '=') or ''
+             enableCRLUpdates = updates.lower() == 'true'
+             listen = directivesetter.get_directive(
+-                self.config, 'ca.listenToCloneModifications', '=')
++                self.config, 'ca.listenToCloneModifications', '=') or ''
+             enableToClone = listen.lower() == 'true'
+             updateinterval = directivesetter.get_directive(
+                 self.config, 'ca.certStatusUpdateInterval', '=')
+diff --git a/ipaserver/install/server/upgrade.py b/ipaserver/install/server/upgrade.py
+index 548ee02e1e8524ce0002dca1764d48728eb0509a..8692c983409426193e1746f07fa1a0514621cb4a 100644
+--- a/ipaserver/install/server/upgrade.py
++++ b/ipaserver/install/server/upgrade.py
+@@ -1712,7 +1712,8 @@ def upgrade_configuration():
+         if ca.is_configured():
+             crl = directivesetter.get_directive(
+                 paths.CA_CS_CFG_PATH, 'ca.crl.MasterCRL.enableCRLUpdates', '=')
+-            sub_dict['CLONE']='#' if crl.lower() == 'true' else ''
++            sub_dict['CLONE'] = '#' if crl is not None and \
++                                crl.lower() == 'true' else ''
+ 
+         ds_dirname = dsinstance.config_dirname(ds.serverid)
+ 
+diff --git a/ipatests/test_integration/test_crlgen_manage.py b/ipatests/test_integration/test_crlgen_manage.py
+index c6f41ebf8939bad8006b1e5eaf37bad30dbfd9d8..8a2a28a75b76158fcc61a8e7612f81343336b64f 100644
+--- a/ipatests/test_integration/test_crlgen_manage.py
++++ b/ipatests/test_integration/test_crlgen_manage.py
+@@ -302,7 +302,8 @@ class TestCRLGenManage(IntegrationTest):
+             ['ipa-server-install', '--uninstall', '-U'], raiseonerr=False)
+         assert result.returncode == 1
+         expected_msg = "Deleting this server will leave your installation " \
+-                       "without a CRL generation master"
++                       "without a CRL generation master. Use " \
++                       "--ignore-last-of-role to bypass this check."
+         assert expected_msg in result.stdout_text
+ 
+     def test_uninstall_with_ignore_last_of_role(self):
+diff --git a/ipatests/test_integration/test_uninstallation.py b/ipatests/test_integration/test_uninstallation.py
+index 8d83f72868f5c103b0c31d2aa96630c00b2dfbd8..12b10caa60745dcbc2d811bff65d57fb5d865f09 100644
+--- a/ipatests/test_integration/test_uninstallation.py
++++ b/ipatests/test_integration/test_uninstallation.py
+@@ -237,3 +237,44 @@ class TestUninstallReinstall(IntegrationTest):
+ 
+     def test_reinstall_server(self):
+         tasks.install_master(self.master, setup_dns=False)
++
++
++class TestUninstallCRLGen(IntegrationTest):
++    """Test uninstallation of a replica with broken CRL configuration.
++
++       Removing ca.crl.MasterCRL.enableCRLCache from CS.cfg crashed.
++       https://pagure.io/freeipa/issue/9921
++    """
++
++    num_replicas = 1
++    topology = 'line'
++
++    @classmethod
++    def install(cls, mh):
++        tasks.install_master(cls.master, setup_dns=False)
++        tasks.install_replica(cls.master, cls.replicas[0])
++
++    def test_uninstall_replica_with_broken_crlgen(self):
++        self.replicas[0].run_command(['ipa-crlgen-manage', 'enable'])
++
++        self.replicas[0].run_command([
++            '/bin/sed',
++            '-i',
++            '/ca.crl.MasterCRL.enableCRLCache=true/d',
++            paths.CA_CS_CFG_PATH,
++        ])
++
++        result = self.replicas[0].run_command([
++            'ipa-server-install',
++            '--ignore-last-of-role',
++            '--uninstall', '-U',
++        ])
++
++        expected_msg = "Configuration is inconsistent, please check " \
++                       "ca.crl.MasterCRL.enableCRLCache, " \
++                       "ca.crl.MasterCRL.enableCRLUpdates and " \
++                       "ca.listenToCloneModifications in {} and run " \
++                       "ipa-crlgen-manage [enable|disable] to repair".format(
++                           paths.CA_CS_CFG_PATH)
++
++        assert expected_msg in result.stdout_text
+-- 
+2.52.0
+

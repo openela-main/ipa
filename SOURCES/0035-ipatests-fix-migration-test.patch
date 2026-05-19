@@ -1,0 +1,50 @@
+From 3d5fe37d41332cdca486c9ca42089934e5ed7f89 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 30 Mar 2026 10:39:51 +0200
+Subject: [PATCH] ipatests: fix migration test
+
+A previous commit modified the DNS zone forwarder's IP address
+but forgot to change the expected value in the test.
+Use a constant in the test setup and in the test expectation.
+
+Related: https://pagure.io/freeipa/issue/9964
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Sudhir Menon <sumenon@redhat.com>
+Reviewed-By: Sudhir Menon <sumenon@redhat.com>
+---
+ ipatests/test_integration/test_ipa_ipa_migration.py | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/ipatests/test_integration/test_ipa_ipa_migration.py b/ipatests/test_integration/test_ipa_ipa_migration.py
+index e997f3683c70079af7633b578d5523b646c0f36c..952109239792d34283b282cf16c35e495cb64d1e 100644
+--- a/ipatests/test_integration/test_ipa_ipa_migration.py
++++ b/ipatests/test_integration/test_ipa_ipa_migration.py
+@@ -15,6 +15,7 @@ import pytest
+ import re
+ import textwrap
+
++TEST_ZONE_FORWARDER = "10.11.12.13"
+
+ def prepare_ipa_server(master):
+     """
+@@ -227,7 +228,7 @@ def prepare_ipa_server(master):
+             "dnsforwardzone-add",
+             "forwardzone.test",
+             "--forwarder",
+-            "192.168.124.10",
++            TEST_ZONE_FORWARDER,
+         ]
+     )
+ 
+@@ -827,7 +828,7 @@ class TestIPAMigrateCLIOptions(MigrationTest):
+         )
+         assert 'Zone name: {}'.format(zone_name) in result.stdout_text
+         assert 'Active zone: True' in result.stdout_text
+-        assert 'Zone forwarders: 10.11.12.13' in result.stdout_text
++        assert f'Zone forwarders: {TEST_ZONE_FORWARDER}' in result.stdout_text
+         assert 'Forward policy: first' in result.stdout_text
+ 
+     def test_ipa_migrate_version_option(self):
+-- 
+2.53.0
+

@@ -1,0 +1,48 @@
+From 7f6a2835f0972af5e94b58daf47fa60bfade4279 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Thu, 22 Jan 2026 10:02:11 +0100
+Subject: [PATCH] fetch_domains: Use case-insensitive comparison for domains
+ names
+
+The fetch_domains method is using netr_DsRGetForestTrustInformation
+to retrieve the forest trust information. The returned data contains
+domain entries, with a DNS domain name that can contain mixed case
+(for instance adDomain.Test).
+The method compares the domain name with the provided parameter in a
+case sensitive comparison, while it should use a case-insensitive
+method (DNS names are case-insensitive).
+
+Fix the method and compare the lowercase value instead.
+
+Fixes: https://pagure.io/freeipa/issue/9924
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ ipaserver/dcerpc.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/ipaserver/dcerpc.py b/ipaserver/dcerpc.py
+index 1182f128b4988bc699fe7a40d4834f1bead82cf5..5c05ffedb889e774e342cb6cb85ff954d06ac5e9 100644
+--- a/ipaserver/dcerpc.py
++++ b/ipaserver/dcerpc.py
+@@ -1635,7 +1635,7 @@ def fetch_domains(api, mydomain, trustdomain, creds=None, server=None):
+                 t.forest_trust_data.netbios_domain_name.string
+ 
+             tname = unicode(t.forest_trust_data.dns_domain_name.string)
+-            if tname != trustdomain:
++            if tname.lower() != trustdomain.lower():
+                 result['domains'][tname] = {
+                     'cn': tname,
+                     'ipantflatname': unicode(
+@@ -1647,7 +1647,7 @@ def fetch_domains(api, mydomain, trustdomain, creds=None, server=None):
+             record.data.string = t.forest_trust_data.string
+ 
+             tname = unicode(t.forest_trust_data.string)
+-            if tname == trustdomain:
++            if tname.lower() == trustdomain.lower():
+                 continue
+ 
+             result['suffixes'][tname] = {'cn': tname}
+-- 
+2.52.0
+
