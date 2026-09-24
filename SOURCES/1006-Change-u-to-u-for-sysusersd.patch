@@ -1,0 +1,31 @@
+From c1f9626a4b2b42cade05f83bd5699418e60767a4 Mon Sep 17 00:00:00 2001
+From: David Hanina <dhanina@redhat.com>
+Date: Tue, 21 Jul 2026 15:10:49 +0200
+Subject: [PATCH] Change u! to u for sysusersd
+
+Adapts the sysusersd settings for RHEL9 to only use u, instead of u!,
+which errors out.
+
+Signed-off-by: David Hanina <dhanina@redhat.com>
+---
+ init/sysusersd/ipa.conf.in | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/init/sysusersd/ipa.conf.in b/init/sysusersd/ipa.conf.in
+index dcddfc2fc..0955fd341 100644
+--- a/init/sysusersd/ipa.conf.in
++++ b/init/sysusersd/ipa.conf.in
+@@ -1,8 +1,8 @@
+ # IPA KDC Proxy user and group
+-u!  kdcproxy    -   "IPA KDC Proxy User"
++u  kdcproxy    -   "IPA KDC Proxy User"
+ 
+ # IPA API user and group
+-u!  ipaapi      -   "IPA API User"
++u  ipaapi      -   "IPA API User"
+ 
+ # - add Apache system account to ipaapi group (platform-specific)
+ m   @HTTPD_USER@      ipaapi
+-- 
+2.54.0
+

@@ -29,7 +29,7 @@ diff --git a/freeipa.spec.in b/freeipa.spec.in
 index b93199a5783a89e0ff58affd3d416556f72dd00c..bf6fa216dcc4cfbac903aad43c6219f1e57db4dd 100644
 --- a/freeipa.spec.in
 +++ b/freeipa.spec.in
-@@ -983,7 +983,6 @@ Requires: python3-jwcrypto >= 0.4.2
+@@ -1058,7 +1058,6 @@ Requires: python3-jwcrypto >= 0.4.2
  Requires: python3-libipa_hbac
  Requires: python3-netaddr >= %{python_netaddr_version}
  Requires: python3-netifaces >= 0.10.4
@@ -37,7 +37,7 @@ index b93199a5783a89e0ff58affd3d416556f72dd00c..bf6fa216dcc4cfbac903aad43c6219f1
  Requires: python3-pyasn1 >= 0.3.2-2
  Requires: python3-pyasn1-modules >= 0.3.2-2
  Requires: python3-pyusb
-@@ -992,6 +991,11 @@ Requires: python3-requests
+@@ -1073,6 +1072,11 @@ Requires: python3-requests
  Requires: python3-six
  Requires: python3-sss-murmur
  Requires: python3-yubico >= 1.3.2-7
@@ -269,15 +269,15 @@ diff --git a/ipatests/test_integration/test_idp.py b/ipatests/test_integration/t
 index 9983b3c9d62826afa395c2739b4fb9945afed80d..a29333ef232b0ae8229484e404866d8bb720554a 100644
 --- a/ipatests/test_integration/test_idp.py
 +++ b/ipatests/test_integration/test_idp.py
-@@ -12,7 +12,7 @@ from ipatests.pytest_ipa.integration import tasks, create_keycloak
- user_code_script = textwrap.dedent("""
- from selenium import webdriver
- from datetime import datetime
--from packaging.version import parse as parse_version
-+from pkg_resources import parse_version
- from selenium.webdriver.firefox.options import Options
- from selenium.webdriver.common.by import By
- from selenium.webdriver.support.ui import WebDriverWait
+@@ -37,7 +37,7 @@ SELENIUM_REMOTE_HEAD = textwrap.dedent("""
+     from selenium import webdriver
+     from datetime import datetime
+-    from packaging.version import parse as parse_version
++    from pkg_resources import parse_version
+     from selenium.webdriver.firefox.options import Options
+     from selenium.webdriver.common.by import By
+     from selenium.webdriver.support.ui import WebDriverWait
+     from selenium.webdriver.support import expected_conditions as EC
 diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
 index 47392cec9345b6d2447b728fc21050edabe8f0cd..15fc38a6e155b343259ee61c6c7c5c561c7f6410 100644
 --- a/ipatests/test_integration/test_ipahealthcheck.py
