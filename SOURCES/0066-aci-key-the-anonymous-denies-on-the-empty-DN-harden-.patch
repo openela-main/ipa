@@ -1,0 +1,150 @@
+From 38005aadf8d35863ad2cc0a3544abda897e45649 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 12:58:59 +0300
+Subject: [PATCH 66/91] aci: key the anonymous denies on the empty DN; harden
+ the self-service rules
+
+As stated in RFC 4513, a simple bind that carries a valid DN and an
+empty password is an unauthenticated bind that succeeds without
+verifying any credential, and 389-ds keeps the asserted DN as the
+connection identity. No authmethod value means "the client sent no
+credentials" (authmethod = "none" in an ACI is a no-op that always
+evaluates to true), and the three credential-less binds (anonymous
+simple, SASL ANONYMOUS, RFC 4513 unauthenticated) set different
+authmethod values, so the only ACI-expressible test for a credential-less
+bind is the empty DN: an anonymous simple bind and a SASL ANONYMOUS bind
+both bind with the empty DN, which does not match "ldap:///all", while
+any authenticated bind has a real DN and does.
+
+Add, on the base suffix and keyed on userdn != "ldap:///all":
+
+- "Deny all modifications for anonymous binds" (deny absolute
+  (add,delete,write) on all attributes), closing the whole class of
+  self-referential allow ACIs in one place, independent of which allow
+  would otherwise grant the operation;
+- "Deny read of NT security identifier for anonymous binds" (deny
+  absolute (read,search,compare) on ipaNTSecurityIdentifier), keeping
+  SIDs out of reach of enumeration while authenticated readers (SSSD,
+  trust agents, admins) are unaffected.
+
+The "absolute" keyword makes each deny final: when its bind rule
+matches, the decision is returned without consulting the other rules.
+Authenticated binds (GSSAPI, password simple, and the ACI-exempt
+Directory Manager) are unaffected; FreeIPA performs no legitimate
+anonymous write (ipa-otpd binds over ldapi with SASL EXTERNAL).
+
+Harden every self-service userdn = "ldap:///self" grant to the compound
+rule (userdn = "ldap:///self" and userdn = "ldap:///all") so it can only
+be exercised by an authenticated bind.
+
+Note: an unauthenticated simple bind that preserves a real DN (RFC
+4513) still matches userdn = "ldap:///all" and is only reachable when
+nsslapd-allow-unauthenticated-binds is enabled; keeping that setting off
+remains a requirement.
+
+Fixes: CVE-2026-76578
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit 16e47c4e4a416638d3f158d672df533a354039eb)
+---
+ install/share/default-aci.ldif | 61 +++++++++++++++++++++++++++++-----
+ 1 file changed, 53 insertions(+), 8 deletions(-)
+
+diff --git a/install/share/default-aci.ldif b/install/share/default-aci.ldif
+index d60358b8d..5f0263acf 100644
+--- a/install/share/default-aci.ldif
++++ b/install/share/default-aci.ldif
+@@ -1,16 +1,61 @@
+ # $SUFFIX (base entry)
+ # FIXME: We need to allow truly anonymous access only to NIS data for older clients. We need to allow broad access to most attributes only to authenticated users
++
++# No anonymous bind may ever modify the tree.
++#
++# There is no authmethod value that means "the client sent no credentials":
++# the ACI keyword authmethod="none" means "do not check the authentication
++# method" and always evaluates to true, so a deny that ORs in
++# "(authmethod = "none")" would deny to everyone. The only ACI-expressible
++# test for a credential-less bind is the empty DN: an anonymous simple bind
++# and a SASL ANONYMOUS bind both bind with the empty DN, which does not match
++# "ldap:///all", while any authenticated bind (password, GSSAPI, certificate)
++# has a real DN and does. The rule therefore denies userdn != "ldap:///all",
++# and the "absolute" keyword makes the deny final: when the rule matches,
++# access is denied immediately without consulting the other rules, so this
++# blocks the whole class of "anonymous principal performs a write"
++# escalations (e.g. the OTP self-managed-token SELFDN path) regardless of
++# which allow ACI would otherwise grant it. Authenticated binds (GSSAPI,
++# password simple) and reads are unaffected.
++# (An RFC 4513 unauthenticated simple bind that keeps a real DN cannot be
++# distinguished from a genuine bind by any ACI clause; keep
++# nsslapd-allow-unauthenticated-binds off.)
++dn: $SUFFIX
++changetype: modify
++add: aci
++aci: (targetattr = "*")(version 3.0; acl "Deny all modifications for anonymous binds"; deny absolute (add,delete,write) userdn != "ldap:///all";)
++
++# Backstop denying ipaNTSecurityIdentifier (SID) to anonymous binds; exposing
++# SIDs aids enumeration and SID-based attacks. As with the modification deny
++# above, the empty DN of anonymous and SASL ANONYMOUS binds is the only
++# ACI-expressible marker of a credential-less bind.
++# The user SID has been moved to the authenticated "System: Read User IPA
++# Attributes" permission, but the anonymous "System: Read Groups" permission
++# still carries the group SID, and the managed-permission upgrade path only
++# adds default attributes (never removes them) so upgraded servers keep the SID
++# in their anonymous user permission too. This deny covers all of those.
++# Authenticated readers (SSSD, trust agents, admins) are unaffected.
++dn: $SUFFIX
++changetype: modify
++add: aci
++aci: (targetattr = "ipaNTSecurityIdentifier")(version 3.0; acl "Deny read of NT security identifier for anonymous binds"; deny absolute (read,search,compare) userdn != "ldap:///all";)
++
++# Self-service grants require the bound DN both to be the entry's own DN
++# (userdn = "ldap:///self") and to be a real, non-anonymous DN
++# (userdn = "ldap:///all"): an anonymous simple bind or a SASL ANONYMOUS
++# bind has the empty DN and satisfies neither clause, so a credential-less
++# bind can never exercise the grant.
+ dn: $SUFFIX
+ changetype: modify
+ add: aci
+-aci: (targetattr = "userpassword || krbprincipalkey || sambalmpassword || sambantpassword")(version 3.0; acl "selfservice:Self can write own password"; allow (write) userdn="ldap:///self";)
++aci: (targetattr = "userpassword || krbprincipalkey || sambalmpassword || sambantpassword")(version 3.0; acl "selfservice:Self can write own password"; allow (write) (userdn="ldap:///self" and userdn="ldap:///all");)
+ 
+ dn: $SUFFIX
+ changetype: modify
+ add: aci
+-aci: (targetattr = "givenname || sn || cn || displayname || title || initials || loginshell || gecos || homephone || mobile || pager || facsimiletelephonenumber || telephonenumber || street || roomnumber || l || st || postalcode || manager || secretary || description || carlicense || labeleduri || inetuserhttpurl || seealso || employeetype  || businesscategory || ou")(version 3.0;acl "selfservice:User Self service";allow (write) userdn = "ldap:///self";)
+-aci: (targetattr = "ipasshpubkey")(version 3.0;acl "selfservice:Users can manage their own SSH public keys";allow (write) userdn = "ldap:///self";)
+-aci: (targetattr = "usercertificate")(version 3.0;acl "selfservice:Users can manage their own X.509 certificates";allow (write) userdn = "ldap:///self";)
++aci: (targetattr = "givenname || sn || cn || displayname || title || initials || loginshell || gecos || homephone || mobile || pager || facsimiletelephonenumber || telephonenumber || street || roomnumber || l || st || postalcode || manager || secretary || description || carlicense || labeleduri || inetuserhttpurl || seealso || employeetype  || businesscategory || ou")(version 3.0;acl "selfservice:User Self service";allow (write) (userdn = "ldap:///self" and userdn = "ldap:///all");)
++aci: (targetattr = "ipasshpubkey")(version 3.0;acl "selfservice:Users can manage their own SSH public keys";allow (write) (userdn = "ldap:///self" and userdn = "ldap:///all");)
++aci: (targetattr = "usercertificate")(version 3.0;acl "selfservice:Users can manage their own X.509 certificates";allow (write) (userdn = "ldap:///self" and userdn = "ldap:///all");)
+ 
+ dn: cn=etc,$SUFFIX
+ changetype: modify
+@@ -31,7 +76,7 @@ aci: (targetattr="ipaProtectedOperation;read_keys")(version 3.0; acl "Users allo
+ aci: (targetattr="ipaProtectedOperation;read_keys")(version 3.0; acl "Groups allowed to retrieve keytab keys"; allow(read) userattr="ipaAllowedToPerform;read_keys#GROUPDN";)
+ aci: (targetattr="ipaProtectedOperation;write_keys")(version 3.0; acl "Users allowed to create keytab keys"; allow(write) userattr="ipaAllowedToPerform;write_keys#USERDN";)
+ aci: (targetattr="ipaProtectedOperation;write_keys")(version 3.0; acl "Groups allowed to create keytab keys"; allow(write) userattr="ipaAllowedToPerform;write_keys#GROUPDN";)
+-aci: (targetattr="ipaProtectedOperation;write_keys")(version 3.0; acl "Entities are allowed to rekey themselves"; allow(write) userdn="ldap:///self";)
++aci: (targetattr="ipaProtectedOperation;write_keys")(version 3.0; acl "Entities are allowed to rekey themselves"; allow(write) (userdn = "ldap:///self" and userdn = "ldap:///all");)
+ aci: (targetattr="ipaProtectedOperation;write_keys")(version 3.0; acl "Admins are allowed to rekey any entity"; allow(write) groupdn = "ldap:///cn=admins,cn=groups,cn=accounts,$SUFFIX";)
+ aci: (targetfilter="(|(objectclass=ipaHost)(objectclass=ipaService))")(targetattr="ipaProtectedOperation;write_keys")(version 3.0; acl "Entities are allowed to rekey managed entries"; allow(write) userattr="managedby#USERDN";)
+ 
+@@ -53,8 +98,8 @@ aci: (targetattr="userCertificate || krbPrincipalKey")(version 3.0; acl "Hosts c
+ dn: cn=computers,cn=accounts,$SUFFIX
+ changetype: modify
+ add: aci
+-aci: (targetattr="usercertificate || krblastpwdchange || description || l || nshostlocation || nshardwareplatform || nsosversion")(version 3.0; acl "Hosts can modify their own certs and keytabs"; allow(write) userdn = "ldap:///self";)
+-aci: (targetattr="ipasshpubkey")(version 3.0; acl "Hosts can modify their own SSH public keys"; allow(write) userdn = "ldap:///self";)
++aci: (targetattr="usercertificate || krblastpwdchange || description || l || nshostlocation || nshardwareplatform || nsosversion")(version 3.0; acl "Hosts can modify their own certs and keytabs"; allow(write) (userdn = "ldap:///self" and userdn = "ldap:///all");)
++aci: (targetattr="ipasshpubkey")(version 3.0; acl "Hosts can modify their own SSH public keys"; allow(write) (userdn = "ldap:///self" and userdn = "ldap:///all");)
+ 
+ # Define which hosts can edit other hosts
+ # The managedby attribute stores the DN of hosts that are allowed to manage
+@@ -99,4 +144,4 @@ aci: (targetfilter = "(objectClass=ipatokenTOTP)")(targetattrs = "ipatokenOTPalg
+ aci: (targetfilter = "(objectClass=ipatokenHOTP)")(targetattrs = "ipatokenOTPalgorithm || ipatokenOTPdigits")(version 3.0; acl "Users/managers can see HOTP details"; allow (read, search, compare) userattr = "ipatokenOwner#USERDN" or userattr = "managedBy#USERDN";)
+ aci: (targetfilter = "(objectClass=ipaToken)")(targetattrs = "description || ipatokenDisabled || ipatokenNotBefore || ipatokenNotAfter || ipatokenVendor || ipatokenModel || ipatokenSerial")(version 3.0; acl "Managers can write basic token info"; allow (write) userattr = "managedBy#USERDN";)
+ aci: (targetfilter = "(objectClass=ipaToken)")(version 3.0; acl "Managers can delete tokens"; allow (delete) userattr = "managedBy#USERDN";)
+-aci: (target = "ldap:///ipatokenuniqueid=*,cn=otp,$SUFFIX")(targetfilter = "(objectClass=ipaToken)")(version 3.0; acl "Users can create self-managed tokens"; allow (add) userattr = "ipatokenOwner#SELFDN" and userattr = "managedBy#SELFDN";)
++aci: (target = "ldap:///ipatokenuniqueid=*,cn=otp,$SUFFIX")(targetfilter = "(objectClass=ipaToken)")(targattrfilters = "add=objectclass:(|(objectclass=top)(objectclass=ipaToken)(objectclass=ipatokenTOTP)(objectclass=ipatokenHOTP)) && aci:(!(aci=*))")(version 3.0; acl "Users can create self-managed tokens"; allow (add) userattr = "ipatokenOwner#SELFDN" and userattr = "managedBy#SELFDN";)
+-- 
+2.55.0
+

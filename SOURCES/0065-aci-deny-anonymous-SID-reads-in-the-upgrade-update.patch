@@ -1,0 +1,48 @@
+From c16a9104d10b8b6e4aedacf6c2884915aec63df6 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 12:58:59 +0300
+Subject: [PATCH 65/91] aci: deny anonymous SID reads in the upgrade update
+
+New 21-deny-anonymous-sid-read.update for upgrades: add the "Deny read of
+NT security identifier for anonymous binds" ACI (deny absolute
+(read,search,compare) userdn != "ldap:///all" on ipaNTSecurityIdentifier)
+on the base suffix. On upgrades the managed permission reconciler only
+adds default attributes and never removes them, so this is what removes
+the exposure from the existing anonymous read permissions; it also covers
+the group SID still carried by the anonymous "System: Read Groups"
+permission.
+
+Fixes: CVE-2026-76578
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit 0a95069c72773307dc8d2426a4b9cd6ee91b2dd3)
+---
+ .../updates/21-deny-anonymous-sid-read.update   | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+ create mode 100644 install/updates/21-deny-anonymous-sid-read.update
+
+diff --git a/install/updates/21-deny-anonymous-sid-read.update b/install/updates/21-deny-anonymous-sid-read.update
+new file mode 100644
+index 000000000..58b0660f1
+--- /dev/null
++++ b/install/updates/21-deny-anonymous-sid-read.update
+@@ -0,0 +1,17 @@
++# Deny reading ipaNTSecurityIdentifier to anonymous binds.
++#
++# The "System: Read User Standard Attributes" (and "System: Read Groups")
++# managed permissions are anonymous-read permissions whose attribute set
++# includes ipaNTSecurityIdentifier, so an anonymous bind can read the SID of
++# any user/group - useful for enumeration and SID-based attacks. The bind
++# rule denies userdn != "ldap:///all": there is no authmethod value that means
++# "the client sent no credentials" (authmethod="none" in an ACI always
++# evaluates to true), and the empty DN of an anonymous simple bind or a SASL
++# ANONYMOUS bind is the only ACI-expressible marker of a credential-less
++# bind, while any authenticated bind has a real DN and matches
++# "ldap:///all". The "absolute" keyword makes the deny final: when the rule
++# matches, access is denied immediately without consulting the other rules,
++# so it overrides the anonymous allow ACIs of the managed permissions.
++# Authenticated readers (SSSD, trust agents, admins) are untouched.
++dn: $SUFFIX
++add:aci: (targetattr = "ipaNTSecurityIdentifier")(version 3.0; acl "Deny read of NT security identifier for anonymous binds"; deny absolute (read,search,compare) userdn != "ldap:///all";)
+-- 
+2.55.0
+

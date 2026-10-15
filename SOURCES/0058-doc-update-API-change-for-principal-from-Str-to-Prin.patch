@@ -1,0 +1,275 @@
+From fbc1a175282ab0ebed2644184bb2419a9fbc392f Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Thu, 20 Aug 2026 10:57:29 +0300
+Subject: [PATCH 58/91] doc: update API change for principal from Str to
+ Principal
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+---
+ API.txt                                       |  8 ++---
+ doc/api/host_add_delegation.md                | 32 +++++++++++++++++++
+ doc/api/host_remove_delegation.md             | 32 +++++++++++++++++++
+ doc/api/service_add_delegation.md             | 32 +++++++++++++++++++
+ doc/api/service_remove_delegation.md          | 32 +++++++++++++++++++
+ doc/api/servicedelegationrule_add_member.md   |  2 +-
+ .../servicedelegationrule_remove_member.md    |  2 +-
+ doc/api/servicedelegationtarget_add_member.md |  2 +-
+ .../servicedelegationtarget_remove_member.md  |  2 +-
+ 9 files changed, 136 insertions(+), 8 deletions(-)
+ create mode 100644 doc/api/host_add_delegation.md
+ create mode 100644 doc/api/host_remove_delegation.md
+ create mode 100644 doc/api/service_add_delegation.md
+ create mode 100644 doc/api/service_remove_delegation.md
+
+diff --git a/API.txt b/API.txt
+index 2bd1cc217..693d00cca 100644
+--- a/API.txt
++++ b/API.txt
+@@ -4916,7 +4916,7 @@ args: 1,5,3
+ arg: Str('cn', cli_name='delegation_name')
+ option: Flag('all', autofill=True, cli_name='all', default=False)
+ option: Flag('no_members', autofill=True, default=False)
+-option: Str('principal*', alwaysask=True, cli_name='principals')
++option: Principal('principal*', alwaysask=True, cli_name='principals')
+ option: Flag('raw', autofill=True, cli_name='raw', default=False)
+ option: Str('version?')
+ output: Output('completed', type=[<type 'int'>])
+@@ -4961,7 +4961,7 @@ args: 1,5,3
+ arg: Str('cn', cli_name='delegation_name')
+ option: Flag('all', autofill=True, cli_name='all', default=False)
+ option: Flag('no_members', autofill=True, default=False)
+-option: Str('principal*', alwaysask=True, cli_name='principals')
++option: Principal('principal*', alwaysask=True, cli_name='principals')
+ option: Flag('raw', autofill=True, cli_name='raw', default=False)
+ option: Str('version?')
+ output: Output('completed', type=[<type 'int'>])
+@@ -5004,7 +5004,7 @@ command: servicedelegationtarget_add_member/1
+ args: 1,4,3
+ arg: Str('cn', cli_name='delegation_name')
+ option: Flag('all', autofill=True, cli_name='all', default=False)
+-option: Str('principal*', alwaysask=True, cli_name='principals')
++option: Principal('principal*', alwaysask=True, cli_name='principals')
+ option: Flag('raw', autofill=True, cli_name='raw', default=False)
+ option: Str('version?')
+ output: Output('completed', type=[<type 'int'>])
+@@ -5036,7 +5036,7 @@ command: servicedelegationtarget_remove_member/1
+ args: 1,4,3
+ arg: Str('cn', cli_name='delegation_name')
+ option: Flag('all', autofill=True, cli_name='all', default=False)
+-option: Str('principal*', alwaysask=True, cli_name='principals')
++option: Principal('principal*', alwaysask=True, cli_name='principals')
+ option: Flag('raw', autofill=True, cli_name='raw', default=False)
+ option: Str('version?')
+ output: Output('completed', type=[<type 'int'>])
+diff --git a/doc/api/host_add_delegation.md b/doc/api/host_add_delegation.md
+new file mode 100644
+index 000000000..bcb4eaddb
+--- /dev/null
++++ b/doc/api/host_add_delegation.md
+@@ -0,0 +1,32 @@
++[//]: # (THE CONTENT BELOW IS GENERATED. DO NOT EDIT.)
++# host_add_delegation
++Add new resource delegation to a host
++
++### Arguments
++|Name|Type|Required
++|-|-|-
++|fqdn|:ref:`Str<Str>`|True
++|memberprincipal|:ref:`Principal<Principal>`|True
++
++### Options
++* all : :ref:`Flag<Flag>` **(Required)**
++ * Default: False
++* raw : :ref:`Flag<Flag>` **(Required)**
++ * Default: False
++* no_members : :ref:`Flag<Flag>` **(Required)**
++ * Default: False
++* version : :ref:`Str<Str>`
++
++### Output
++|Name|Type
++|-|-
++|result|Entry
++|summary|Output
++|value|PrimaryKey
++
++[//]: # (ADD YOUR NOTES BELOW. THESE WILL BE PICKED EVERY TIME THE DOCS ARE REGENERATED. //end)
++### Semantics
++
++### Notes
++
++### Version differences
+\ No newline at end of file
+diff --git a/doc/api/host_remove_delegation.md b/doc/api/host_remove_delegation.md
+new file mode 100644
+index 000000000..4f90b83d0
+--- /dev/null
++++ b/doc/api/host_remove_delegation.md
+@@ -0,0 +1,32 @@
++[//]: # (THE CONTENT BELOW IS GENERATED. DO NOT EDIT.)
++# host_remove_delegation
++Remove resource delegation from a host
++
++### Arguments
++|Name|Type|Required
++|-|-|-
++|fqdn|:ref:`Str<Str>`|True
++|memberprincipal|:ref:`Principal<Principal>`|True
++
++### Options
++* all : :ref:`Flag<Flag>` **(Required)**
++ * Default: False
++* raw : :ref:`Flag<Flag>` **(Required)**
++ * Default: False
++* no_members : :ref:`Flag<Flag>` **(Required)**
++ * Default: False
++* version : :ref:`Str<Str>`
++
++### Output
++|Name|Type
++|-|-
++|result|Entry
++|summary|Output
++|value|PrimaryKey
++
++[//]: # (ADD YOUR NOTES BELOW. THESE WILL BE PICKED EVERY TIME THE DOCS ARE REGENERATED. //end)
++### Semantics
++
++### Notes
++
++### Version differences
+\ No newline at end of file
+diff --git a/doc/api/service_add_delegation.md b/doc/api/service_add_delegation.md
+new file mode 100644
+index 000000000..8c037cba9
+--- /dev/null
++++ b/doc/api/service_add_delegation.md
+@@ -0,0 +1,32 @@
++[//]: # (THE CONTENT BELOW IS GENERATED. DO NOT EDIT.)
++# service_add_delegation
++Add new resource delegation to a service
++
++### Arguments
++|Name|Type|Required
++|-|-|-
++|krbcanonicalname|:ref:`Principal<Principal>`|True
++|memberprincipal|:ref:`Principal<Principal>`|True
++
++### Options
++* all : :ref:`Flag<Flag>` **(Required)**
++ * Default: False
++* raw : :ref:`Flag<Flag>` **(Required)**
++ * Default: False
++* no_members : :ref:`Flag<Flag>` **(Required)**
++ * Default: False
++* version : :ref:`Str<Str>`
++
++### Output
++|Name|Type
++|-|-
++|result|Entry
++|summary|Output
++|value|PrimaryKey
++
++[//]: # (ADD YOUR NOTES BELOW. THESE WILL BE PICKED EVERY TIME THE DOCS ARE REGENERATED. //end)
++### Semantics
++
++### Notes
++
++### Version differences
+\ No newline at end of file
+diff --git a/doc/api/service_remove_delegation.md b/doc/api/service_remove_delegation.md
+new file mode 100644
+index 000000000..1481d93e8
+--- /dev/null
++++ b/doc/api/service_remove_delegation.md
+@@ -0,0 +1,32 @@
++[//]: # (THE CONTENT BELOW IS GENERATED. DO NOT EDIT.)
++# service_remove_delegation
++Remove resource delegation from a service
++
++### Arguments
++|Name|Type|Required
++|-|-|-
++|krbcanonicalname|:ref:`Principal<Principal>`|True
++|memberprincipal|:ref:`Principal<Principal>`|True
++
++### Options
++* all : :ref:`Flag<Flag>` **(Required)**
++ * Default: False
++* raw : :ref:`Flag<Flag>` **(Required)**
++ * Default: False
++* no_members : :ref:`Flag<Flag>` **(Required)**
++ * Default: False
++* version : :ref:`Str<Str>`
++
++### Output
++|Name|Type
++|-|-
++|result|Entry
++|summary|Output
++|value|PrimaryKey
++
++[//]: # (ADD YOUR NOTES BELOW. THESE WILL BE PICKED EVERY TIME THE DOCS ARE REGENERATED. //end)
++### Semantics
++
++### Notes
++
++### Version differences
+\ No newline at end of file
+diff --git a/doc/api/servicedelegationrule_add_member.md b/doc/api/servicedelegationrule_add_member.md
+index 7548e9e60..e3e0f1763 100644
+--- a/doc/api/servicedelegationrule_add_member.md
++++ b/doc/api/servicedelegationrule_add_member.md
+@@ -15,7 +15,7 @@ Add member to a named service delegation rule.
+ * no_members : :ref:`Flag<Flag>` **(Required)**
+  * Default: False
+ * version : :ref:`Str<Str>`
+-* principal : :ref:`Str<Str>`
++* principal : :ref:`Principal<Principal>`
+ 
+ ### Output
+ |Name|Type
+diff --git a/doc/api/servicedelegationrule_remove_member.md b/doc/api/servicedelegationrule_remove_member.md
+index e1e260574..d0ce6bfda 100644
+--- a/doc/api/servicedelegationrule_remove_member.md
++++ b/doc/api/servicedelegationrule_remove_member.md
+@@ -15,7 +15,7 @@ Remove member from a named service delegation rule.
+ * no_members : :ref:`Flag<Flag>` **(Required)**
+  * Default: False
+ * version : :ref:`Str<Str>`
+-* principal : :ref:`Str<Str>`
++* principal : :ref:`Principal<Principal>`
+ 
+ ### Output
+ |Name|Type
+diff --git a/doc/api/servicedelegationtarget_add_member.md b/doc/api/servicedelegationtarget_add_member.md
+index bcf903ec5..6b1865311 100644
+--- a/doc/api/servicedelegationtarget_add_member.md
++++ b/doc/api/servicedelegationtarget_add_member.md
+@@ -13,7 +13,7 @@ Add member to a named service delegation target.
+ * raw : :ref:`Flag<Flag>` **(Required)**
+  * Default: False
+ * version : :ref:`Str<Str>`
+-* principal : :ref:`Str<Str>`
++* principal : :ref:`Principal<Principal>`
+ 
+ ### Output
+ |Name|Type
+diff --git a/doc/api/servicedelegationtarget_remove_member.md b/doc/api/servicedelegationtarget_remove_member.md
+index 6b2c91ddd..bb6fc4d42 100644
+--- a/doc/api/servicedelegationtarget_remove_member.md
++++ b/doc/api/servicedelegationtarget_remove_member.md
+@@ -13,7 +13,7 @@ Remove member from a named service delegation target.
+ * raw : :ref:`Flag<Flag>` **(Required)**
+  * Default: False
+ * version : :ref:`Str<Str>`
+-* principal : :ref:`Str<Str>`
++* principal : :ref:`Principal<Principal>`
+ 
+ ### Output
+ |Name|Type
+-- 
+2.55.0
+

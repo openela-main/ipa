@@ -1,0 +1,56 @@
+From 54e995e95ab0a250ecbe974fa2e2958098e3e648 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Tue, 1 Sep 2026 20:55:26 +0300
+Subject: [PATCH 88/91] certmap: require privilege before matching certificates
+ via SSSD
+
+certmap_match resolves a certificate to users through SSSD's root InfoPipe
+(ListByCertificate) across the IPA and trusted domains. It performs no LDAP
+operation of its own and therefore enforced no authorization, letting any
+authenticated principal turn a certificate into the set of users it maps to.
+Require the Certificate Identity Mapping Administrators privilege before the
+D-Bus call.
+
+Related: CVE-2026-79678
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit 6d772ead2251d6e3ca5e85c1ead616e0f476fbba)
+---
+ ipaserver/plugins/certmap.py | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/ipaserver/plugins/certmap.py b/ipaserver/plugins/certmap.py
+index 9b73981f7..91f141bf3 100644
+--- a/ipaserver/plugins/certmap.py
++++ b/ipaserver/plugins/certmap.py
+@@ -29,6 +29,8 @@ from ipalib.crud import Search
+ from ipalib.frontend import Object
+ from ipalib.parameters import Bool, DNSNameParam, Flag, Int, Str, Certificate
+ from ipalib.plugable import Registry
++from ipalib.request import context
++from ipaserver.plugins.privilege import principal_has_privilege
+ from .baseldap import (
+     LDAPCreate,
+     LDAPDelete,
+@@ -617,6 +619,19 @@ class certmap_match(Search):
+         IPA domain and trusted domains.
+         :raise RemoteRetrieveError: if DBus returns an exception
+         """
++        # The match is resolved by SSSD's root-owned InfoPipe helper
++        # (Users.ListByCertificate), which looks up identities across the
++        # IPA domain and all trusted domains without regard to the caller's
++        # LDAP access. Since this command performs no LDAP operation of its
++        # own, nothing else constrains who may turn a certificate into the
++        # set of users it maps to. Require the Certificate Identity Mapping
++        # Administrators privilege up front, before invoking the helper.
++        privilege = u'Certificate Identity Mapping Administrators'
++        op_account = getattr(context, 'principal', None)
++        if not principal_has_privilege(self.api, op_account, privilege):
++            raise errors.ACIError(
++                info=_("not allowed to match certificates"))
++
+         sssd = _sssd()
+ 
+         cert = args[0]
+-- 
+2.55.0
+

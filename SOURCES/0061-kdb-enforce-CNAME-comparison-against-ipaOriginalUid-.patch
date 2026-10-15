@@ -1,0 +1,33 @@
+From 005200134037bfca4f1807e42fdc8486be52d1ca Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Tue, 25 Aug 2026 10:32:25 +0300
+Subject: [PATCH 61/91] kdb: enforce CNAME comparison against ipaOriginalUid in
+ ID overrides
+
+Kerberos principal of an Active Directory user is stored as
+ipaOriginalUid, not `uid`. `uid` value is POSIX username.
+
+Fixes: https://codeberg.org/freeipa/freeipa/issues/10041
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: Rafael Guterres Jeffman <rjeffman@redhat.com>
+---
+ daemons/ipa-kdb/ipa_kdb_mspac_trust.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/daemons/ipa-kdb/ipa_kdb_mspac_trust.c b/daemons/ipa-kdb/ipa_kdb_mspac_trust.c
+index f0638957b..a09dc2dfb 100644
+--- a/daemons/ipa-kdb/ipa_kdb_mspac_trust.c
++++ b/daemons/ipa-kdb/ipa_kdb_mspac_trust.c
+@@ -478,7 +478,7 @@ ipadb_check_trust_view_override(krb5_context context,
+         goto end;
+     }
+ 
+-    uid_values = ldap_get_values_len(ipactx->lcontext, entry, "uid");
++    uid_values = ldap_get_values_len(ipactx->lcontext, entry, "ipaOriginalUid");
+     if (!uid_values || !uid_values[0]) {
+         *status = "TRUST_OVERRIDE_UID_UNDEFINED";
+         kerr = EINVAL;
+-- 
+2.55.0
+

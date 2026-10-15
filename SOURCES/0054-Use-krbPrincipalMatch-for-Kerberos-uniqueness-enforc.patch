@@ -1,0 +1,38 @@
+From 580f814b8ad3319b2035151b4dcf279cf391f344 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Tue, 2 Jun 2026 17:19:16 +0300
+Subject: [PATCH 54/91] Use krbPrincipalMatch for Kerberos uniqueness
+ enforcement
+
+Switch the kerberos name uniqueness plugin configuration from
+CaseIgnoreMatch to krbPrincipalMatch for krbPrincipalName,
+krbPrincipalAlias, and krbCanonicalName attributes. This ensures
+principals with and without the default realm are treated as
+duplicates.
+
+Fixes: CVE-2026-13097
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ install/share/unique-attributes.ldif | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/install/share/unique-attributes.ldif b/install/share/unique-attributes.ldif
+index b28d981b5..8c095fffb 100644
+--- a/install/share/unique-attributes.ldif
++++ b/install/share/unique-attributes.ldif
+@@ -8,9 +8,9 @@ nsslapd-pluginPath: libattr-unique-plugin
+ nsslapd-pluginInitfunc: NSUniqueAttr_Init
+ nsslapd-pluginType: preoperation
+ nsslapd-pluginEnabled: on
+-uniqueness-attribute-name: krbPrincipalName:CaseIgnoreMatch:
+-uniqueness-attribute-name: krbPrincipalAlias:CaseIgnoreMatch:
+-uniqueness-attribute-name: krbCanonicalName:CaseIgnoreMatch:
++uniqueness-attribute-name: krbPrincipalName:krbPrincipalMatch:
++uniqueness-attribute-name: ipaKrbPrincipalAlias:krbPrincipalMatch:
++uniqueness-attribute-name: krbCanonicalName:krbPrincipalMatch:
+ nsslapd-plugin-depends-on-type: database
+ nsslapd-pluginId: NSUniqueAttr
+ nsslapd-pluginVersion: 1.1.0
+-- 
+2.55.0
+

@@ -1,0 +1,53 @@
+From 92f83535c0972a1570c6aeecd45084d3a098dbe9 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Tue, 2 Jun 2026 17:19:22 +0300
+Subject: [PATCH 53/91] Migrate kerberos uniqueness to krbPrincipalMatch on
+ upgrade
+
+Add update directives to replace CaseIgnoreMatch with
+krbPrincipalMatch in the kerberos name uniqueness plugin
+configuration during ipa-server-upgrade. The remove/add pairs
+are no-ops on fresh installs where the new values are already set.
+
+Fixes: CVE-2026-13097
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ install/updates/10-uniqueness.update | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/install/updates/10-uniqueness.update b/install/updates/10-uniqueness.update
+index d8fc8cae3..5eaa75a36 100644
+--- a/install/updates/10-uniqueness.update
++++ b/install/updates/10-uniqueness.update
+@@ -95,9 +95,9 @@ default:nsslapd-pluginPath: libattr-unique-plugin
+ default:nsslapd-pluginInitfunc: NSUniqueAttr_Init
+ default:nsslapd-pluginType: preoperation
+ default:nsslapd-pluginEnabled: on
+-default:uniqueness-attribute-name: krbPrincipalName:CaseIgnoreMatch:
+-default:uniqueness-attribute-name: krbPrincipalAlias:CaseIgnoreMatch:
+-default:uniqueness-attribute-name: krbCanonicalName:CaseIgnoreMatch:
++default:uniqueness-attribute-name: krbPrincipalName:krbPrincipalMatch:
++default:uniqueness-attribute-name: krbPrincipalAlias:krbPrincipalMatch:
++default:uniqueness-attribute-name: krbCanonicalName:krbPrincipalMatch:
+ default:nsslapd-plugin-depends-on-type: database
+ default:nsslapd-pluginId: NSUniqueAttr
+ default:nsslapd-pluginVersion: 1.1.0
+@@ -107,6 +107,15 @@ default:uniqueness-subtrees: $SUFFIX
+ default:uniqueness-exclude-subtrees: cn=staged users,cn=accounts,cn=provisioning,$SUFFIX
+ default:uniqueness-across-all-subtrees: on
+ 
++# Migrate kerberos uniqueness from CaseIgnoreMatch to krbPrincipalMatch
++dn: cn=kerberos name uniqueness,cn=plugins,cn=config
++remove:uniqueness-attribute-name: krbPrincipalName:CaseIgnoreMatch:
++add:uniqueness-attribute-name: krbPrincipalName:krbPrincipalMatch:
++remove:uniqueness-attribute-name: krbPrincipalAlias:CaseIgnoreMatch:
++add:uniqueness-attribute-name: krbPrincipalAlias:krbPrincipalMatch:
++remove:uniqueness-attribute-name: krbCanonicalName:CaseIgnoreMatch:
++add:uniqueness-attribute-name: krbCanonicalName:krbPrincipalMatch:
++
+ # ipaUniqueID uniqueness scopes Active/Delete containers
+ dn: cn=ipaUniqueID uniqueness,cn=plugins,cn=config
+ add:uniqueness-exclude-subtrees: cn=staged users,cn=accounts,cn=provisioning,$SUFFIX
+-- 
+2.55.0
+

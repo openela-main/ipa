@@ -1,0 +1,37 @@
+From 6190b57aacfd204c8e2ac38f90950ccc81e825b2 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 19:20:11 +0300
+Subject: [PATCH 84/91] trust_add: require Replication Administrators privilege
+
+Enforce Replication Administrators privilege possession
+when establishing trust.
+
+Related: Fixes: CVE-2026-79678
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit b22551964f4ed37f94f3c95ecd81bc3179a03082)
+---
+ ipaserver/plugins/trust.py | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/ipaserver/plugins/trust.py b/ipaserver/plugins/trust.py
+index eb9211270..f5d741f57 100644
+--- a/ipaserver/plugins/trust.py
++++ b/ipaserver/plugins/trust.py
+@@ -756,6 +756,13 @@ ipa idrange-del before retrying the command with the desired range type.
+         result['result'].pop('ipanttrustauthincoming', None)
+ 
+     def execute(self, *keys, **options):
++        # the user must have the Replication Administrators privilege
++        privilege = u'Replication Administrators'
++        op_account = getattr(context, 'principal', None)
++        if not principal_has_privilege(self.api, op_account, privilege):
++            raise errors.ACIError(
++                info=_("not allowed to remotely add agent"))
++
+         ldap = self.obj.backend
+ 
+         verify_samba_component_presence(ldap, self.api)
+-- 
+2.55.0
+

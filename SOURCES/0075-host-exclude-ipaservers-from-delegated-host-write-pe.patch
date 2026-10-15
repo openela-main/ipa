@@ -1,0 +1,125 @@
+From 8ad052e4b8b9847ec2a57a5e704ed5c315bcadf7 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 12:58:59 +0300
+Subject: [PATCH 75/91] host: exclude ipaservers from delegated host-write
+ permissions
+
+Only "System: Manage Host Keytab" excluded ipaservers (replica host
+entries) from its target; the sibling host-write permissions in the Host
+Administrators / Host Enrollment privileges did not, so a holder could
+reach an ipaserver's entry through a different permission - modifying a
+replica's certificate, principal, enrollment password, SSH keys or host
+attributes is server impersonation, not routine host administration.
+
+Add the (!(memberOf=ipaservers)) exclusion (via a shared
+NOT_MEMBEROF_IPASERVERS constant) to Enroll a Host, Manage Host SSH
+Public Keys, Modify Hosts, Manage Host Certificates, Manage Host
+Principals and Manage Host Enrollment Password, and switch Manage Host
+Keytab to the same constant. Managed permissions, so the filter is
+reconciled onto existing installs on upgrade.
+
+Fixes: CVE-2026-76578
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit cb324a1e5379a940afe407f0cb107e61d83b3e6f)
+---
+ ipaserver/plugins/host.py | 37 ++++++++++++++++++++++++++++++++++---
+ 1 file changed, 34 insertions(+), 3 deletions(-)
+
+diff --git a/ipaserver/plugins/host.py b/ipaserver/plugins/host.py
+index 741c0e367..4b3d74d64 100644
+--- a/ipaserver/plugins/host.py
++++ b/ipaserver/plugins/host.py
+@@ -136,6 +136,15 @@ logger = logging.getLogger(__name__)
+ 
+ register = Registry()
+ 
++# Exclude ipaservers (replica host entries) from delegated host-write
++# permissions. Modifying a replica's keytab, certificate, principal or
++# enrollment data is server impersonation, not routine host administration;
++# "System: Manage Host Keytab" already carries this exclusion, so its sibling
++# permissions in the Host Administrators/Enrollment privileges must too.
++NOT_MEMBEROF_IPASERVERS = '(!(memberOf=%s))' % DN(
++    'cn=ipaservers', api.env.container_hostgroup, api.env.basedn
++)
++
+ 
+ def remove_ptr_rec(ipaddr, fqdn):
+     """
+@@ -370,6 +379,10 @@ class host(LDAPObject):
+         },
+         'System: Enroll a Host': {
+             'ipapermright': {'write'},
++            'ipapermtargetfilter': [
++                '(objectclass=ipahost)',
++                NOT_MEMBEROF_IPASERVERS,
++            ],
+             'ipapermdefaultattr': {
+                 'objectclass', 'enrolledby', 'nshardwareplatform', 'nsosversion'
+             },
+@@ -381,6 +394,10 @@ class host(LDAPObject):
+         },
+         'System: Manage Host SSH Public Keys': {
+             'ipapermright': {'write'},
++            'ipapermtargetfilter': [
++                '(objectclass=ipahost)',
++                NOT_MEMBEROF_IPASERVERS,
++            ],
+             'ipapermdefaultattr': {'ipasshpubkey'},
+             'replaces': [
+                 '(targetattr = "ipasshpubkey")(target = "ldap:///fqdn=*,cn=computers,cn=accounts,$SUFFIX")(version 3.0;acl "permission:Manage Host SSH Public Keys";allow (write) groupdn = "ldap:///cn=Manage Host SSH Public Keys,cn=permissions,cn=pbac,$SUFFIX";)',
+@@ -391,9 +408,7 @@ class host(LDAPObject):
+             'ipapermright': {'write'},
+             'ipapermtargetfilter': [
+                 '(objectclass=ipahost)',
+-                '(!(memberOf=%s))' % DN('cn=ipaservers',
+-                                        api.env.container_hostgroup,
+-                                        api.env.basedn),
++                NOT_MEMBEROF_IPASERVERS,
+             ],
+             'ipapermdefaultattr': {'krblastpwdchange', 'krbprincipalkey',
+                                    'ipaprotectedoperation;write_keys'},
+@@ -412,6 +427,10 @@ class host(LDAPObject):
+         },
+         'System: Modify Hosts': {
+             'ipapermright': {'write'},
++            'ipapermtargetfilter': [
++                '(objectclass=ipahost)',
++                NOT_MEMBEROF_IPASERVERS,
++            ],
+             'ipapermdefaultattr': {
+                 'description', 'l', 'nshardwareplatform', 'nshostlocation',
+                 'nsosversion', 'macaddress', 'userclass', 'ipaassignedidview',
+@@ -432,18 +451,30 @@ class host(LDAPObject):
+         'System: Manage Host Certificates': {
+             'ipapermbindruletype': 'permission',
+             'ipapermright': {'write'},
++            'ipapermtargetfilter': [
++                '(objectclass=ipahost)',
++                NOT_MEMBEROF_IPASERVERS,
++            ],
+             'ipapermdefaultattr': {'usercertificate'},
+             'default_privileges': {'Host Administrators', 'Host Enrollment'},
+         },
+         'System: Manage Host Principals': {
+             'ipapermbindruletype': 'permission',
+             'ipapermright': {'write'},
++            'ipapermtargetfilter': [
++                '(objectclass=ipahost)',
++                NOT_MEMBEROF_IPASERVERS,
++            ],
+             'ipapermdefaultattr': {'krbprincipalname', 'krbcanonicalname'},
+             'default_privileges': {'Host Administrators', 'Host Enrollment'},
+         },
+         'System: Manage Host Enrollment Password': {
+             'ipapermbindruletype': 'permission',
+             'ipapermright': {'write'},
++            'ipapermtargetfilter': [
++                '(objectclass=ipahost)',
++                NOT_MEMBEROF_IPASERVERS,
++            ],
+             'ipapermdefaultattr': {'userpassword'},
+             'default_privileges': {'Host Administrators', 'Host Enrollment'},
+         },
+-- 
+2.55.0
+

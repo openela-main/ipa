@@ -1,0 +1,87 @@
+From 04f61e4226aa30a57f68f03cae1bd5f894259697 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 12:58:59 +0300
+Subject: [PATCH 68/91] tests: xmlrpc: cover the permission authentication
+ checks
+
+Rework test_permission_bindtype to use anonymous + read as its baseline
+(anonymous is only valid for read) and add a negative test asserting that
+an anonymous bind type combined with write/add/delete rights is rejected;
+the bindtype-transition steps consequently assert read ACIs.
+
+Fixes: CVE-2026-76578
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit 50f433fd7b02ec9429ebdd26844b40a5a5c6a812)
+---
+ .../test_xmlrpc/test_permission_plugin.py     | 33 ++++++++++---------
+ 1 file changed, 18 insertions(+), 15 deletions(-)
+
+diff --git a/ipatests/test_xmlrpc/test_permission_plugin.py b/ipatests/test_xmlrpc/test_permission_plugin.py
+index 218c893d5..b8c10cce5 100644
+--- a/ipatests/test_xmlrpc/test_permission_plugin.py
++++ b/ipatests/test_xmlrpc/test_permission_plugin.py
+@@ -3156,7 +3156,7 @@ class test_permission_bindtype(Declarative):
+ 
+     tests = [
+         dict(
+-            desc='Create anonymous %r' % permission1,
++            desc='Try to create anonymous %r with write rights' % permission1,
+             command=(
+                 'permission_add', [permission1], dict(
+                     type=u'user',
+@@ -3164,27 +3164,30 @@ class test_permission_bindtype(Declarative):
+                     ipapermbindruletype=u'anonymous',
+                 )
+             ),
++            expected=errors.ValidationError(
++                name='ipapermbindruletype',
++                error=u'the "anonymous" bind type cannot be combined with '
++                      u'write, add or delete rights'),
++        ),
++
++        dict(
++            desc='Create anonymous %r' % permission1,
++            command=(
++                'permission_add', [permission1], dict(
++                    type=u'user',
++                    ipapermright=u'read',
++                    ipapermbindruletype=u'anonymous',
++                )
++            ),
+             expected=dict(
+                 value=permission1,
+                 summary=u'Added permission "%s"' % permission1,
+-                messages=(
+-                    {
+-                        'message': ('The permission has write rights but no '
+-                                    'attributes are set.'),
+-                        'code': 13032,
+-                        'type': 'warning',
+-                        'name': 'MissingTargetAttributesinPermission',
+-                        'data': {
+-                            'right': 'write',
+-                        }
+-                    },
+-                ),
+                 result=dict(
+                     dn=permission1_dn,
+                     cn=[permission1],
+                     objectclass=objectclasses.permission,
+                     type=[u'user'],
+-                    ipapermright=[u'write'],
++                    ipapermright=[u'read'],
+                     ipapermbindruletype=[u'anonymous'],
+                     ipapermissiontype=[u'SYSTEM', u'V2'],
+                     ipapermlocation=[users_dn],
+@@ -3196,7 +3199,7 @@ class test_permission_bindtype(Declarative):
+             permission1, users_dn,
+             '(targetfilter = "(objectclass=posixaccount)")' +
+             '(version 3.0;acl "permission:%s";' % permission1 +
+-            'allow (write) userdn = "ldap:///anyone";)',
++            'allow (read) userdn = "ldap:///anyone";)',
+         ),
+ 
+         dict(
+-- 
+2.55.0
+

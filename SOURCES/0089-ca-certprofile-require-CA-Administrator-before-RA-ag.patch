@@ -1,0 +1,121 @@
+From b6f143b14c9c2c51806ed2c99904386689666323 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Tue, 1 Sep 2026 20:55:32 +0300
+Subject: [PATCH 89/91] ca, certprofile: require CA Administrator before
+ RA-agent changes
+
+CA lifecycle operations (ca-add/-del/-enable/-disable) and certprofile-mod
+--file carry out their changes against Dogtag through the privileged RA agent,
+which bypasses the caller's LDAP ACIs. They were gated only by the caller's
+effective rights on unrelated entry attributes (e.g. write on 'description'),
+and the certprofile --file path produces an empty LDAP modlist, leaving no
+caller-bound write enforced at all. Require the CA Administrator privilege
+explicitly before contacting Dogtag.
+
+Related: CVE-2026-79678
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit fc71e10a7a00c4bc1c0abbf37fcfdf76c813eb53)
+---
+ ipaserver/plugins/ca.py          | 28 +++++++++++++++++++---------
+ ipaserver/plugins/certprofile.py | 11 +++++++++--
+ 2 files changed, 28 insertions(+), 11 deletions(-)
+
+diff --git a/ipaserver/plugins/ca.py b/ipaserver/plugins/ca.py
+index 8367605ff..a62d3763d 100644
+--- a/ipaserver/plugins/ca.py
++++ b/ipaserver/plugins/ca.py
+@@ -14,6 +14,8 @@ from ipaserver.plugins.baseldap import (
+     LDAPObject, LDAPSearch, LDAPCreate, LDAPDelete,
+     LDAPUpdate, LDAPRetrieve, LDAPQuery, pkey_to_value)
+ from ipaserver.plugins.cert import ca_enabled_check
++from ipaserver.plugins.privilege import principal_has_privilege
++from ipalib.request import context
+ from ipalib import _, ngettext, x509
+ 
+ 
+@@ -59,6 +61,20 @@ EXAMPLES:
+ register = Registry()
+ 
+ 
++def ensure_ca_administrator(error):
++    """Guard a CA lifecycle change carried out via the RA agent.
++
++    Adding, deleting, enabling and disabling CAs are performed against
++    Dogtag through the privileged RA agent connection, which bypasses the
++    caller's LDAP ACIs. Require the CA Administrator privilege explicitly,
++    before contacting Dogtag, instead of relying on the caller's effective
++    rights on the (unrelated) CA entry attributes.
++    """
++    op_account = getattr(context, 'principal', None)
++    if not principal_has_privilege(api, op_account, u'CA Administrator'):
++        raise errors.ACIError(info=error)
++
++
+ @register()
+ class ca(LDAPObject):
+     """
+@@ -266,9 +282,7 @@ class ca_add(LDAPCreate):
+ 
+     def pre_callback(self, ldap, dn, entry, entry_attrs, *keys, **options):
+         ca_enabled_check(self.api)
+-        if not ldap.can_add(dn[1:], 'ipaca'):
+-            raise errors.ACIError(
+-                info=_("Insufficient 'add' privilege for entry '%s'.") % dn)
++        ensure_ca_administrator(_("Insufficient privilege to add a CA."))
+ 
+         # check that DN only includes standard naming attributes
+         dn_attrs = {
+@@ -332,9 +346,7 @@ class ca_del(LDAPDelete):
+ 
+         # ensure operator has permission to delete CA
+         # before contacting Dogtag
+-        if not ldap.can_delete(dn):
+-            raise errors.ACIError(info=_(
+-                "Insufficient privilege to delete a CA."))
++        ensure_ca_administrator(_("Insufficient privilege to delete a CA."))
+ 
+         if keys[0] == IPA_CA_CN:
+             raise errors.ProtectedEntryError(
+@@ -382,9 +394,7 @@ class CAQuery(LDAPQuery):
+         ca_obj = self.api.Command.ca_show(cn)['result']
+ 
+         # ensure operator has permission to modify CAs
+-        if not self.api.Backend.ldap2.can_write(ca_obj['dn'], 'description'):
+-            raise errors.ACIError(info=_(
+-                "Insufficient privilege to modify a CA."))
++        ensure_ca_administrator(_("Insufficient privilege to modify a CA."))
+ 
+         with self.api.Backend.ra_lightweight_ca as ca_api:
+             self.perform_action(ca_api, ca_obj['ipacaid'][0])
+diff --git a/ipaserver/plugins/certprofile.py b/ipaserver/plugins/certprofile.py
+index 60fb67531..364900e9b 100644
+--- a/ipaserver/plugins/certprofile.py
++++ b/ipaserver/plugins/certprofile.py
+@@ -9,6 +9,7 @@ from ipalib.plugable import Registry
+ from .baseldap import (
+     LDAPObject, LDAPSearch, LDAPCreate,
+     LDAPDelete, LDAPUpdate, LDAPRetrieve)
++from ipaserver.plugins.privilege import principal_has_privilege
+ from ipalib.request import context
+ from ipalib import ngettext
+ from ipalib.text import _
+@@ -345,8 +346,14 @@ class certprofile_mod(LDAPUpdate):
+             raise errors.ProtectedEntryError(label='certprofile', key=keys[0],
+                 reason=_('Certificate profiles cannot be renamed'))
+         if 'file' in options:
+-            # ensure operator has permission to update a certprofile
+-            if not ldap.can_write(dn, 'ipacertprofilestoreissued'):
++            # The profile configuration is updated against Dogtag through the
++            # privileged RA agent, which bypasses the caller's LDAP ACIs; a
++            # --file-only modify also yields an empty LDAP modlist, so no
++            # caller-bound write is enforced at all. Require the CA
++            # Administrator privilege explicitly before contacting Dogtag.
++            op_account = getattr(context, 'principal', None)
++            if not principal_has_privilege(
++                    self.api, op_account, u'CA Administrator'):
+                 raise errors.ACIError(info=_(
+                     "Insufficient privilege to modify a certificate profile."))
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,172 @@
+From 9c1f78c7189d614ae385bb3fd5f6b3ea2008b7a8 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 12:58:59 +0300
+Subject: [PATCH 80/91] user: read the SID only when authenticated; exclude
+ privileged accounts from delegated writes
+
+"System: Read User Standard Attributes" is an anonymous-read managed
+permission and it carried ipaNTSecurityIdentifier, so every fresh install
+granted anonymous reads of any user's SID, which aids enumeration and
+SID-based attacks. Move the attribute to "System: Read User IPA
+Attributes" (authenticated, bindruletype all). On upgrades the managed
+permission reconciler only adds default attributes and never removes
+them, so the server-wide deny ACI for anonymous SID reads is what removes
+the exposure there.
+
+Extend the delegated user-credential permissions to exclude all
+privileged accounts:
+
+- NOT_MEMBEROF_PRIVILEGED (admins + trust admins) replaces
+  NOT_MEMBEROF_ADMINS in Change User password, Manage User
+  Certificates/Principals/SSH Public Keys/Certificate Mappings,
+  Modify/Remove/Unlock Users and Manage Passkey Mappings: resetting such
+  an account's credentials would let a delegated user administrator
+  impersonate a privileged principal;
+- Manage User Certificate Mappings and Manage Passkey Mappings had no
+  targetfilter exclusion at all and get the same one (a passkey or
+  certificate mapping on an admin entry authenticates as that admin);
+- Modify User RDN and Reset Preserved User password also exclude
+  privileged accounts (renaming, or reset-then-undelete, is an
+  escalation).
+
+MEMBEROF_ADMINS is retained for "System: Change Admin User password",
+which targets the admins group on purpose. Managed permissions, so the
+filters are reconciled onto existing installs on upgrade.
+
+Fixes: CVE-2026-76578
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit f3a57ad3ebc6ad5bbf5c3b04cf8918d81995ca75)
+---
+ ipaserver/plugins/user.py | 40 ++++++++++++++++++++++++++++++---------
+ 1 file changed, 31 insertions(+), 9 deletions(-)
+
+diff --git a/ipaserver/plugins/user.py b/ipaserver/plugins/user.py
+index febc22fcf..85a4b83c9 100644
+--- a/ipaserver/plugins/user.py
++++ b/ipaserver/plugins/user.py
+@@ -137,7 +137,19 @@ MEMBEROF_ADMINS = "(memberOf={})".format(
+     DN('cn=admins', api.env.container_group, api.env.basedn)
+ )
+ 
+-NOT_MEMBEROF_ADMINS = '(!{})'.format(MEMBEROF_ADMINS)
++# Members of these privileged groups (admins, trust admins) must not be
++# manageable through delegated user-credential permissions: resetting such an
++# account's password, keys or certificate mapping would let a user
++# administrator impersonate a privileged principal. MEMBEROF_ADMINS is kept
++# separate because "System: Change Admin User password" targets the admins
++# group specifically.
++MEMBEROF_TRUST_ADMINS = "(memberOf={})".format(
++    DN('cn=trust admins', api.env.container_group, api.env.basedn)
++)
++
++NOT_MEMBEROF_PRIVILEGED = '(!(|{}{}))'.format(
++    MEMBEROF_ADMINS, MEMBEROF_TRUST_ADMINS
++)
+ PROTECTED_USERS = ('admin',)
+ 
+ 
+@@ -189,11 +201,13 @@ class user(baseuser):
+             'replaces_global_anonymous_aci': True,
+             'ipapermbindruletype': 'anonymous',
+             'ipapermright': {'read', 'search', 'compare'},
++            # ipaNTSecurityIdentifier is deliberately NOT here: exposing SIDs to
++            # anonymous binds aids enumeration and SID-based attacks. It is read
++            # by authenticated clients via "System: Read User IPA Attributes".
+             'ipapermdefaultattr': {
+                 'objectclass', 'cn', 'sn', 'description', 'title', 'uid',
+                 'displayname', 'givenname', 'initials', 'manager', 'gecos',
+                 'gidnumber', 'homedirectory', 'loginshell', 'uidnumber',
+-                'ipantsecurityidentifier'
+             },
+         },
+         'System: Read User Addressbook Attributes': {
+@@ -222,8 +236,12 @@ class user(baseuser):
+             'replaces_global_anonymous_aci': True,
+             'ipapermbindruletype': 'all',
+             'ipapermright': {'read', 'search', 'compare'},
++            # ipaNTSecurityIdentifier lives here (authenticated read) rather
++            # than in "System: Read User Standard Attributes" (anonymous) so
++            # the SID is not exposed to unauthenticated binds.
+             'ipapermdefaultattr': {
+                 'ipauniqueid', 'ipasshpubkey', 'ipauserauthtype', 'userclass',
++                'ipantsecurityidentifier',
+             },
+             'fixup_function': fix_addressbook_permission_bindrule,
+         },
+@@ -289,7 +307,7 @@ class user(baseuser):
+             'ipapermright': {'write'},
+             'ipapermtargetfilter': [
+                 permission_filter_objectclasses_string,
+-                NOT_MEMBEROF_ADMINS,
++                NOT_MEMBEROF_PRIVILEGED,
+             ],
+             'ipapermdefaultattr': {
+                 'krbprincipalkey', 'passwordhistory', 'sambalmpassword',
+@@ -323,7 +341,7 @@ class user(baseuser):
+             'ipapermright': {'write'},
+             'ipapermtargetfilter': [
+                 permission_filter_objectclasses_string,
+-                NOT_MEMBEROF_ADMINS,
++                NOT_MEMBEROF_PRIVILEGED,
+             ],
+             'ipapermdefaultattr': {'ipasshpubkey'},
+             'replaces': [
+@@ -335,7 +353,7 @@ class user(baseuser):
+             'ipapermright': {'write'},
+             'ipapermtargetfilter': [
+                 permission_filter_objectclasses_string,
+-                NOT_MEMBEROF_ADMINS,
++                NOT_MEMBEROF_PRIVILEGED,
+             ],
+             'ipapermdefaultattr': {'usercertificate'},
+             'default_privileges': {
+@@ -347,7 +365,7 @@ class user(baseuser):
+             'ipapermright': {'write'},
+             'ipapermtargetfilter': [
+                 permission_filter_objectclasses_string,
+-                NOT_MEMBEROF_ADMINS,
++                NOT_MEMBEROF_PRIVILEGED,
+             ],
+             'ipapermdefaultattr': {'krbprincipalname', 'krbcanonicalname'},
+             'default_privileges': {
+@@ -359,7 +377,7 @@ class user(baseuser):
+             'ipapermright': {'write'},
+             'ipapermtargetfilter': [
+                 permission_filter_objectclasses_string,
+-                NOT_MEMBEROF_ADMINS,
++                NOT_MEMBEROF_PRIVILEGED,
+             ],
+             'ipapermdefaultattr': {
+                 'businesscategory', 'carlicense', 'cn', 'departmentnumber',
+@@ -384,7 +402,7 @@ class user(baseuser):
+             'ipapermright': {'delete'},
+             'ipapermtargetfilter': [
+                 permission_filter_objectclasses_string,
+-                NOT_MEMBEROF_ADMINS,
++                NOT_MEMBEROF_PRIVILEGED,
+             ],
+             'replaces': [
+                 '(target = "ldap:///uid=*,cn=users,cn=accounts,$SUFFIX")(version 3.0;acl "permission:Remove Users";allow (delete) groupdn = "ldap:///cn=Remove Users,cn=permissions,cn=pbac,$SUFFIX";)',
+@@ -395,7 +413,7 @@ class user(baseuser):
+             'ipapermright': {'write'},
+             'ipapermtargetfilter': [
+                 permission_filter_objectclasses_string,
+-                NOT_MEMBEROF_ADMINS,
++                NOT_MEMBEROF_PRIVILEGED,
+             ],
+             'ipapermdefaultattr': {
+                 'krblastadminunlock', 'krbloginfailedcount', 'nsaccountlock',
+@@ -439,6 +457,10 @@ class user(baseuser):
+         },
+         'System: Manage User Certificate Mappings': {
+             'ipapermright': {'write'},
++            'ipapermtargetfilter': [
++                permission_filter_objectclasses_string,
++                NOT_MEMBEROF_PRIVILEGED,
++            ],
+             'ipapermdefaultattr': {'ipacertmapdata', 'objectclass'},
+             'default_privileges': {
+                 'Certificate Identity Mapping Administrators'
+-- 
+2.55.0
+

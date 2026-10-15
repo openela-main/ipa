@@ -1,0 +1,46 @@
+From ab3da34bf18209119b13eebb06cbbe620d86763c Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 12:58:59 +0300
+Subject: [PATCH 73/91] trusts: scope Samba ipaNTHash ACI to cn=accounts
+
+The "Samba system principals can read and write NT passwords" ACI granted
+adtrust agents read/write on ipaNTHash across the whole suffix. ipaNTHash
+only exists on account entries (users/computers under cn=accounts);
+trusted domain objects use ipaNTTrustAuthIncoming, not ipaNTHash (ipa_sam.c
+derives the TDO hash from the trust secret). Restrict the ACI target to
+cn=accounts. The remove:/add: pair migrates deployments carrying the old
+whole-suffix form.
+
+Fixes: CVE-2026-76578
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit b32e75378ae6f8ea3b5019a53483ae438d94fcbf)
+---
+ install/updates/60-trusts.update | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/install/updates/60-trusts.update b/install/updates/60-trusts.update
+index b2fdccae7..8999e8e22 100644
+--- a/install/updates/60-trusts.update
++++ b/install/updates/60-trusts.update
+@@ -35,10 +35,15 @@ replace:aci:(target = "ldap:///cn=trusts,$SUFFIX")(targetattr = "ipaNTTrustType
+ add:aci: (target = "ldap:///cn=trusts,$SUFFIX")(targetattr = "ipaNTTrustType || ipaNTTrustAttributes || ipaNTTrustDirection || ipaNTTrustPartner || ipaNTFlatName || ipaNTTrustAuthOutgoing || ipaNTTrustAuthIncoming || ipaNTSecurityIdentifier || ipaNTTrustForestTrustInfo || ipaNTTrustPosixOffset || ipaNTSupportedEncryptionTypes || ipaNTSIDBlacklistIncoming || ipaNTSIDBlacklistOutgoing")(version 3.0;acl "Allow trust admins manage trust accounts"; allow (read,write,add,delete) groupdn="ldap:///cn=trust admins,cn=groups,cn=accounts,$SUFFIX";)
+ add:aci: (targetattr = "cn || createtimestamp || description || displayname || entryusn || gecos || gidnumber || givenname || homedirectory || ipantsecurityidentifier || loginshell || modifytimestamp || objectclass || uid || uidnumber")(targetfilter = "(objectclass=posixaccount)")(version 3.0;acl "Allow reading POSIX information about trusted domain objects";allow (compare,read,search) groupdn = "ldap:///cn=adtrust agents,cn=sysaccounts,cn=etc,$SUFFIX";)
+ 
+-# Samba user should be able to read NT passwords to authenticate
+-# Add ipaNTHash to global ACIs, leave DNS tree out of global allow access rule
++# Samba user should be able to read NT passwords to authenticate.
++# ipaNTHash only exists on account entries (users/computers under cn=accounts),
++# so scope the ACI to cn=accounts rather than the whole suffix: adtrust agents
++# have no need to read/write ipaNTHash under cn=etc, cn=dns, o=ipaca, etc.
++# The remove:/add: pair migrates deployments still carrying the old, unscoped
++# (whole-suffix) form of this ACI.
+ dn: $SUFFIX
+-add:aci: (targetattr = "ipaNTHash")(version 3.0; acl "Samba system principals can read and write NT passwords"; allow (read,write) groupdn="ldap:///cn=adtrust agents,cn=sysaccounts,cn=etc,$SUFFIX";)
++remove:aci: (targetattr = "ipaNTHash")(version 3.0; acl "Samba system principals can read and write NT passwords"; allow (read,write) groupdn="ldap:///cn=adtrust agents,cn=sysaccounts,cn=etc,$SUFFIX";)
++add:aci: (target = "ldap:///cn=accounts,$SUFFIX")(targetattr = "ipaNTHash")(version 3.0; acl "Samba system principals can read and write NT passwords"; allow (read,write) groupdn="ldap:///cn=adtrust agents,cn=sysaccounts,cn=etc,$SUFFIX";)
+ remove:aci: (targetattr = "ipaNTHash")(version 3.0; acl "Samba system principals can read NT passwords"; allow (read) groupdn="ldap:///cn=adtrust agents,cn=sysaccounts,cn=etc,$SUFFIX";)
+ 
+ # Allow Samba to read POSIX information with an explicit ACI
+-- 
+2.55.0
+

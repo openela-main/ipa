@@ -1,0 +1,71 @@
+From 3e0d9baf88c4db8ae52c36f8bb53b5f5ac2170bb Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 12:58:59 +0300
+Subject: [PATCH 76/91] permission: require an authenticated bind for
+ modification permissions
+
+A permission with ipapermbindruletype "all" generates userdn =
+"ldap:///all", and one with the "anonymous" bind type generates
+userdn = "ldap:///anyone". No authmethod value means "the client sent no
+credentials" (authmethod = "none" in an ACI is a no-op that always
+evaluates to true), so:
+
+- a bindtype=all permission that grants add/write/delete keeps the plain
+  userdn = "ldap:///all" rule: an anonymous bind has the empty DN and
+  does not match "all", and the server-wide "Deny all modifications for
+  anonymous binds" ACI is the backstop;
+- a bindtype=anonymous permission is rejected outright when it carries
+  write, add or delete rights (make_aci() raises a ValidationError,
+  covering both permission-add and permission-mod): a credential-less
+  principal must not be able to modify the tree.
+
+The bindtype=self rule stays the bare userdn = "ldap:///self": the empty
+DN of an anonymous bind never equals an entry DN.
+
+Fixes: CVE-2026-76578
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit d37c906b97220d9155fbef51e0d9274b444bac64)
+---
+ ipaserver/plugins/permission.py | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/ipaserver/plugins/permission.py b/ipaserver/plugins/permission.py
+index b75187191..ba3076e0c 100644
+--- a/ipaserver/plugins/permission.py
++++ b/ipaserver/plugins/permission.py
+@@ -607,14 +607,32 @@ class permission(baseldap.LDAPObject):
+         # version, name, rights, bind rule
+         ipapermbindruletype = entry.single_value.get('ipapermbindruletype',
+                                                      'permission')
++        rights = {r.lower() for r in entry.get('ipapermright', ())}
++        grants_modification = bool(rights & {'add', 'write', 'delete'})
+         if ipapermbindruletype == 'permission':
+             dn = DN(('cn', name), self.container_dn, self.api.env.basedn)
+             bindrule = 'groupdn = "ldap:///%s"' % dn
+         elif ipapermbindruletype == 'all':
++            # ldap:///all never matches an anonymous bind, which binds with
++            # the empty DN. No authmethod value exists that means "the client
++            # sent no credentials" (authmethod="none" in an ACI always
++            # evaluates to true), so no per-ACI guard is possible; the
++            # server-wide "Deny all modifications for anonymous binds" ACI
++            # (deny absolute on userdn != "ldap:///all") is the backstop.
+             bindrule = 'userdn = "ldap:///all"'
+         elif ipapermbindruletype == 'anonymous':
++            # Anonymous means no credential at all, so it must never grant the
++            # ability to modify the tree.
++            if grants_modification:
++                raise errors.ValidationError(
++                    name='ipapermbindruletype',
++                    error=_('the "anonymous" bind type cannot be combined with '
++                            'write, add or delete rights'))
+             bindrule = 'userdn = "ldap:///anyone"'
+         elif ipapermbindruletype == 'self':
++            # The empty DN of an anonymous bind never equals an entry DN, so
++            # a bare userdn=self cannot be exercised by a credential-less
++            # bind.
+             bindrule = 'userdn = "ldap:///self"'
+         else:
+             raise ValueError(ipapermbindruletype)
+-- 
+2.55.0
+

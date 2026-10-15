@@ -1,0 +1,119 @@
+From 900d2cb45d83fff918654b87cd80a5b95a7b4bcb Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 12:58:59 +0300
+Subject: [PATCH 72/91] group: read the SID only when authenticated; exclude
+ protected groups from delegated writes
+
+"System: Read Groups" is an anonymous-read managed permission and it
+carried ipaNTSecurityIdentifier, so every fresh install granted anonymous
+reads of any group's SID. Add a new authenticated (bindruletype all)
+managed permission "System: Read Group SID" holding the attribute and
+drop it from the anonymous permission; on upgrades the server-wide deny
+ACI for anonymous SID reads is what removes the exposure.
+
+Introduce PROTECTED_GROUPS_FILTER (derived from PROTECTED_GROUPS) and use
+it in "System: Add Group Members", "System: Modify Groups" and
+"System: Remove Groups" so none of them can target admins, trust admins
+or the default smb group (a delegated group administrator could
+previously add themselves to cn=trust admins, or set its membermanager
+and add a member through the member-manager ACI).
+
+Also define _dcerpc_bindings_installed unconditionally; it was assigned
+only inside the in_server block, tripping a used-before-assignment
+warning. Pre-existing issue, surfaced by fastpylint once this branch
+touches the file.
+
+Fixes: CVE-2026-76578
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit 9668a5763fa51814573359a52a8dc0bbd5e8326b)
+---
+ ipaserver/plugins/group.py | 34 ++++++++++++++++++++++++++++++----
+ 1 file changed, 30 insertions(+), 4 deletions(-)
+
+diff --git a/ipaserver/plugins/group.py b/ipaserver/plugins/group.py
+index 7bfa7adf5..da205e013 100644
+--- a/ipaserver/plugins/group.py
++++ b/ipaserver/plugins/group.py
+@@ -53,6 +53,11 @@ if six.PY3:
+ 
+ logger = logging.getLogger(__name__)
+ 
++# Defined unconditionally so it is always bound: it is only assigned inside the
++# "if api.env.in_server" block below, and the server-side callbacks that read it
++# only run in that case, but leaving it otherwise unbound trips a
++# used-before-assignment warning.
++_dcerpc_bindings_installed = False
+ if api.env.in_server:
+     try:
+         import ipaserver.dcerpc
+@@ -167,6 +172,14 @@ register = Registry()
+ # also see "System: Remove Groups"
+ PROTECTED_GROUPS = (u'admins', u'trust admins', u'default smb group')
+ 
++# LDAP filter excluding the protected groups as a permission target, so a
++# delegated group-write permission cannot modify a privileged group -- e.g. add
++# a member to cn=trust admins, or set its membermanager and then add a member
++# through it. Derived from PROTECTED_GROUPS so the two stay in sync.
++PROTECTED_GROUPS_FILTER = '(!(|%s))' % ''.join(
++    '(cn=%s)' % name for name in PROTECTED_GROUPS
++)
++
+ 
+ ipaexternalmember_param = Str('ipaexternalmember*',
+             cli_name='external',
+@@ -228,11 +241,24 @@ class group(LDAPObject):
+             'replaces_global_anonymous_aci': True,
+             'ipapermbindruletype': 'anonymous',
+             'ipapermright': {'read', 'search', 'compare'},
++            # ipaNTSecurityIdentifier is deliberately NOT here: exposing SIDs to
++            # anonymous binds aids enumeration and SID-based attacks. It is read
++            # by authenticated clients via "System: Read Group SID".
+             'ipapermdefaultattr': {
+                 'businesscategory', 'cn', 'description', 'gidnumber',
+                 'ipaexternalmember', 'ipauniqueid', 'mepmanagedby', 'o',
+                 'objectclass', 'ou', 'owner', 'seealso',
+-                'ipantsecurityidentifier', 'membermanager',
++                'membermanager',
++            },
++        },
++        'System: Read Group SID': {
++            'replaces_global_anonymous_aci': True,
++            'ipapermbindruletype': 'all',
++            'ipapermright': {'read', 'search', 'compare'},
++            # Group SID kept out of the anonymous "System: Read Groups"
++            # permission so it is only readable by authenticated binds.
++            'ipapermdefaultattr': {
++                'ipantsecurityidentifier',
+             },
+         },
+         'System: Read Group Membership': {
+@@ -261,7 +287,7 @@ class group(LDAPObject):
+             'ipapermright': {'write'},
+             'ipapermtargetfilter': [
+                 '(objectclass=ipausergroup)',  # only ipausergroups
+-                '(!(cn=admins))',
++                PROTECTED_GROUPS_FILTER,
+             ],
+             'ipapermdefaultattr': {'member'},
+             'replaces': [
+@@ -286,7 +312,7 @@ class group(LDAPObject):
+             'ipapermright': {'write'},
+             'ipapermtargetfilter': [
+                 permission_filter_objectclasses_string,
+-                '(!(cn=admins))',
++                PROTECTED_GROUPS_FILTER,
+             ],
+             'ipapermdefaultattr': {
+                 'cn', 'description', 'gidnumber', 'ipauniqueid',
+@@ -302,7 +328,7 @@ class group(LDAPObject):
+             'ipapermtargetfilter': [
+                 permission_filter_objectclasses_string,
+                 # prevent removal of PROTECTED_GROUPS
+-                '(!(|(cn=admins)(cn=trust admins)(cn=default smb group)))',
++                PROTECTED_GROUPS_FILTER,
+             ],
+             'replaces': [
+                 '(target = "ldap:///cn=*,cn=groups,cn=accounts,$SUFFIX")(version 3.0;acl "permission:Remove Groups";allow (delete) groupdn = "ldap:///cn=Remove Groups,cn=permissions,cn=pbac,$SUFFIX";)',
+-- 
+2.55.0
+

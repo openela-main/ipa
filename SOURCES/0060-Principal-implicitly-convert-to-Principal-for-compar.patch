@@ -1,0 +1,37 @@
+From 507f737ba68a7465084fa8a9e1d5017601d37f7d Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 24 Aug 2026 13:10:31 +0300
+Subject: [PATCH 60/91] Principal: implicitly convert to Principal for
+ comparison
+
+When ipapython.kerberos.Principal is compared with unicode string, it
+will return False because Principal.__eq__ method expects Principal to
+compare with.
+
+Run implicit conversion if possible, it is cheap for FreeIPA use cases.
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+---
+ ipapython/kerberos.py | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/ipapython/kerberos.py b/ipapython/kerberos.py
+index 5dfd36bbb..fbf8148b4 100644
+--- a/ipapython/kerberos.py
++++ b/ipapython/kerberos.py
+@@ -85,7 +85,10 @@ class Principal:
+ 
+     def __eq__(self, other):
+         if not isinstance(other, Principal):
+-            return False
++            try:
++                other = Principal(other)
++            except TypeError:
++                return False
+ 
+         return (self.components == other.components and
+                 self.realm == other.realm)
+-- 
+2.55.0
+

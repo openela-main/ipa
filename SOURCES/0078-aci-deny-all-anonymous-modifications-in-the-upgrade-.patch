@@ -1,0 +1,63 @@
+From 5e0f41f3b5e4d616913d56cbe0fcf2d504eb75a6 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 12:58:59 +0300
+Subject: [PATCH 78/91] aci: deny all anonymous modifications in the upgrade
+ update
+
+New 21-deny-anonymous-modify.update for upgrades: add the "Deny all
+modifications for anonymous binds" ACI (deny absolute (add,delete,write)
+userdn != "ldap:///all") on the base suffix, and addifexist it on o=ipaca
+- the Dogtag PKI database is a separate 389-ds backend with its own ACI
+set, and addifexist keeps the rule from being applied on CA-less servers.
+Dogtag's own components bind authenticated (pkidbuser over
+ldapi/SASL EXTERNAL), so they are unaffected.
+
+Fixes: CVE-2026-76578
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit f1fdf30bf0d2997b35d9bc4c705925ec38a7e5e9)
+---
+ .../updates/21-deny-anonymous-modify.update   | 32 +++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+ create mode 100644 install/updates/21-deny-anonymous-modify.update
+
+diff --git a/install/updates/21-deny-anonymous-modify.update b/install/updates/21-deny-anonymous-modify.update
+new file mode 100644
+index 000000000..d1c9cebb6
+--- /dev/null
++++ b/install/updates/21-deny-anonymous-modify.update
+@@ -0,0 +1,32 @@
++# No anonymous bind may ever modify the tree.
++#
++# Any self-referential allow ACI - userdn="ldap:///self", or a userattr rule
++# such as ipatokenOwner#SELFDN / managedBy#USERDN - can be satisfied by a
++# credential-less bind. That let an anonymous client create entries under
++# cn=otp via the "Users can create self-managed tokens" ACI.
++#
++# There is no authmethod value that means "the client sent no credentials":
++# the ACI keyword authmethod="none" means "do not check the authentication
++# method" and always evaluates to true, so a deny that ORs in
++# "(authmethod = "none")" would deny to everyone. The only ACI-expressible
++# test for a credential-less bind is the empty DN: an anonymous simple bind
++# and a SASL ANONYMOUS bind both bind with the empty DN, which does not match
++# "ldap:///all", while any authenticated bind (password, GSSAPI, certificate)
++# has a real DN and does. The rule therefore denies userdn != "ldap:///all",
++# and the "absolute" keyword makes the deny final: when the rule matches,
++# access is denied immediately without consulting the other rules, so this
++# closes the whole class of "anonymous principal performs a write"
++# escalations regardless of which allow ACI would otherwise grant it.
++# Authenticated binds (GSSAPI, password simple, ACI-exempt Directory
++# Manager) and reads are unaffected. (An RFC 4513
++# unauthenticated simple bind that keeps a real DN cannot be distinguished
++# from a genuine bind by any ACI clause; keep
++# nsslapd-allow-unauthenticated-binds off.)
++dn: $SUFFIX
++add:aci: (targetattr = "*")(version 3.0; acl "Deny all modifications for anonymous binds"; deny absolute (add,delete,write) userdn != "ldap:///all";)
++
++# The Dogtag PKI database (o=ipaca) is a separate backend with its own ACI set
++# and must be protected the same way. addifexist applies this only on servers
++# that actually host a CA (where o=ipaca exists); CA-less servers skip it.
++dn: o=ipaca
++addifexist:aci: (targetattr = "*")(version 3.0; acl "Deny all modifications for anonymous binds"; deny absolute (add,delete,write) userdn != "ldap:///all";)
+-- 
+2.55.0
+

@@ -1,0 +1,68 @@
+From 696ec61486188a56431b1e08884c2253fe338fec Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 12:58:59 +0300
+Subject: [PATCH 64/91] certprofile: reject import of profiles that can execute
+ programs
+
+certprofile-import validated only the profileId from the uploaded profile
+and passed the rest verbatim to Dogtag. A profile that references
+Dogtag's ExternalProcessConstraint (class_id externalProcessConstraintImpl)
+makes the CA run an external binary with request-derived environment
+variables, i.e. code execution as pkiuser - the final step of the
+reported chain once an attacker holds (forged) administrator credentials.
+
+Scan the profile on import and reject any policy component whose class_id
+is known to execute programs on the CA host. A deployment that genuinely
+needs such a component must configure the profile directly on the CA, out
+of band. This is the client-side half; restricting the constraint itself
+is a matching change in dogtagpki.
+
+Fixes: CVE-2026-76578
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit 08ecce06c5105fc971b7eafd6e7494b687777c39)
+---
+ ipaserver/plugins/certprofile.py | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/ipaserver/plugins/certprofile.py b/ipaserver/plugins/certprofile.py
+index 978fce8a5..60fb67531 100644
+--- a/ipaserver/plugins/certprofile.py
++++ b/ipaserver/plugins/certprofile.py
+@@ -232,10 +232,34 @@ class certprofile_import(LDAPCreate):
+ 
+     PROFILE_ID_PATTERN = re.compile(r'^profileId=([a-zA-Z]\w*)', re.MULTILINE)
+ 
++    # Dogtag profile policy components (referenced by class_id) that can run
++    # programs / commands on the CA host. certprofile-import otherwise only
++    # validates profileId and passes the rest of the profile straight to
++    # Dogtag, so importing a profile that uses one of these reaches code
++    # execution as pkiuser. Reject them here; a deployment that legitimately
++    # needs such a component must configure the profile directly on the CA,
++    # out of band, rather than through the IPA API.
++    DANGEROUS_CLASS_IDS = frozenset({
++        u'externalprocessconstraintimpl',
++    })
++
++    CLASS_ID_PATTERN = re.compile(r'class_id\s*=\s*(\S+)', re.MULTILINE)
++
+     def pre_callback(self, ldap, dn, entry, entry_attrs, *keys, **options):
+         ca_enabled_check(self.api)
+         context.profile = options['file']
+ 
++        for class_id in self.CLASS_ID_PATTERN.findall(options['file']):
++            if class_id.strip().lower() in self.DANGEROUS_CLASS_IDS:
++                raise errors.ValidationError(
++                    name='file',
++                    error=_(
++                        "Profile references policy component '%(class_id)s', "
++                        "which can execute programs on the CA host and cannot "
++                        "be imported through IPA."
++                    ) % dict(class_id=class_id.strip())
++                )
++
+         matches = self.PROFILE_ID_PATTERN.findall(options['file'])
+         if len(matches) == 0:
+             # no profileId found, use CLI value as profileId.
+-- 
+2.55.0
+

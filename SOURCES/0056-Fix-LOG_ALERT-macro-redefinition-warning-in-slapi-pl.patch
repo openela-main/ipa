@@ -1,0 +1,34 @@
+From c6674ecb4f3f88341485013101f7309e0ca79f9a Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Tue, 2 Jun 2026 17:19:29 +0300
+Subject: [PATCH 56/91] Fix LOG_ALERT macro redefinition warning in slapi
+ plugins
+
+Undefine LOG_ALERT from syslog.h before defining the IPA plugin
+version to suppress the compiler warning that affects all IPA
+slapi plugins.
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+---
+ daemons/ipa-slapi-plugins/common/util.h | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/daemons/ipa-slapi-plugins/common/util.h b/daemons/ipa-slapi-plugins/common/util.h
+index 1eaf47fac..a54be08fb 100644
+--- a/daemons/ipa-slapi-plugins/common/util.h
++++ b/daemons/ipa-slapi-plugins/common/util.h
+@@ -44,6 +44,11 @@
+ #define discard_const(ptr) ((void *)((uintptr_t)(ptr)))
+ #endif
+ 
++/* LOG_ALERT comes from syslog.h, we don't use it directly */
++#ifdef LOG_ALERT
++#undef LOG_ALERT
++#endif
++
+ #define log_func discard_const(__func__)
+ 
+ #define LOG_PLUGIN_NAME(NAME, fmt, ...) \
+-- 
+2.55.0
+

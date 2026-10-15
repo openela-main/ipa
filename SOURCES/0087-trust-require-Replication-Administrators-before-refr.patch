@@ -1,0 +1,47 @@
+From af9081248a124e5856ef6abb14aada13735cfcde Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Tue, 1 Sep 2026 20:55:21 +0300
+Subject: [PATCH 87/91] trust: require Replication Administrators before
+ refreshing trust topology
+
+trust_fetch_domains launches a root oddjobd helper that connects to LDAP as
+its own service principal, bypassing the caller's ACIs. It only checked the
+caller's effective write rights, which the helper does not honour. Require the
+Replication Administrators privilege up front, before the D-Bus call,
+consistent with trust-add and trust-enable-agent.
+
+Related: CVE-2026-79678
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit bceafef832fa9ce1ded8d95a36402f26c3de3b2c)
+---
+ ipaserver/plugins/trust.py | 14 +++++++++-----
+ 1 file changed, 9 insertions(+), 5 deletions(-)
+
+diff --git a/ipaserver/plugins/trust.py b/ipaserver/plugins/trust.py
+index f5d741f57..49813e765 100644
+--- a/ipaserver/plugins/trust.py
++++ b/ipaserver/plugins/trust.py
+@@ -1833,11 +1833,15 @@ class trust_fetch_domains(LDAPRetrieve):
+         # trust topology it returns into the directory as authoritative
+         # data via a root-owned oddjobd helper. That helper connects to
+         # LDAP as its own service principal, so the calling user's LDAP
+-        # bind never enforces the write ACIs on the trust entry the way
+-        # trust-add/-mod/-del do. Require the same write access here
+-        # explicitly instead of relying on the (intentionally broad, for
+-        # SSSD's sake) read ACI on trust information.
+-        if not ldap.can_write(result['result']['dn'], 'ipanttrustdirection'):
++        # bind never enforces any ACI on the trust entry the way
++        # trust-add/-mod/-del do. Because the privileged helper bypasses
++        # the caller's access entirely, the caller's effective rights are
++        # not a sufficient gate here: we must verify possession of the
++        # Replication Administrators privilege up front, before invoking
++        # the helper -- exactly as trust-add and trust-enable-agent do.
++        privilege = u'Replication Administrators'
++        op_account = getattr(context, 'principal', None)
++        if not principal_has_privilege(self.api, op_account, privilege):
+             raise errors.ACIError(
+                 info=_("not allowed to refresh trust topology"))
+ 
+-- 
+2.55.0
+

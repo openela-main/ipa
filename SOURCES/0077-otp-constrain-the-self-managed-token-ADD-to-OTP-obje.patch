@@ -1,0 +1,51 @@
+From 3cfb5c0045493fd48ea43f10c29916b2a9031024 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 12:58:59 +0300
+Subject: [PATCH 77/91] otp: constrain the self-managed-token ADD to OTP object
+ classes
+
+The "Users can create self-managed tokens" ACI restricts only the add
+right and objectClass=ipaToken; it put no limit on which attributes or
+object classes the new entry may carry. Combined with the SELFDN add
+path, that let a client inject a Kerberos principal + key, a password and
+a SID into a token entry (the credential-forging step of the reported
+chain).
+
+Add a targattrfilters clause that, on add, limits objectClass to the OTP
+token classes (top, ipaToken, ipatokenTOTP, ipatokenHOTP) and forbids an
+injected aci. Attributes that carry key material - krbPrincipalKey,
+krbCanonicalName, userPassword, ipaNTSecurityIdentifier, ... - require
+object classes outside that set, so they now fail the objectclass filter
+(and LDAP schema). 389-ds does not consult targetattr for add
+operations, so targattrfilters is the mechanism that works here;
+legitimate ipa otptoken-add sets none of the forbidden classes/attrs and
+is unaffected.
+
+Fixes: CVE-2026-76578
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit e1fed4022da62244f61f76d35a1ef51378633335)
+---
+ install/updates/40-otp.update | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/install/updates/40-otp.update b/install/updates/40-otp.update
+index 1a9b030e1..796a7e702 100644
+--- a/install/updates/40-otp.update
++++ b/install/updates/40-otp.update
+@@ -23,7 +23,12 @@ add: aci:(targetfilter = "(objectClass=ipatokenTOTP)")(targetattrs = "ipatokenOT
+ add: aci:(targetfilter = "(objectClass=ipatokenHOTP)")(targetattrs = "ipatokenOTPalgorithm || ipatokenOTPdigits")(version 3.0; acl "Users/managers can see HOTP details"; allow (read, search, compare) userattr = "ipatokenOwner#USERDN" or userattr = "managedBy#USERDN";)
+ add: aci:(targetfilter = "(objectClass=ipaToken)")(targetattrs = "description || ipatokenDisabled || ipatokenNotBefore || ipatokenNotAfter || ipatokenVendor || ipatokenModel || ipatokenSerial")(version 3.0; acl "Managers can write basic token info"; allow (write) userattr = "managedBy#USERDN";)
+ add: aci:(targetfilter = "(objectClass=ipaToken)")(version 3.0; acl "Managers can delete tokens"; allow (delete) userattr = "managedBy#USERDN";)
+-add: aci:(target = "ldap:///ipatokenuniqueid=*,cn=otp,$SUFFIX")(targetfilter = "(objectClass=ipaToken)")(version 3.0; acl "Users can create self-managed tokens"; allow (add) userattr = "ipatokenOwner#SELFDN" and userattr = "managedBy#SELFDN";)
++# Constrain the self-managed token ADD to the OTP object classes only (and forbid
++# an injected aci), so the SELFDN add path cannot smuggle a Kerberos principal,
++# password or SID into the new entry (attributes that require non-OTP object
++# classes and would fail the objectclass filter / schema).
++remove: aci:(target = "ldap:///ipatokenuniqueid=*,cn=otp,$SUFFIX")(targetfilter = "(objectClass=ipaToken)")(version 3.0; acl "Users can create self-managed tokens"; allow (add) userattr = "ipatokenOwner#SELFDN" and userattr = "managedBy#SELFDN";)
++add: aci:(target = "ldap:///ipatokenuniqueid=*,cn=otp,$SUFFIX")(targetfilter = "(objectClass=ipaToken)")(targattrfilters = "add=objectclass:(|(objectclass=top)(objectclass=ipaToken)(objectclass=ipatokenTOTP)(objectclass=ipatokenHOTP)) && aci:(!(aci=*))")(version 3.0; acl "Users can create self-managed tokens"; allow (add) userattr = "ipatokenOwner#SELFDN" and userattr = "managedBy#SELFDN";)
+ 
+ dn: cn=radiusproxy,$SUFFIX
+ default: objectClass: nsContainer
+-- 
+2.55.0
+

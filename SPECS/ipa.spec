@@ -190,7 +190,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        21%{?rc_version:.%rc_version}%{?dist}
+Release:        21%{?rc_version:.%rc_version}%{?dist}.3
 Summary:        The Identity, Policy and Audit system
 
 License:        GPLv3+
@@ -254,6 +254,58 @@ Patch0042:      0042-ipa-kdb-enforce-PAC-presence-on-TGT-for-TGS-REQ_rhel#110061
 Patch0043:      0043-ipatests-extend-test-for-unique-krbcanonicalname_rhel#110061.patch
 Patch0044:      0044-ipatests-refactor-krb-unique-tests_rhel#110061.patch
 Patch0045:      0045-fix-memory-leaks-in-IPA-plugins_rhel#145410.patch
+Patch0046:      0046-ipatests-fix-kdcproxy-tests-against-AD.patch
+Patch0047:      0047-Add-CSP-headers-to-webui.patch
+Patch0048:      0048-Fix-unauthorized-error-page.patch
+Patch0049:      0049-Limit-maximum-request-size-for-i18n.patch
+Patch0050:      0050-Fix-unauthenticated-DoS-in-migration-endpoint.patch
+Patch0051:      0051-ipa-kdb-Add-cross-realm-trust-PAC-content-validation.patch
+Patch0052:      0052-ipatests-add-integration-tests-for-krbPrincipalMatch.patch
+Patch0053:      0053-Migrate-kerberos-uniqueness-to-krbPrincipalMatch-on-.patch
+Patch0054:      0054-Use-krbPrincipalMatch-for-Kerberos-uniqueness-enforc.patch
+Patch0055:      0055-Add-Kerberos-principal-matching-rule-plugin-for-389-.patch
+Patch0056:      0056-Fix-LOG_ALERT-macro-redefinition-warning-in-slapi-pl.patch
+Patch0057:      0057-CVE-2026-19550-trust-require-write-access-to-refresh.patch
+Patch0058:      0058-doc-update-API-change-for-principal-from-Str-to-Prin.patch
+Patch0059:      0059-ipatests-Fix-expectations-in-test_i18n_messages_vali.patch
+Patch0060:      0060-Principal-implicitly-convert-to-Principal-for-compar.patch
+Patch0061:      0061-kdb-enforce-CNAME-comparison-against-ipaOriginalUid-.patch
+Patch0062:      0062-baseldap-force-permission-checks-in-LDAP-oriented-op.patch
+Patch0063:      0063-aci-use-the-hardened-self-service-bind-rule-in-the-u.patch
+Patch0064:      0064-certprofile-reject-import-of-profiles-that-can-execu.patch
+Patch0065:      0065-aci-deny-anonymous-SID-reads-in-the-upgrade-update.patch
+Patch0066:      0066-aci-key-the-anonymous-denies-on-the-empty-DN-harden-.patch
+Patch0067:      0067-aci-generate-the-hardened-self-service-bind-rule.patch
+Patch0068:      0068-tests-xmlrpc-cover-the-permission-authentication-che.patch
+Patch0069:      0069-aci-regenerate-ACI.txt-for-the-permission-changes.patch
+Patch0070:      0070-aci-parse-absolute-denies-and-compound-bind-rules.patch
+Patch0071:      0071-ipa-pwd-extop-fail-closed-if-password-metadata-canno.patch
+Patch0072:      0072-group-read-the-SID-only-when-authenticated-exclude-p.patch
+Patch0073:      0073-trusts-scope-Samba-ipaNTHash-ACI-to-cn-accounts.patch
+Patch0074:      0074-aci-convert-the-self-service-ACIs-to-the-hardened-bi.patch
+Patch0075:      0075-host-exclude-ipaservers-from-delegated-host-write-pe.patch
+Patch0076:      0076-permission-require-an-authenticated-bind-for-modific.patch
+Patch0077:      0077-otp-constrain-the-self-managed-token-ADD-to-OTP-obje.patch
+Patch0078:      0078-aci-deny-all-anonymous-modifications-in-the-upgrade-.patch
+Patch0079:      0079-tests-xmlrpc-expect-the-hardened-self-service-ACIs.patch
+Patch0080:      0080-user-read-the-SID-only-when-authenticated-exclude-pr.patch
+Patch0081:      0081-tests-ipalib-cover-parsing-of-absolute-denies-and-co.patch
+Patch0082:      0082-stageuser-exclude-privileged-accounts-from-delegated.patch
+Patch0083:      0083-install-register-the-new-21-ACI-update-scripts.patch
+Patch0084:      0084-trust_add-require-Replication-Administrators-privile.patch
+Patch0085:      0085-admins-grant-admins-group-all-default-privileges.patch
+Patch0086:      0086-baseldap-fall-back-to-effective-rights-when-enforcin.patch
+Patch0087:      0087-trust-require-Replication-Administrators-before-refr.patch
+Patch0088:      0088-certmap-require-privilege-before-matching-certificat.patch
+Patch0089:      0089-ca-certprofile-require-CA-Administrator-before-RA-ag.patch
+Patch0090:      0090-cert-authorize-certificate-retrieval-before-reaching.patch
+Patch0091:      0091-vault-document-why-vaultconfig_show-is-intentionally.patch
+Patch0092:      0092-vault-fix-linting-issues.patch
+Patch0093:      0093-Allow-fine-tuned-privilege-check.patch
+Patch0094:      0094-ipatests-fix-XMLRPC-test-expecations.patch
+Patch0095:      0095-permission-enforcement-allow-services-to-define-keys.patch
+Patch0096:      0096-ipa-pwd-extop-allow-password-expiration-override-on-.patch
+Patch0097:      0097-kdb-rework-cross-realm-PAC-validation-and-ID-overrid.patch
 %if 0%{?rhel} >= 8
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-freeipa.spec-depend-on-bind-dnssec-utils.patch
@@ -1097,6 +1149,7 @@ rm %{buildroot}/%{plugin_dir}/libipa_modrdn.la
 rm %{buildroot}/%{plugin_dir}/libipa_lockout.la
 rm %{buildroot}/%{plugin_dir}/libipa_cldap.la
 rm %{buildroot}/%{plugin_dir}/libipa_dns.la
+rm %{buildroot}/%{plugin_dir}/libipa_krbprinc_mr.la
 rm %{buildroot}/%{plugin_dir}/libipa_sidgen.la
 rm %{buildroot}/%{plugin_dir}/libipa_sidgen_task.la
 rm %{buildroot}/%{plugin_dir}/libipa_extdom_extop.la
@@ -1455,6 +1508,7 @@ fi
 %attr(755,root,root) %{plugin_dir}/libipa_modrdn.so
 %attr(755,root,root) %{plugin_dir}/libipa_lockout.so
 %attr(755,root,root) %{plugin_dir}/libipa_dns.so
+%attr(755,root,root) %{plugin_dir}/libipa_krbprinc_mr.so
 %attr(755,root,root) %{plugin_dir}/libipa_range_check.so
 %attr(755,root,root) %{plugin_dir}/libipa_otp_counter.so
 %attr(755,root,root) %{plugin_dir}/libipa_otp_lasttoken.so
@@ -1537,6 +1591,8 @@ fi
 %dir %{_usr}/share/ipa/ui/css
 %{_usr}/share/ipa/ui/css/*.css
 %dir %{_usr}/share/ipa/ui/js
+%dir %{_usr}/share/ipa/ui/js/inline
+%{_usr}/share/ipa/ui/js/inline/*.js
 %dir %{_usr}/share/ipa/ui/js/dojo
 %{_usr}/share/ipa/ui/js/dojo/dojo.js
 %dir %{_usr}/share/ipa/ui/js/libs
@@ -1768,6 +1824,55 @@ fi
 %endif
 
 %changelog
+* Mon Oct 5 2026 Prasad Kalanke <pkalanke@redhat.com> - 4.9.13-21.3
+- Updated the application() function in install/migration/migration.py to resolve the error.
+- CVE-2026-73197 ipa: FreeIPA: Unauthenticated DoS in /ipa/migration/migration.py via Unbounded Request Body Read
+  Resolves: RHEL-240819
+
+* Thu Oct 1 2026 Prasad Kalanke <pkalanke@redhat.com> - 4.9.13-21.2
+- Fix ipatests for kdcproxy after CVE-2025-59088 fix
+  Resolves: RHEL-129966
+- CVE-2026-18147 idm:DL1/ipa: FreeIPA/IdM: Cross-Site Scripting vulnerability allows arbitrary code execution via crafted URL
+  Resolves: RHEL-218850
+- CVE-2026-18147 idm:client/ipa: FreeIPA/IdM: Cross-Site Scripting vulnerability allows arbitrary code execution via crafted URL
+  Resolves: RHEL-218856
+- CVE-2026-73198 ipa: FreeIPA: Unauthenticated DoS in /ipa/i18n_messages via Unbounded Request Body Read
+  Resolves: RHEL-240798
+- CVE-2026-73197 ipa: FreeIPA: Unauthenticated DoS in /ipa/migration/migration.py via Unbounded Request Body Read
+  Resolves: RHEL-240819
+- CVE-2026-11861 ipa: FreeIPA: Obtaining TGS with impersonating cname through trust relationships
+  Resolves: RHEL-240840
+- CVE-2026-13097 ipa: Privilege escalation via krbCanonicalName manipulation due to realm-unaware uniqueness enforcement in FreeIPA LDAP datastore
+  Resolves: RHEL-240905
+- CVE-2026-76578 idm:DL1/ipa: FreeIPA: unauthenticated LDAP client can obtain administrator credentials via the self-managed-token ACI
+  Resolves: RHEL-245481
+- CVE-2026-19550 ipa: FreeIPA: trust-fetch-domains uses trust-read ACI to gate a privileged AD trust refresh, allowing unauthorized LDAP writes
+  Resolves: RHEL-245621
+- CVE-2026-79678 idm:DL1/ipa: freeipa: idp-add eval() reachable before authorization check allows environment disclosure and denial of service
+  Resolves: RHEL-255682
+
+* Fri Sep 11 2026 Prasad Kalanke <pkalanke@redhat.com> - 4.9.13-21.1
+- Fix ipatests for kdcproxy after CVE-2025-59088 fix
+  Resolves: RHEL-129966
+- CVE-2026-18147 idm:DL1/ipa: FreeIPA/IdM: Cross-Site Scripting vulnerability allows arbitrary code execution via crafted URL
+  Resolves: RHEL-218850
+- CVE-2026-18147 idm:client/ipa: FreeIPA/IdM: Cross-Site Scripting vulnerability allows arbitrary code execution via crafted URL
+  Resolves: RHEL-218856
+- CVE-2026-73198 ipa: FreeIPA: Unauthenticated DoS in /ipa/i18n_messages via Unbounded Request Body Read
+  Resolves: RHEL-240798
+- CVE-2026-73197 ipa: FreeIPA: Unauthenticated DoS in /ipa/migration/migration.py via Unbounded Request Body Read
+  Resolves: RHEL-240819
+- CVE-2026-11861 ipa: FreeIPA: Obtaining TGS with impersonating cname through trust relationships
+  Resolves: RHEL-240840
+- CVE-2026-13097 ipa: Privilege escalation via krbCanonicalName manipulation due to realm-unaware uniqueness enforcement in FreeIPA LDAP datastore
+  Resolves: RHEL-240905
+- CVE-2026-76578 idm:DL1/ipa: FreeIPA: unauthenticated LDAP client can obtain administrator credentials via the self-managed-token ACI
+  Resolves: RHEL-245481
+- CVE-2026-19550 ipa: FreeIPA: trust-fetch-domains uses trust-read ACI to gate a privileged AD trust refresh, allowing unauthorized LDAP writes
+  Resolves: RHEL-245621
+- CVE-2026-79678 idm:DL1/ipa: freeipa: idp-add eval() reachable before authorization check allows environment disclosure and denial of service
+  Resolves: RHEL-255682
+
 * Fri Jan 30 2026 Rafael Jeffman <rjeffman@redhat.com> - 4.9.13-21
 - Fix memory leaks in IPA plugins
   Resolves: RHEL-145410

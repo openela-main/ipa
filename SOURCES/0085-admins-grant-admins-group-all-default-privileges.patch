@@ -1,0 +1,161 @@
+From 438cad140939f7fabbb7a9200565c0c04b4f74ed Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 19:21:56 +0300
+Subject: [PATCH 85/91] admins: grant admins group all default privileges
+
+Now all API operations that either modify LDAP or launch oddjob tasks
+require presence of the object-specific privileges. Administrators must
+possess them to be able to continue administrative tasks.
+
+Fixes: CVE-2026-79678
+
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit 83d38aa10a93da6e5ae0e0494a7a78b3989546f5)
+---
+ install/updates/91-admins-privileges.update | 121 ++++++++++++++++++++
+ install/updates/Makefile.am                 |   1 +
+ 2 files changed, 122 insertions(+)
+ create mode 100644 install/updates/91-admins-privileges.update
+
+diff --git a/install/updates/91-admins-privileges.update b/install/updates/91-admins-privileges.update
+new file mode 100644
+index 000000000..533259f27
+--- /dev/null
++++ b/install/updates/91-admins-privileges.update
+@@ -0,0 +1,121 @@
++# Make the administrative 'admins' group a default member of all default
++# privileges referenced by managed permissions.
++#
++# Privilege-based operation enforcement (see BaseLDAPCommand
++# enforce_managed_permissions) requires the calling context to hold one of
++# the default privileges of the managed permission covering the requested
++# operation. The 'admins' group historically relied on legacy ACIs only, so
++# grant it every default privilege to keep administrative users in full
++# control.
++
++# These two privileges are created only by install/share/delegation.ldif on
++# fresh installs, so create them here for the upgrade path.
++
++dn: cn=Certificate Administrators,cn=privileges,cn=pbac,$SUFFIX
++default: objectClass: top
++default: objectClass: groupofnames
++default: objectClass: nestedgroup
++default: cn: Certificate Administrators
++default: description: Certificate Administrators
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Stage User Provisioning,cn=privileges,cn=pbac,$SUFFIX
++default: objectClass: top
++default: objectClass: groupofnames
++default: objectClass: nestedgroup
++default: cn: Stage User Provisioning
++default: description: Stage User Provisioning
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=ADTrust Agents,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Automember Readers,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Automember Task Administrator,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Automount Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=CA Administrator,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Certificate Identity Mapping Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=DNS Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=DNS Servers,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Delegation Administrator,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=External IdP server Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Group Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=HBAC Administrator,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Host Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Host Group Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=IPA Masters Readers,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Kerberos Ticket Policy Readers,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Modify Group membership,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Modify Users and Reset passwords,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Netgroups Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=PassSync Service,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Passkey Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Password Policy Administrator,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Password Policy Readers,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=RBAC Readers,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=SELinux User Map Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Service Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Stage User Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Sudo Administrator,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=System Accounts Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=User Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
++
++dn: cn=Vault Administrators,cn=privileges,cn=pbac,$SUFFIX
++add: member: cn=admins,cn=groups,cn=accounts,$SUFFIX
+diff --git a/install/updates/Makefile.am b/install/updates/Makefile.am
+index f220c3f0d..f292e6138 100644
+--- a/install/updates/Makefile.am
++++ b/install/updates/Makefile.am
+@@ -72,6 +72,7 @@ app_DATA =				\
+ 	80-schema_compat.update 	\
+ 	81-externalmembers.update	\
+ 	90-post_upgrade_plugins.update	\
++	91-admins-privileges.update	\
+ 	$(NULL)
+ 
+ EXTRA_DIST =				\
+-- 
+2.55.0
+

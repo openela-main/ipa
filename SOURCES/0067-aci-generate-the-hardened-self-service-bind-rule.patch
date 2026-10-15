@@ -1,0 +1,53 @@
+From 3fb913697e872159b5b74c9c44d1a7f1c28da9c8 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 12:58:59 +0300
+Subject: [PATCH 67/91] aci: generate the hardened self-service bind rule
+
+The selfservice plugin regenerates self-service ACIs from structured
+data (aci._make_aci) and emitted the bare userdn = "ldap:///self" bind
+rule, so "ipa selfservice-mod" would drop any hardening from the stored
+ACI.
+
+Generate (userdn = "ldap:///self" and userdn = "ldap:///all") instead:
+the bound DN has to be the entry's own DN and a real, non-anonymous DN
+matching "ldap:///all". The empty DN of an anonymous simple bind or a
+SASL ANONYMOUS bind satisfies neither clause, while an authenticated
+bind (GSSAPI, password simple) has a real DN and does. No authmethod
+value means "the client sent no credentials" (authmethod = "none" in an
+ACI is a no-op that always evaluates to true), so the "real DN"
+requirement cannot be expressed with authmethod; the server-wide "Deny
+all modifications for anonymous binds" ACI is the backstop.
+
+Fixes: CVE-2026-76578
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit 4ecb621f7facaa26471694a63047386525f02edf)
+---
+ ipaserver/plugins/aci.py | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/ipaserver/plugins/aci.py b/ipaserver/plugins/aci.py
+index 671057fe8..f0d2855bb 100644
+--- a/ipaserver/plugins/aci.py
++++ b/ipaserver/plugins/aci.py
+@@ -273,7 +273,17 @@ def _make_aci(ldap, current, aciname, kw):
+         a.name = _make_aci_name(kw['aciprefix'], aciname)
+         a.set_permissions(kw['permissions'])
+         if 'selfaci' in kw and kw['selfaci']:
+-            a.set_bindrule('userdn = "ldap:///self"')
++            # The grant must be satisfiable only by an authenticated bind:
++            # the bound DN has to be the entry's own DN and a real,
++            # non-anonymous DN matching "ldap:///all". An anonymous simple
++            # bind or a SASL ANONYMOUS bind has the empty DN and satisfies
++            # neither clause. No authmethod value means "the client sent no
++            # credentials" (authmethod="none" in an ACI is a no-op that
++            # always evaluates to true), so the "real DN" requirement cannot
++            # be expressed with authmethod; the server-wide "Deny all
++            # modifications for anonymous binds" ACI is the backstop.
++            a.set_bindrule(
++                '(userdn = "ldap:///self" and userdn = "ldap:///all")')
+         else:
+             dn = entry_attrs['dn']
+             a.set_bindrule('groupdn = "ldap:///%s"' % dn)
+-- 
+2.55.0
+

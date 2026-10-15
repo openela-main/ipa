@@ -1,0 +1,32 @@
+From b98d7384172c1a828818ad9a381cae6e328892f2 Mon Sep 17 00:00:00 2001
+From: Alexander Bokovoy <abokovoy@redhat.com>
+Date: Mon, 31 Aug 2026 12:58:59 +0300
+Subject: [PATCH 83/91] install: register the new 21-* ACI update scripts
+
+Install the new ACI update scripts: 21-deny-anonymous-modify.update,
+21-deny-anonymous-sid-read.update and 21-selfservice-bindrule.update.
+
+Fixes: CVE-2026-76578
+Signed-off-by: Alexander Bokovoy <abokovoy@redhat.com>
+(cherry picked from commit f7e9ebf2ca2d193775402ce6a0605e8f49d1cde8)
+---
+ install/updates/Makefile.am | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/install/updates/Makefile.am b/install/updates/Makefile.am
+index f92bc84b1..f220c3f0d 100644
+--- a/install/updates/Makefile.am
++++ b/install/updates/Makefile.am
+@@ -29,6 +29,9 @@ app_DATA =				\
+ 	21-replicas_container.update	\
+ 	21-ca_renewal_container.update	\
+ 	21-certstore_container.update	\
++	21-deny-anonymous-modify.update	\
++	21-deny-anonymous-sid-read.update	\
++	21-selfservice-bindrule.update	\
+ 	25-referint.update		\
+ 	30-ipservices.update		\
+ 	30-provisioning.update		\
+-- 
+2.55.0
+

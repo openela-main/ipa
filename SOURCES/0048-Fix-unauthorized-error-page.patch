@@ -1,0 +1,98 @@
+From d21acf94eb85adddd85b02a7dd0692e2d4af2148 Mon Sep 17 00:00:00 2001
+From: David Hanina <dhanina@redhat.com>
+Date: Mon, 8 Jun 2026 16:49:28 +0200
+Subject: [PATCH 48/91] Fix unauthorized error page
+
+This page has been borked since forever, due to the wrong resolution of
+paths, the commit fixes paths in the file, so that JS, CSS are resoluted
+correctly.
+
+Signed-off-by: David Hanina <dhanina@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Carla Martinez <carlmart@redhat.com>
+Reviewed-By: Veronika Miticka <vmiticka@redhat.com>
+Reviewed-By: Erik Belko <ebelko@redhat.com>
+---
+ install/html/unauthorized.html               |  8 ++++----
+ install/ui/src/inline/unauthorized_inline.js | 16 +++++++++-------
+ 2 files changed, 13 insertions(+), 11 deletions(-)
+
+diff --git a/install/html/unauthorized.html b/install/html/unauthorized.html
+index 5468589ea..4cd32275e 100644
+--- a/install/html/unauthorized.html
++++ b/install/html/unauthorized.html
+@@ -3,15 +3,15 @@
+ <head>
+     <meta charset="utf-8">
+     <title>Identity Management</title>
+-    <script type="text/javascript" src="../ui/js/libs/loader.js"></script>
+-    <script type="text/javascript" src="../ui/js/inline/unauthorized_inline.js"></script>
++    <script type="text/javascript" src="./ui/js/libs/loader.js"></script>
++    <script type="text/javascript" src="./ui/js/inline/unauthorized_inline.js"></script>
+ </head>
+ 
+ <body class="info-page">
+ 
+     <nav class="navbar navbar-default navbar-pf" role="navigation">
+     <div class="navbar-header">
+-        <a class="brand" href="../ui/index.html"><img src="../ui/images/header-logo.png" alt="Identity Management"></a>
++        <a class="brand" href="./ui/index.html"><img src="./ui/images/header-logo.png" alt="Identity Management"></a>
+     </div>
+     </nav>
+ 
+@@ -30,7 +30,7 @@
+ 
+         <div id="first-time">
+             <p>
+-                If this is your first time, please <a href="ssbrowser.html">configure your browser</a>.
++                If this is your first time, please <a href="./config/ssbrowser.html">configure your browser</a>.
+             </p>
+         </div>
+     </noscript>
+diff --git a/install/ui/src/inline/unauthorized_inline.js b/install/ui/src/inline/unauthorized_inline.js
+index 120bcb8e7..613040680 100644
+--- a/install/ui/src/inline/unauthorized_inline.js
++++ b/install/ui/src/inline/unauthorized_inline.js
+@@ -1,5 +1,5 @@
+ var dojoConfig = {
+-    baseUrl: "../ui/js",
++    baseUrl: "./ui/js",
+     has: {
+         'dojo-firebug': false,
+         'dojo-debug-messages': true
+@@ -19,16 +19,16 @@ var dojoConfig = {
+ };
+ (function() {
+     var icons = [
+-        '../ui/favicon.ico'
++        './ui/favicon.ico'
+     ];
+     var styles = [
+-        '../ui/css/patternfly.css',
+-        '../ui/css/ipa.css'
++        './ui/css/patternfly.css',
++        './ui/css/ipa.css'
+     ];
+     var scripts = [
+-        '../ui/js/libs/jquery.js',
+-        '../ui/js/libs/jquery.ordered-map.js',
+-        '../ui/js/dojo/dojo.js'
++        './ui/js/libs/jquery.js',
++        './ui/js/libs/jquery.ordered-map.js',
++        './ui/js/dojo/dojo.js'
+     ];
+ 
+     ipa_loader.scripts(scripts, function() {
+@@ -41,6 +41,8 @@ var dojoConfig = {
+                 var text = require('freeipa/text');
+                 var msg = text.get('@i18n:unauthorized-page');
+                 if (msg) {
++                    // Unauthorized is rendered through /ipa/whatever, but most pages expect /ipa/ui/whatever
++                    msg = msg.replace('<a href="ssbrowser.html">', '<a href="config/ssbrowser.html">');
+                     dom.byId('unauthorized-msg').innerHTML=msg;
+                 }
+             });
+-- 
+2.55.0
+

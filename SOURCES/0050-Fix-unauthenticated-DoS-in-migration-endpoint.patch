@@ -1,0 +1,67 @@
+From 54c1d88cd361e7abc5930e879785ad7c8449256a Mon Sep 17 00:00:00 2001
+From: Carla Martinez <carlmart@redhat.com>
+Date: Thu, 9 Jul 2026 13:57:48 +0200
+Subject: [PATCH] Fix unauthenticated DoS in migration endpoint
+
+Reject negative or excessively large Content-Length
+values before reading from wsgi.input in the password
+migration WSGI handler. Without this check, unauthenticated
+clients can force workers to allocate attacker-controlled
+amounts of memory, causing service degradation.
+The 1 MiB limit is well above any legitimate username/password
+form submission.
+
+Signed-off-by: Carla Martinez <carlmart@redhat.com>
+---
+ install/migration/migration.py | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/install/migration/migration.py b/install/migration/migration.py
+index b3f3fc8a3..debbe5b98 100644
+--- a/install/migration/migration.py
++++ b/install/migration/migration.py
+@@ -33,6 +33,8 @@ from ipalib import errors, create_api
+ 
+ logger = logging.getLogger(os.path.basename(__file__))
+ 
++MAX_REQUEST_BODY = 1024 * 1024  # 1 MiB
++
+ 
+ def bad_request(start_response):
+     """
+@@ -45,6 +47,17 @@ def bad_request(start_response):
+     start_response(status, response_headers)
+     return [response]
+ 
++def request_entity_too_large(start_response):
++    """
++    Return a 413 Content Too Large error.
++    """
++    status = '413 Content Too Large'
++    response_headers = []
++    response = b''
++
++    start_response(status, response_headers)
++    return [response]
++
+ def wsgi_redirect(start_response, loc):
+     start_response('302 Found', [('Location', loc)])
+     return []
+@@ -80,6 +93,14 @@ def application(environ, start_response):
+     if not content_type.startswith('application/x-www-form-urlencoded'):
+         return bad_request(start_response)
+ 
++    try:
++        length = int(environ.get("CONTENT_LENGTH"))
++    except (ValueError, TypeError):
++        return bad_request(start_response)
++
++    if length < 0 or length > MAX_REQUEST_BODY:
++        return request_entity_too_large(start_response)
++
+     form_data = cgi.FieldStorage(fp=environ['wsgi.input'], environ=environ)
+     if 'username' not in form_data or 'password' not in form_data:
+         return bad_request(start_response)
+-- 
+2.55.0
+

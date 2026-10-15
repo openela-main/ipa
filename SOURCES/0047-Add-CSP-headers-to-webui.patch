@@ -1,0 +1,870 @@
+From 2a496a67a1c94f4725fa33db61b1444d9da313b0 Mon Sep 17 00:00:00 2001
+From: Veronika Miticka <vmiticka@redhat.com>
+Date: Thu, 26 Feb 2026 16:09:03 +0100
+Subject: [PATCH] Add CSP headers to webui
+
+Add Content-Security-Policy headers for legacy and modern web UI.
+
+We should use permissive CSP for all the pages but modern-webui, as they
+are all based on the old dojo framework, this should be revisited once
+we revisit the error pages.
+We really should just use setifempty and hardcode the CSP for all the
+subpages. This is not the safest solution, but safe enough while not
+difficult to get right.
+When reviewing, note, that frame-ancestors is server-side only
+directive.
+
+Legacy UI: Extract inline scripts from index.html, reset_password.html,
+and sync_otp.html into external JS files to eliminate the need for
+script hash in the CSP policy.
+
+Fixes: https://codeberg.org/freeipa/freeipa/issues/9900
+Fixes: https://codeberg.org/freeipa/freeipa/issues/9901
+
+Signed-off-by: Veronika Miticka <vmiticka@redhat.com>
+Co-authored-by: David Hanina <dhanina@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+Reviewed-By: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Carla Martinez <carlmart@redhat.com>
+Reviewed-By: Veronika Miticka <vmiticka@redhat.com>
+Reviewed-By: Erik Belko <ebelko@redhat.com>
+---
+ configure.ac                                  |  1 +
+ freeipa.spec.in                               |  2 +
+ install/html/ssbrowser.html                   | 60 +------------------
+ install/html/unauthorized.html                | 53 +---------------
+ install/migration/index.html                  | 50 +---------------
+ install/share/ipa.conf.template               |  5 +-
+ install/ui/index.html                         | 57 +-----------------
+ install/ui/js/inline                          |  1 +
+ install/ui/reset_password.html                | 53 +---------------
+ install/ui/src/Makefile.am                    |  1 +
+ install/ui/src/inline/Makefile.am             | 15 +++++
+ install/ui/src/inline/ipa_inline.js           | 52 ++++++++++++++++
+ install/ui/src/inline/migration_inline.js     | 47 +++++++++++++++
+ .../ui/src/inline/reset_password_inline.js    | 48 +++++++++++++++
+ install/ui/src/inline/ssbrowser_inline.js     | 56 +++++++++++++++++
+ install/ui/src/inline/sync_otp_inline.js      | 44 ++++++++++++++
+ install/ui/src/inline/unauthorized_inline.js  | 50 ++++++++++++++++
+ install/ui/sync_otp.html                      | 49 +--------------
+ 18 files changed, 326 insertions(+), 318 deletions(-)
+ create mode 120000 install/ui/js/inline
+ create mode 100644 install/ui/src/inline/Makefile.am
+ create mode 100644 install/ui/src/inline/ipa_inline.js
+ create mode 100644 install/ui/src/inline/migration_inline.js
+ create mode 100644 install/ui/src/inline/reset_password_inline.js
+ create mode 100644 install/ui/src/inline/ssbrowser_inline.js
+ create mode 100644 install/ui/src/inline/sync_otp_inline.js
+ create mode 100644 install/ui/src/inline/unauthorized_inline.js
+
+diff --git a/configure.ac b/configure.ac
+index 665aeda51..caf18b709 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -675,6 +675,7 @@ AC_CONFIG_FILES([
+     install/ui/Makefile
+     install/ui/css/Makefile
+     install/ui/src/Makefile
++    install/ui/src/inline/Makefile
+     install/ui/src/libs/Makefile
+     install/ui/images/Makefile
+     install/ui/build/Makefile
+diff --git a/freeipa.spec.in b/freeipa.spec.in
+index a4a7a3f44..9fec8a447 100755
+--- a/freeipa.spec.in
++++ b/freeipa.spec.in
+@@ -1513,6 +1513,8 @@ fi
+ %dir %{_usr}/share/ipa/ui/css
+ %{_usr}/share/ipa/ui/css/*.css
+ %dir %{_usr}/share/ipa/ui/js
++%dir %{_usr}/share/ipa/ui/js/inline
++%{_usr}/share/ipa/ui/js/inline/*.js
+ %dir %{_usr}/share/ipa/ui/js/dojo
+ %{_usr}/share/ipa/ui/js/dojo/dojo.js
+ %dir %{_usr}/share/ipa/ui/js/libs
+diff --git a/install/html/ssbrowser.html b/install/html/ssbrowser.html
+index f934dbb40..0f035ed98 100644
+--- a/install/html/ssbrowser.html
++++ b/install/html/ssbrowser.html
+@@ -4,65 +4,7 @@
+ <meta charset="utf-8">
+     <title>Identity Management</title>
+     <script type="text/javascript" src="../ui/js/libs/loader.js"></script>
+-    <script type="text/javascript">
+-        var dojoConfig = {
+-            baseUrl: "../ui/js",
+-            has: {
+-                'dojo-firebug': false,
+-                'dojo-debug-messages': true
+-            },
+-            parseOnLoad: false,
+-            async: true,
+-            packages: [
+-                {
+-                    name:'dojo',
+-                    location:'dojo'
+-                },
+-                {
+-                    name: 'freeipa',
+-                    location: 'freeipa'
+-                }
+-            ]
+-        };
+-        (function() {
+-            var icons = [
+-                '../ui/favicon.ico'
+-            ];
+-            var styles = [
+-                '../ui/css/patternfly.css',
+-                '../ui/css/ipa.css'
+-            ];
+-            var scripts = [
+-                '../ui/js/libs/jquery.js',
+-                '../ui/js/libs/jquery.ordered-map.js',
+-                '../ui/js/dojo/dojo.js'
+-            ];
+-            ipa_loader.scripts(scripts, function() {
+-                require([
+-                    'dojo/dom',
+-                    'freeipa/core',
+-                    'dojo/domReady!'
+-                    ],
+-                    function(dom) {
+-                        var text = require('freeipa/text');
+-                        var msg = "".concat(
+-                            text.get('@i18n:ssbrowser-page.header'),
+-                            text.get('@i18n:ssbrowser-page.firefox-header'),
+-                            text.get('@i18n:ssbrowser-page.firefox-actions'),
+-                            text.get('@i18n:ssbrowser-page.chrome-header'),
+-                            text.get('@i18n:ssbrowser-page.chrome-certificate'),
+-                            text.get('@i18n:ssbrowser-page.chrome-spnego'),
+-                            text.get('@i18n:ssbrowser-page.ie-header'),
+-                            text.get('@i18n:ssbrowser-page.ie-actions')
+-                        );
+-                        dom.byId('ssbrowser-msg').innerHTML=msg;
+-                    });
+-            });
+-            ipa_loader.styles(styles);
+-            ipa_loader.icons(icons);
+-        })();
+-    </script>
+-
++    <script type="text/javascript" src="../ui/js/inline/ssbrowser_inline.js"></script>
+ </head>
+ 
+ <body class="info-page">
+diff --git a/install/html/unauthorized.html b/install/html/unauthorized.html
+index b8c64d69d..5468589ea 100644
+--- a/install/html/unauthorized.html
++++ b/install/html/unauthorized.html
+@@ -4,58 +4,7 @@
+     <meta charset="utf-8">
+     <title>Identity Management</title>
+     <script type="text/javascript" src="../ui/js/libs/loader.js"></script>
+-    <script type="text/javascript">
+-        var dojoConfig = {
+-            baseUrl: "../ui/js",
+-            has: {
+-                'dojo-firebug': false,
+-                'dojo-debug-messages': true
+-            },
+-            parseOnLoad: false,
+-            async: true,
+-            packages: [
+-                {
+-                    name:'dojo',
+-                    location:'dojo'
+-                },
+-                {
+-                    name: 'freeipa',
+-                    location: 'freeipa'
+-                }
+-            ]
+-        };
+-        (function() {
+-            var icons = [
+-                '../ui/favicon.ico'
+-            ];
+-            var styles = [
+-                '../ui/css/patternfly.css',
+-                '../ui/css/ipa.css'
+-            ];
+-            var scripts = [
+-                '../ui/js/libs/jquery.js',
+-                '../ui/js/libs/jquery.ordered-map.js',
+-                '../ui/js/dojo/dojo.js'
+-            ];
+-
+-            ipa_loader.scripts(scripts, function() {
+-                require([
+-                    'dojo/dom',
+-                    'freeipa/core',
+-                    'dojo/domReady!'
+-                    ],
+-                    function(dom) {
+-                        var text = require('freeipa/text');
+-                        var msg = text.get('@i18n:unauthorized-page');
+-                        if (msg) {
+-                            dom.byId('unauthorized-msg').innerHTML=msg;
+-                        }
+-                    });
+-            });
+-            ipa_loader.styles(styles);
+-            ipa_loader.icons(icons);
+-        })();
+-    </script>
++    <script type="text/javascript" src="../ui/js/inline/unauthorized_inline.js"></script>
+ </head>
+ 
+ <body class="info-page">
+diff --git a/install/migration/index.html b/install/migration/index.html
+index b5ac1f6df..379f1671b 100644
+--- a/install/migration/index.html
++++ b/install/migration/index.html
+@@ -11,55 +11,7 @@
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <base href="../ui/" target="_blank">
+     <script type="text/javascript" src="../ui/js/libs/loader.js"></script>
+-    <script type="text/javascript">
+-        var dojoConfig = {
+-            baseUrl: "js",
+-            has: {
+-                'dojo-firebug': false,
+-                'dojo-debug-messages': true
+-            },
+-            parseOnLoad: false,
+-            async: true,
+-            packages: [
+-                {
+-                    name:'dojo',
+-                    location:'dojo'
+-                },
+-                {
+-                    name: 'freeipa',
+-                    location: 'freeipa'
+-                }
+-            ],
+-            cacheBust: ipa_loader.num_version || ""
+-        };
+-
+-        (function() {
+-            var ie = !!document.getElementById('ie-detector');
+-            var styles = [
+-		    'css/patternfly.css',
+-		    'css/ipa.css',
+-		    'ipa.css'
+-	    ];
+-            if (ie) styles.push('ie.css');
+-            var icons = ['favicon.ico'];
+-            var scripts = [
+-                'js/libs/jquery.js',
+-                'js/libs/jquery.ordered-map.js',
+-                'js/dojo/dojo.js'
+-            ];
+-            ipa_loader.scripts(scripts, function() {
+-                require([
+-                    'freeipa/core',
+-                    'dojo/domReady!'
+-                    ], function(app) {
+-                        app.run_simple('migrate');
+-                    });
+-            });
+-            ipa_loader.styles(styles);
+-            ipa_loader.icons(icons);
+-
+-	})();
+-    </script>
++    <script type="text/javascript" src="../ui/js/inline/migration_inline.js"></script>
+ </head>
+ 
+ <body>
+diff --git a/install/share/ipa.conf.template b/install/share/ipa.conf.template
+index e68ced258..3519fd4ce 100644
+--- a/install/share/ipa.conf.template
++++ b/install/share/ipa.conf.template
+@@ -1,5 +1,5 @@
+ #
+-# VERSION 33 - DO NOT REMOVE THIS LINE
++# VERSION 38 - DO NOT REMOVE THIS LINE
+ #
+ # This file may be overwritten on upgrades.
+ #
+@@ -81,7 +81,8 @@ WSGIScriptReloading Off
+   Require valid-user
+   ErrorDocument 401 /ipa/errors/unauthorized.html
+   Header always append X-Frame-Options DENY
+-  Header always append Content-Security-Policy "frame-ancestors 'none'"
++  Header always set X-Content-Type-Options "nosniff"
++  Header setifempty Content-Security-Policy "upgrade-insecure-requests; frame-ancestors 'none'; default-src 'none'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval'"
+ 
+   # mod_session always sets two copies of the cookie, and this confuses our
+   # legacy clients, the unset here works because it ends up unsetting only one
+diff --git a/install/ui/index.html b/install/ui/index.html
+index d1eacaf53..0275720a3 100644
+--- a/install/ui/index.html
++++ b/install/ui/index.html
+@@ -10,62 +10,7 @@
+ 
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <script type="text/javascript" src="js/libs/loader.js"></script>
+-    <script type="text/javascript">
+-
+-        var dojoConfig = {
+-            baseUrl: "js",
+-            has: {
+-                'dojo-firebug': false,
+-                'dojo-debug-messages': true
+-            },
+-            parseOnLoad: false,
+-            async: true,
+-            packages: [
+-                {
+-                    name: 'libs',
+-                    location: 'libs'
+-                },
+-                {
+-                    name:'dojo',
+-                    location:'dojo'
+-                },
+-                {
+-                    name: 'freeipa',
+-                    location: 'freeipa'
+-                }
+-            ],
+-            cacheBust: ipa_loader.num_version || ""
+-        };
+-
+-        (function() {
+-            var ie = !!document.getElementById('ie-detector');
+-            var styles = [
+-                'css/patternfly.css',
+-                'css/bootstrap-datepicker3.min.css',
+-                'css/ipa.css',
+-                'ipa.css'
+-            ];
+-            if (ie) styles.push('ie.css');
+-            var icons = ['favicon.ico'];
+-            var scripts = [
+-                'js/libs/json2.js',
+-                'js/libs/jquery.js',
+-                'js/libs/bootstrap.js',
+-                'js/libs/bootstrap-datepicker.js',
+-                'js/libs/patternfly.js',
+-                'js/libs/jquery.ordered-map.js',
+-                'js/libs/browser.js',
+-                'js/dojo/dojo.js',
+-                'js/libs/qrcode.js'
+-            ];
+-            ipa_loader.scripts(scripts, function() {
+-                require(['freeipa/app'], function(app){ app.run(); });
+-            });
+-            ipa_loader.styles(styles);
+-            ipa_loader.icons(icons);
+-
+-        })();
+-    </script>
++    <script type="text/javascript" src="js/inline/ipa_inline.js"></script>
+ </head>
+ 
+ <body>
+diff --git a/install/ui/js/inline b/install/ui/js/inline
+new file mode 120000
+index 000000000..28649f256
+--- /dev/null
++++ b/install/ui/js/inline
+@@ -0,0 +1 @@
++../src/inline/
+\ No newline at end of file
+diff --git a/install/ui/reset_password.html b/install/ui/reset_password.html
+index a4ea1ce0e..0fb598bdc 100644
+--- a/install/ui/reset_password.html
++++ b/install/ui/reset_password.html
+@@ -10,58 +10,7 @@
+ 
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <script type="text/javascript" src="js/libs/loader.js"></script>
+-    <script type="text/javascript">
+-
+-        var dojoConfig = {
+-            baseUrl: "js",
+-            has: {
+-                'dojo-firebug': false,
+-                'dojo-debug-messages': true
+-            },
+-            parseOnLoad: false,
+-            async: true,
+-            packages: [
+-                {
+-                    name:'dojo',
+-                    location:'dojo'
+-                },
+-                {
+-                    name: 'freeipa',
+-                    location: 'freeipa'
+-                }
+-            ],
+-            cacheBust: ipa_loader.num_version || ""
+-        };
+-
+-        (function() {
+-            var ie = !!document.getElementById('ie-detector');
+-            var styles = [
+-                'css/patternfly.css',
+-                'css/ipa.css',
+-                'ipa.css'
+-            ];
+-            if (ie) styles.push('ie.css');
+-            var icons = ['favicon.ico'];
+-            var scripts = [
+-                'js/libs/json2.js',
+-                'js/libs/jquery.js',
+-                'js/libs/bootstrap.js',
+-                'js/libs/jquery.ordered-map.js',
+-                'js/libs/browser.js',
+-                'js/dojo/dojo.js'
+-            ];
+-            ipa_loader.scripts(scripts, function() {
+-                require(['freeipa/core', 'dojo/domReady!'], function(app) {
+-                    var reset_pass = require('freeipa/plugins/login');
+-                    reset_pass.facet_spec.widgets[1].view = "reset";
+-                    app.run_simple('login');
+-                });
+-            });
+-            ipa_loader.styles(styles);
+-            ipa_loader.icons(icons);
+-
+-        })();
+-    </script>
++    <script type="text/javascript" src="js/inline/reset_password_inline.js"></script>
+ </head>
+ 
+ <body>
+diff --git a/install/ui/src/Makefile.am b/install/ui/src/Makefile.am
+index 6182b7b12..5b0a030f4 100644
+--- a/install/ui/src/Makefile.am
++++ b/install/ui/src/Makefile.am
+@@ -3,6 +3,7 @@ AUTOMAKE_OPTIONS = 1.7
+ NULL =
+ 
+ SUBDIRS =  				\
++	inline				\
+ 	libs				\
+ 	$(NULL)
+ 
+diff --git a/install/ui/src/inline/Makefile.am b/install/ui/src/inline/Makefile.am
+new file mode 100644
+index 000000000..5b06758b8
+--- /dev/null
++++ b/install/ui/src/inline/Makefile.am
+@@ -0,0 +1,15 @@
++NULL =
++
++appdir = $(IPA_DATA_DIR)/ui/js/inline
++app_DATA =				\
++	ipa_inline.js			\
++	migration_inline.js		\
++	reset_password_inline.js	\
++	ssbrowser_inline.js		\
++	sync_otp_inline.js		\
++	unauthorized_inline.js		\
++	$(NULL)
++
++EXTRA_DIST =				\
++	$(app_DATA)			\
++	$(NULL)
+diff --git a/install/ui/src/inline/ipa_inline.js b/install/ui/src/inline/ipa_inline.js
+new file mode 100644
+index 000000000..fa6d9bbeb
+--- /dev/null
++++ b/install/ui/src/inline/ipa_inline.js
+@@ -0,0 +1,52 @@
++var dojoConfig = {
++    baseUrl: "js",
++    has: {
++        'dojo-firebug': false,
++        'dojo-debug-messages': true
++    },
++    parseOnLoad: false,
++    async: true,
++    packages: [
++        {
++            name: 'libs',
++            location: 'libs'
++        },
++        {
++            name:'dojo',
++            location:'dojo'
++        },
++        {
++            name: 'freeipa',
++            location: 'freeipa'
++        }
++    ],
++    cacheBust: ipa_loader.num_version || ""
++};
++
++(function() {
++    var ie = !!document.getElementById('ie-detector');
++    var styles = [
++        'css/patternfly.css',
++        'css/bootstrap-datepicker3.min.css',
++        'css/ipa.css',
++        'ipa.css'
++    ];
++    if (ie) styles.push('ie.css');
++    var icons = ['favicon.ico'];
++    var scripts = [
++        'js/libs/json2.js',
++        'js/libs/jquery.js',
++        'js/libs/bootstrap.js',
++        'js/libs/bootstrap-datepicker.js',
++        'js/libs/patternfly.js',
++        'js/libs/jquery.ordered-map.js',
++        'js/libs/browser.js',
++        'js/dojo/dojo.js',
++        'js/libs/qrcode.js'
++    ];
++    ipa_loader.scripts(scripts, function() {
++        require(['freeipa/app'], function(app){ app.run(); });
++    });
++    ipa_loader.styles(styles);
++    ipa_loader.icons(icons);
++})();
+diff --git a/install/ui/src/inline/migration_inline.js b/install/ui/src/inline/migration_inline.js
+new file mode 100644
+index 000000000..229455ecf
+--- /dev/null
++++ b/install/ui/src/inline/migration_inline.js
+@@ -0,0 +1,47 @@
++var dojoConfig = {
++    baseUrl: "js",
++    has: {
++        'dojo-firebug': false,
++        'dojo-debug-messages': true
++    },
++    parseOnLoad: false,
++    async: true,
++    packages: [
++        {
++            name:'dojo',
++            location:'dojo'
++        },
++        {
++            name: 'freeipa',
++            location: 'freeipa'
++        }
++    ],
++    cacheBust: ipa_loader.num_version || ""
++};
++
++(function() {
++    var ie = !!document.getElementById('ie-detector');
++    var styles = [
++        'css/patternfly.css',
++        'css/ipa.css',
++        'ipa.css'
++    ];
++    if (ie) styles.push('ie.css');
++    var icons = ['favicon.ico'];
++    var scripts = [
++        'js/libs/jquery.js',
++        'js/libs/jquery.ordered-map.js',
++        'js/dojo/dojo.js'
++    ];
++    ipa_loader.scripts(scripts, function() {
++        require([
++            'freeipa/core',
++            'dojo/domReady!'
++            ], function(app) {
++                app.run_simple('migrate');
++            });
++    });
++    ipa_loader.styles(styles);
++    ipa_loader.icons(icons);
++
++})();
+diff --git a/install/ui/src/inline/reset_password_inline.js b/install/ui/src/inline/reset_password_inline.js
+new file mode 100644
+index 000000000..69bcde068
+--- /dev/null
++++ b/install/ui/src/inline/reset_password_inline.js
+@@ -0,0 +1,48 @@
++var dojoConfig = {
++    baseUrl: "js",
++    has: {
++        'dojo-firebug': false,
++        'dojo-debug-messages': true
++    },
++    parseOnLoad: false,
++    async: true,
++    packages: [
++        {
++            name:'dojo',
++            location:'dojo'
++        },
++        {
++            name: 'freeipa',
++            location: 'freeipa'
++        }
++    ],
++    cacheBust: ipa_loader.num_version || ""
++};
++
++(function() {
++    var ie = !!document.getElementById('ie-detector');
++    var styles = [
++        'css/patternfly.css',
++        'css/ipa.css',
++        'ipa.css'
++    ];
++    if (ie) styles.push('ie.css');
++    var icons = ['favicon.ico'];
++    var scripts = [
++        'js/libs/json2.js',
++        'js/libs/jquery.js',
++        'js/libs/bootstrap.js',
++        'js/libs/jquery.ordered-map.js',
++        'js/libs/browser.js',
++        'js/dojo/dojo.js'
++    ];
++    ipa_loader.scripts(scripts, function() {
++        require(['freeipa/core', 'dojo/domReady!'], function(app) {
++            var reset_pass = require('freeipa/plugins/login');
++            reset_pass.facet_spec.widgets[1].view = "reset";
++            app.run_simple('login');
++        });
++    });
++    ipa_loader.styles(styles);
++    ipa_loader.icons(icons);
++})();
+diff --git a/install/ui/src/inline/ssbrowser_inline.js b/install/ui/src/inline/ssbrowser_inline.js
+new file mode 100644
+index 000000000..7d9d172be
+--- /dev/null
++++ b/install/ui/src/inline/ssbrowser_inline.js
+@@ -0,0 +1,56 @@
++var dojoConfig = {
++    baseUrl: "../ui/js",
++    has: {
++        'dojo-firebug': false,
++        'dojo-debug-messages': true
++    },
++    parseOnLoad: false,
++    async: true,
++    packages: [
++        {
++            name:'dojo',
++            location:'dojo'
++        },
++        {
++            name: 'freeipa',
++            location: 'freeipa'
++        }
++    ]
++};
++(function() {
++    var icons = [
++        '../ui/favicon.ico'
++    ];
++    var styles = [
++        '../ui/css/patternfly.css',
++        '../ui/css/ipa.css'
++    ];
++    var scripts = [
++        '../ui/js/libs/jquery.js',
++        '../ui/js/libs/jquery.ordered-map.js',
++        '../ui/js/dojo/dojo.js'
++    ];
++    ipa_loader.scripts(scripts, function() {
++        require([
++            'dojo/dom',
++            'freeipa/core',
++            'dojo/domReady!'
++            ],
++            function(dom) {
++                var text = require('freeipa/text');
++                var msg = "".concat(
++                    text.get('@i18n:ssbrowser-page.header'),
++                    text.get('@i18n:ssbrowser-page.firefox-header'),
++                    text.get('@i18n:ssbrowser-page.firefox-actions'),
++                    text.get('@i18n:ssbrowser-page.chrome-header'),
++                    text.get('@i18n:ssbrowser-page.chrome-certificate'),
++                    text.get('@i18n:ssbrowser-page.chrome-spnego'),
++                    text.get('@i18n:ssbrowser-page.ie-header'),
++                    text.get('@i18n:ssbrowser-page.ie-actions')
++                );
++                dom.byId('ssbrowser-msg').innerHTML=msg;
++            });
++    });
++    ipa_loader.styles(styles);
++    ipa_loader.icons(icons);
++})();
+diff --git a/install/ui/src/inline/sync_otp_inline.js b/install/ui/src/inline/sync_otp_inline.js
+new file mode 100644
+index 000000000..008e52080
+--- /dev/null
++++ b/install/ui/src/inline/sync_otp_inline.js
+@@ -0,0 +1,44 @@
++var dojoConfig = {
++    baseUrl: "js",
++    has: {
++        'dojo-firebug': false,
++        'dojo-debug-messages': true
++    },
++    parseOnLoad: false,
++    async: true,
++    packages: [
++        {
++            name:'dojo',
++            location:'dojo'
++        },
++        {
++            name: 'freeipa',
++            location: 'freeipa'
++        }
++    ],
++    cacheBust: ipa_loader.num_version || ""
++};
++
++(function() {
++    var ie = !!document.getElementById('ie-detector');
++    var styles = ['css/patternfly.css', 'css/ipa.css', 'ipa.css'];
++    if (ie) styles.push('ie.css');
++    var icons = ['favicon.ico'];
++    var scripts = [
++        'js/libs/json2.js',
++        'js/libs/jquery.js',
++        'js/libs/bootstrap.js',
++        'js/libs/jquery.ordered-map.js',
++        'js/libs/browser.js',
++        'js/dojo/dojo.js'
++    ];
++    ipa_loader.scripts(scripts, function() {
++        require(['freeipa/core', 'dojo/domReady!'], function(app) {
++            var sync = require('freeipa/plugins/sync_otp');
++            sync.facet_spec.widgets[1].allow_cancel = false;
++            app.run_simple('sync-otp');
++        });
++    });
++    ipa_loader.styles(styles);
++    ipa_loader.icons(icons);
++})();
+diff --git a/install/ui/src/inline/unauthorized_inline.js b/install/ui/src/inline/unauthorized_inline.js
+new file mode 100644
+index 000000000..120bcb8e7
+--- /dev/null
++++ b/install/ui/src/inline/unauthorized_inline.js
+@@ -0,0 +1,50 @@
++var dojoConfig = {
++    baseUrl: "../ui/js",
++    has: {
++        'dojo-firebug': false,
++        'dojo-debug-messages': true
++    },
++    parseOnLoad: false,
++    async: true,
++    packages: [
++        {
++            name:'dojo',
++            location:'dojo'
++        },
++        {
++            name: 'freeipa',
++            location: 'freeipa'
++        }
++    ]
++};
++(function() {
++    var icons = [
++        '../ui/favicon.ico'
++    ];
++    var styles = [
++        '../ui/css/patternfly.css',
++        '../ui/css/ipa.css'
++    ];
++    var scripts = [
++        '../ui/js/libs/jquery.js',
++        '../ui/js/libs/jquery.ordered-map.js',
++        '../ui/js/dojo/dojo.js'
++    ];
++
++    ipa_loader.scripts(scripts, function() {
++        require([
++            'dojo/dom',
++            'freeipa/core',
++            'dojo/domReady!'
++            ],
++            function(dom) {
++                var text = require('freeipa/text');
++                var msg = text.get('@i18n:unauthorized-page');
++                if (msg) {
++                    dom.byId('unauthorized-msg').innerHTML=msg;
++                }
++            });
++    });
++    ipa_loader.styles(styles);
++    ipa_loader.icons(icons);
++})();
+diff --git a/install/ui/sync_otp.html b/install/ui/sync_otp.html
+index 36a51ca62..b7c416e7b 100644
+--- a/install/ui/sync_otp.html
++++ b/install/ui/sync_otp.html
+@@ -10,54 +10,7 @@
+ 
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <script type="text/javascript" src="js/libs/loader.js"></script>
+-    <script type="text/javascript">
+-
+-        var dojoConfig = {
+-            baseUrl: "js",
+-            has: {
+-                'dojo-firebug': false,
+-                'dojo-debug-messages': true
+-            },
+-            parseOnLoad: false,
+-            async: true,
+-            packages: [
+-                {
+-                    name:'dojo',
+-                    location:'dojo'
+-                },
+-                {
+-                    name: 'freeipa',
+-                    location: 'freeipa'
+-                }
+-            ],
+-            cacheBust: ipa_loader.num_version || ""
+-        };
+-
+-        (function() {
+-            var ie = !!document.getElementById('ie-detector');
+-            var styles = ['css/patternfly.css', 'css/ipa.css', 'ipa.css'];
+-            if (ie) styles.push('ie.css');
+-            var icons = ['favicon.ico'];
+-            var scripts = [
+-                'js/libs/json2.js',
+-                'js/libs/jquery.js',
+-                'js/libs/bootstrap.js',
+-                'js/libs/jquery.ordered-map.js',
+-                'js/libs/browser.js',
+-                'js/dojo/dojo.js'
+-            ];
+-            ipa_loader.scripts(scripts, function() {
+-                require(['freeipa/core', 'dojo/domReady!'], function(app) {
+-                    var sync = require('freeipa/plugins/sync_otp');
+-                    sync.facet_spec.widgets[1].allow_cancel = false;
+-                    app.run_simple('sync-otp');
+-                });
+-            });
+-            ipa_loader.styles(styles);
+-            ipa_loader.icons(icons);
+-
+-        })();
+-    </script>
++    <script type="text/javascript" src="js/inline/sync_otp_inline.js"></script>
+ </head>
+ 
+ <body>
+-- 
+2.55.0
+
