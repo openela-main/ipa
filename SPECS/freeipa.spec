@@ -69,7 +69,7 @@
 %global krb5_kdb_version 9.0
 # 0.7.16: https://github.com/drkjam/netaddr/issues/71
 %global python_netaddr_version 0.7.19
-%global samba_version 4.23.0
+%global samba_version 4.24.5
 %global slapi_nis_version 0.70.0
 %global python_ldap_version 3.1.0-1
 # version supporting Allow Uniqueness plugin to search uniqueness attributes
@@ -110,16 +110,10 @@
 %global python_netaddr_version 0.7.16
 # Require 4.7.0 which brings Python 3 bindings
 # Require 4.12 which has DsRGetForestTrustInformation access rights fixes
-%if 0%{?fedora} <= 40
-%global samba_version 2:4.12.10
-%elif 0%{?fedora} == 41
-# Require 4.20.0 or later for libndr4, latest F41 is 4.21.7 already
-%global samba_version 2:4.21.7
-%elif 0%{?fedora} == 42
-%global samba_version 2:4.22.0
+%if 0%{?fedora} < 44
+%global samba_version 2:4.23.8
 %else
-# Require 4.23 for passdb ABI bump
-%global samba_version 2:4.23.0
+%global samba_version 2:4.24.3
 %endif
 
 # 38.28 or later includes passkey-related fixes
@@ -254,10 +248,8 @@ Source1:        https://releases.pagure.org/freeipa/freeipa-%{version}%{?rc_vers
 # Release 4.13.3 is signed by Rafael Jeffman            
 # Rafael's key: 4B7E7AFBB0AAA98947CA2427F17E2569BEE3800C            
 # Source2:        gpgkey-4B7E7AFBB0AAA98947CA2427F17E2569BEE3800C.asc
-# Release 4.13.4 is signed by Antonio Torres
-# Antonio's key: B40A78FBA576C4A3FC7D7BBC359FAF777296F653
+# Release 4.13.4 signed by Antonio Torres
 Source2: gpgkey-B40A78FBA576C4A3FC7D7BBC359FAF777296F653.asc
-
 %endif
 
 # RHEL spec file only: START: Change branding to IPA and Identity Management
@@ -329,7 +321,7 @@ BuildRequires:  libsss_nss_idmap-devel >= %{sssd_version}
 %if 0%{?fedora} >= 41 || 0%{?rhel} >= 10
 # on fedora 41+, stick to nodejs22
 # Do not use nodejs22 on fedora < 41, https://pagure.io/freeipa/issue/9643
-BuildRequires: nodejs(abi) == 127
+BuildRequires: nodejs(abi) == 127, /usr/bin/node, /usr/bin/npm
 %elif 0%{?fedora} >= 39
 # Do not use nodejs20 on fedora < 39, https://pagure.io/freeipa/issue/9374
 BuildRequires:  nodejs(abi) < 127
@@ -2071,23 +2063,51 @@ fi
 
 %changelog
 * Mon Sep 14 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.13.4-1
-- Resolves: RHEL-248199 CVE-2026-79678 ipa: freeipa: idp-add eval() reachable before authorization check allows environment disclosure and denial of service
-- Resolves: RHEL-245626 CVE-2026-19550 ipa: FreeIPA: trust-fetch-domains uses trust-read ACI to gate a privileged AD trust refresh, allowing unauthorized LDAP writes [rhel-10.2.z]
-- Resolves: RHEL-245473 CVE-2026-76578 ipa: FreeIPA: unauthenticated LDAP client can obtain administrator credentials via the self-managed-token ACI
-- Resolves: RHEL-240909 CVE-2026-13097 ipa: Privilege escalation via krbCanonicalName manipulation due to realm-unaware uniqueness enforcement in FreeIPA LDAP datastore [rhel-10.2.z]
-- Resolves: RHEL-240842 CVE-2026-11861 ipa: FreeIPA: Obtaining TGS with impersonating cname through trust relationships [rhel-10.2.z]
-- Resolves: RHEL-240821 CVE-2026-73197 ipa: FreeIPA: Unauthenticated DoS in `/ipa/migration/migration.py` via Unbounded Request Body Read [rhel-10.2.z]
-- Resolves: RHEL-240800 CVE-2026-73198 ipa: FreeIPA: Unauthenticated DoS in `/ipa/i18n_messages` via Unbounded Request Body Read [rhel-10.2.z]
-- Resolves: RHEL-240768 ipa-migrate tool is renaming host records & host info in automount information [rhel-10.2.z]
-- Resolves: RHEL-238676 ipa-migrate: require Replication Administrator privilege [rhel-10.2.z]
-- Resolves: RHEL-238673 ipa-epn: drop_privileges method is mixing uid and gid [rhel-10.2.z]
-- Resolves: RHEL-238526 ipa env: support only simple * wildcard [rhel-10.2.z]
-- Resolves: RHEL-238522 host-mod: handle the password attribute when set with --setattr userpassword= [rhel-10.2.z]
-- Resolves: RHEL-238518 ipa-otptoken-import hardening [rhel-10.2.z]
-- Resolves: RHEL-238516 Remove NetBIOS dependencies in Identity Manager [rhel-10.2.z]
-- Resolves: RHEL-238510 WebUI Hardening [rhel-10.2.z]
-- Resolves: RHEL-218853 CVE-2026-18147 ipa: FreeIPA/IdM: Cross-Site Scripting vulnerability allows arbitrary code execution via crafted URL
-- Resolves: RHEL-173375 [Cursor Automated] Include latest fixes in python3-ipatests package [RHEL10.2]
+- Resolves: RHEL-245482 CVE-2026-76578 ipa: FreeIPA: unauthenticated LDAP client can obtain administrator credentials via the self-managed-token ACI
+- Resolves: RHEL-248204 CVE-2026-79678 ipa: freeipa: idp-add eval() reachable before authorization check allows environment disclosure and denial of service
+
+* Mon Aug 24 2026 David Hanina <dhanina@redhat.com> - 4.13.3-1
+- Resolves: RHEL-245629 CVE-2026-19550 ipa: FreeIPA: trust-fetch-domains uses trust-read ACI to gate a privileged AD trust refresh, allowing unauthorized LDAP writes [rhel-10.3]
+- Resolves: RHEL-240899 CVE-2026-13097 ipa: Privilege escalation via krbCanonicalName manipulation due to realm-unaware uniqueness enforcement in FreeIPA LDAP datastore [rhel-10.3]
+- Resolves: RHEL-240837 CVE-2026-11861 ipa: FreeIPA: Obtaining TGS with impersonating cname through trust relationships [rhel-10.3]
+- Resolves: RHEL-240820 CVE-2026-73197 ipa: FreeIPA: Unauthenticated DoS in `/ipa/migration/migration.py` via Unbounded Request Body Read [rhel-10.3]
+- Resolves: RHEL-240797 CVE-2026-73198 ipa: FreeIPA: Unauthenticated DoS in `/ipa/i18n_messages` via Unbounded Request Body Read [rhel-10.3]
+- Resolves: RHEL-238683 Rebase ipa to latest 4.13.x version [rhel-10.3]
+- Resolves: RHEL-174346 Release Modern UI progress to RHEL 10.3
+- Resolves: RHEL-238699 ipa-migrate: require Replication Administrator privilege [rhel-10]
+- Resolves: RHEL-238698 ipa-epn: drop_privileges method is mixing uid and gid [rhel-10]
+- Resolves: RHEL-238697 ipa env: support only simple * wildcard [rhel-10]
+- Resolves: RHEL-238696 host-mod: handle the password attribute when set with --setattr userpassword= [rhel-10]
+- Resolves: RHEL-238695 ipa-otptoken-import hardening [rhel-10]
+- Resolves: RHEL-238694 WebUI Hardening [rhel-10]
+- Resolves: RHEL-235490 IdM modern-ui user profile drop-down manual not responsive
+- Resolves: RHEL-219085 Unable to create users with spaces in the Last Name field in the Modern UI.
+- Resolves: RHEL-114530 Remove NetBIOS dependencies in Identity Manager
+
+* Mon Aug 03 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.13.2-2
+- Resolves: RHEL-222810  ipa-server-trust-ad package installation failing for samba dependency
+
+* Thu Jul 16 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.13.2-1
+- Resolves: RHEL-178898 Rebase ipa to latest version for RHEL 10.3
+- Resolves: RHEL-179217 ipa-migrate tool is renaming host records & host info in automount information
+- Resolves: RHEL-178538 [Cursor Automated] Include latest fixes in python3-ipatests package
+- Resolves: RHEL-174346 Release Modern UI progress to RHEL 10.3
+- Resolves: RHEL-153857 ipa-migrate doesn't properly handle replication conflicts
+- Resolves: RHEL-153852 ipa-migrate doesn't migrate IPA locations
+- Resolves: RHEL-151578 Extend SELinux policy to allow use of SSSD authentication helpers on non-enrolled hosts
+- Resolves: RHEL-151326 freeipa-client %triggerin and %post can fail (rpm scriptlets should never fail, by policy)
+- Resolves: RHEL-147173 ipa-migrate doesn't process users' sshpublickeys
+- Resolves: RHEL-107899 [RFE] X-Content-Type-Options header in IdM WebUI
+- Resolves: RHEL-107897 [RFE] Implement Referrer-Policy on IdM WebUI
+- Resolves: RHEL-107045 [RFE] CSP not implemented in IdM WebUI
+- Resolves: RHEL-105139 IPA compatibility with tomcat 10
+- Resolves: RHEL-103492 ipalockout_postop is incorrectly warning about locked user
+- Resolves: RHEL-70229 To add "SameSite" flag to ipa_session cookies
+- Resolves: RHEL-29029 Webui 3007 Requirement error "userCertificate" is required (not allowing certificate manage
+- Resolves: RHEL-154589 FreeIPA JSON-RPC CSRF Referer Validation Uses Naive Prefix Match
+
+* Tue Jun 02 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.13.1-4
+- Related: RHEL-175123 Rebuilt for samba
 
 * Wed Apr 15 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.13.1-3.2
 - Resolves: RHEL-168516 TestIPAMigrationProdMode tests are missing
