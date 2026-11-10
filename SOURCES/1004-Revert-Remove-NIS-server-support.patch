@@ -32,10 +32,10 @@ This reverts commit e98a80827bcc42dc16b516355077fed844220107.
  create mode 100644 ipaserver/install/plugins/update_nis.py
 
 diff --git a/freeipa.spec.in b/freeipa.spec.in
-index b93199a5783a89e0ff58affd3d416556f72dd00c..6ee0f43f059dad4bba2288b1b0d3a63437371861 100644
+index 36cf4f185c5d269b485e08a57641c33986876daa..42bcd57e64b6d8de3ac457e9d2faa4925d29250c 100644
 --- a/freeipa.spec.in
 +++ b/freeipa.spec.in
-@@ -1619,6 +1619,7 @@ fi
+@@ -1607,6 +1607,7 @@ fi
  %{_sbindir}/ipa-ldap-updater
  %{_sbindir}/ipa-otptoken-import
  %{_sbindir}/ipa-compat-manage
@@ -43,7 +43,7 @@ index b93199a5783a89e0ff58affd3d416556f72dd00c..6ee0f43f059dad4bba2288b1b0d3a634
  %{_sbindir}/ipa-managed-entries
  %{_sbindir}/ipactl
  %{_sbindir}/ipa-advise
-@@ -1694,6 +1695,7 @@ fi
+@@ -1682,6 +1683,7 @@ fi
  %{_mandir}/man1/ipa-ca-install.1*
  %{_mandir}/man1/ipa-kra-install.1*
  %{_mandir}/man1/ipa-compat-manage.1*
@@ -591,7 +591,7 @@ index 5bc0e3ac3eed257fd7fa6a0830e3e2dbeb3d01d2..b84925bfc7d9af8584d9d4b185aa04b6
      SCHEMA_COMPAT_POST_ULDIF = "/usr/share/ipa/schema_compat_post.uldif"
      SUBID_GENERATORS_ULDIF = "/usr/share/ipa/subid-generators.uldif"
 diff --git a/ipaserver/install/ipa_migrate.py b/ipaserver/install/ipa_migrate.py
-index f07a878e739002346df894f93745ea60345e0557..b0a27de5dd40aa661271faa3a8a0855226b5892f 100644
+index 9f909a2e70ed7f7b7bf52001950c6a504f78f3cd..126a3c7618c4dd2a5a0b7ee6056a1d31c3a2c3da 100644
 --- a/ipaserver/install/ipa_migrate.py
 +++ b/ipaserver/install/ipa_migrate.py
 @@ -32,7 +32,7 @@ from ipapython.admintool import admin_cleanup_global_argv
@@ -602,7 +602,7 @@ index f07a878e739002346df894f93745ea60345e0557..b0a27de5dd40aa661271faa3a8a08552
 +    DNA_REGEN_VAL, DNA_REGEN_ATTRS, NIS_PLUGIN, IGNORE_ATTRS,
      DB_EXCLUDE_TREES, POLICY_OP_ATTRS, STATE_OPTIONS, REDACTED_ATTRS,
  )
-
+ 
 @@ -749,7 +749,8 @@ class IPAMigrate():
          self.log_info(title)
          self.log_info('-' * (len(title) - 1))
@@ -613,7 +613,7 @@ index f07a878e739002346df894f93745ea60345e0557..b0a27de5dd40aa661271faa3a8a08552
              logged_something = True
          if not self.log_stats(DS_INDEXES) and not logged_something:
              self.log_info(" - No updates")
-@@ -1983,6 +1984,28 @@ class IPAMigrate():
+@@ -2063,6 +2064,28 @@ class IPAMigrate():
                          add_missing=True)
                      stats['config_processed'] += 1
  
@@ -643,10 +643,10 @@ index f07a878e739002346df894f93745ea60345e0557..b0a27de5dd40aa661271faa3a8a08552
      # Migration
      #
 diff --git a/ipaserver/install/ipa_migrate_constants.py b/ipaserver/install/ipa_migrate_constants.py
-index 65e920d4bdc7511adb60bbdf87db88beb2630645..4fe8b467978936e4f8d621b7297ff577127c7298 100644
+index 64dd11cd1244ee30a2eceea3ef823e9092035738..e2f97e6d38c4d47553b854e29b8e0e8903477639 100644
 --- a/ipaserver/install/ipa_migrate_constants.py
 +++ b/ipaserver/install/ipa_migrate_constants.py
-@@ -527,6 +527,30 @@ DS_CONFIG = {
+@@ -542,6 +542,30 @@ DS_CONFIG = {
      },
  }
  
@@ -788,10 +788,10 @@ index 6c86bbb657a0d9a7b74ef34ad20a796a10073315..4acf8dd5290c687723a9c43a21e194bf
          (['ipa-replica-manage', 'list'], 1, IPA_NOT_CONFIGURED, None),
          (['ipa-server-certinstall'], 2, None, IPA_NOT_CONFIGURED),
 diff --git a/ipatests/test_integration/test_commands.py b/ipatests/test_integration/test_commands.py
-index 5bc871ab71bc05ec1c26df8352e996a9e627b466..8f8548494eaec3afd00961c096772b9d0b1ab3a4 100644
+index 5021747b67e0b97d322b13261f7e90e688f50cfe..bcd4e2aeb30f45b2a5f2713d213f077b571b6191 100644
 --- a/ipatests/test_integration/test_commands.py
 +++ b/ipatests/test_integration/test_commands.py
-@@ -1382,6 +1382,93 @@ class TestIPACommand(IntegrationTest):
+@@ -1480,6 +1480,93 @@ class TestIPACommand(IntegrationTest):
          serverid = realm_to_serverid(self.master.domain.realm)
          return ("dirsrv@%s.service" % serverid)
  

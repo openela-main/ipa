@@ -69,7 +69,7 @@
 %global krb5_kdb_version 9.0
 # 0.7.16: https://github.com/drkjam/netaddr/issues/71
 %global python_netaddr_version 0.7.19
-%global samba_version 4.23.0
+%global samba_version 4.24.5
 %global slapi_nis_version 0.60.0
 %global python_ldap_version 3.1.0-1
 # version supporting Allow Uniqueness plugin to search uniqueness attributes
@@ -79,12 +79,12 @@
 %else
 %global ds_version 3.1.3-5
 %endif
-%global selinux_policy_version 38.1.1-1
+%global selinux_policy_version 38.1.83-1
 
 %if 0%{?rhel} >= 10
 %global krb5_version 1.21.3-6
 %elif 0%{?rhel} == 9
-%global krb5_version 1.21.1-5
+%global krb5_version 1.21.1-10
 %else
 %global krb5_version 1.18.2-31
 %endif
@@ -93,7 +93,7 @@
 %global httpd_version 2.4.37-21
 
 # support for passkey
-%global sssd_version 2.9.7
+%global sssd_version 2.9.9-3
 
 %else
 # Fedora
@@ -164,7 +164,7 @@
 # BIND employs 'pkcs11' OpenSSL engine instead of native PKCS11
 # Fedora 31+ uses OpenSSL engine, as well as Fedora ELN (RHEL9)
 %if 0%{?fedora} || 0%{?rhel} >= 9
-    %global openssl_pkcs11_version 0.4.10-6
+    %global openssl_pkcs11_version 0.4.11-9
     %global softhsm_version 2.5.0-4
 %else
     %global with_bind_pkcs11 1
@@ -249,15 +249,15 @@ Source1:        https://releases.pagure.org/freeipa/freeipa-%{version}%{?rc_vers
 # RHEL spec file only: START
 %if %{NON_DEVELOPER_BUILD}
 %if 0%{?rhel} >= 9
-Patch0001:      0001-ipatests-Remove-xfail-for-sssd-issues-7169.patch
-Patch0002:      0002-kdb-rework-cross-realm-PAC-validation-and-ID-override-checks.patch
-Patch0003:      0003-Allow-fine-tuned-privilege-check.patch
+Patch0001: 0001-ipatests-Remove-xfail-for-sssd-issues-7169.patch
+Patch0002: 0002-kdb-rework-cross-realm-PAC-validation-and-ID-override-checks.patch
+Patch0003: 0003-Allow-fine-tuned-privilege-check.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-Replace-netifaces-with-ifaddr.patch
 Patch1003:      1003-Revert-custodia-do-not-use-deprecated-jwcrypto-wrapp.patch
 Patch1004:      1004-Revert-Remove-NIS-server-support.patch
-Patch1005:      1005-Revert-Stop-using-deprecated-pkg_resources.patch
-Patch1006:      1006-Change-u-to-u-for-sysusersd.patch
+Patch1005:      1005-Change-u-to-u-for-sysusersd.patch
+Patch1006:      1006-Revert-Stop-using-deprecated-pkg_resources.patch
 %endif
 %endif
 # RHEL spec file only: END
@@ -314,7 +314,7 @@ BuildRequires:  libsss_nss_idmap-devel >= %{sssd_version}
 BuildRequires: nodejs(abi) == 127
 %elif 0%{?fedora} >= 39
 # Do not use nodejs20 on fedora < 39, https://pagure.io/freeipa/issue/9374
-BuildRequires:  nodejs(abi) < 127
+BuildRequires:  nodejs(abi) < 127, /usr/bin/node, /usr/bin/npm
 %else
 BuildRequires:  nodejs(abi) < 111
 %endif
@@ -1336,7 +1336,6 @@ fi
 /bin/systemctl reload-or-try-restart dbus
 /bin/systemctl reload-or-try-restart oddjobd
 
-%sysusers_create %{_sysusersdir}/ipa.conf
 %tmpfiles_create ipa.conf
 %journal_catalog_update
 
@@ -1478,7 +1477,7 @@ if [ $1 -gt 1 ] ; then
         SSH_CLIENT_SYSTEM_CONF="/etc/ssh/ssh_config"
         if [ -f "$SSH_CLIENT_SYSTEM_CONF" ]; then
             if grep -E -q '^HostKeyAlgorithms ssh-rsa,ssh-dss' $SSH_CLIENT_SYSTEM_CONF 2>/dev/null; then
-                sed -E --in-place=.orig 's/^(HostKeyAlgorithms ssh-rsa,ssh-dss)$/# disabled by ipa-client update\n# \1/' "$SSH_CLIENT_SYSTEM_CONF" || :
+                sed -E --in-place=.orig 's/^(HostKeyAlgorithms ssh-rsa,ssh-dss)$/# disabled by ipa-client update\n# \1/' "$SSH_CLIENT_SYSTEM_CONF"
             fi
             # https://pagure.io/freeipa/issue/9536
             # replace sss_ssh_knownhostsproxy with sss_ssh_knownhosts
@@ -1847,8 +1846,6 @@ fi
 %ghost %attr(0640,root,root) %config(noreplace) %{_sysconfdir}/httpd/conf.d/ipa-pki-proxy.conf
 %ghost %attr(0644,root,root) %config(noreplace) %{_sysconfdir}/ipa/kdcproxy/ipa-kdc-proxy.conf
 %ghost %attr(0644,root,root) %config(noreplace) %{_usr}/share/ipa/html/ca.crt
-%ghost %attr(0640,root,named) %config(noreplace) %{_sysconfdir}/named/ipa-ext.conf
-%ghost %attr(0640,root,named) %config(noreplace) %{_sysconfdir}/named/ipa-options-ext.conf
 %dir %{_usr}/share/ipa/updates/
 %{_usr}/share/ipa/updates/*
 %dir %{_localstatedir}/lib/ipa
@@ -1861,7 +1858,6 @@ fi
 %attr(700,root,root) %dir %{_localstatedir}/lib/ipa/private
 %attr(700,root,root) %dir %{_localstatedir}/lib/ipa/passwds
 %ghost %attr(775,root,pkiuser) %{_localstatedir}/lib/ipa/pki-ca/publish
-%ghost %attr(770,named,named) %{_localstatedir}/named/dyndb-ldap/ipa
 %dir %attr(0700,root,root) %{_sysconfdir}/ipa/custodia
 %dir %{_usr}/share/ipa/schema.d
 %attr(0644,root,root) %{_usr}/share/ipa/schema.d/README
@@ -1883,6 +1879,9 @@ fi
 %attr(644,root,root) %{_unitdir}/ipa-dnskeysyncd.service
 %attr(644,root,root) %{_unitdir}/ipa-ods-exporter.socket
 %attr(644,root,root) %{_unitdir}/ipa-ods-exporter.service
+%ghost %attr(0640,root,named) %config(noreplace) %{_sysconfdir}/named/ipa-ext.conf
+%ghost %attr(0640,root,named) %config(noreplace) %{_sysconfdir}/named/ipa-options-ext.conf
+%ghost %attr(770,named,named) %{_localstatedir}/named/dyndb-ldap/ipa
 
 %files server-encrypted-dns
 %doc README.md Contributors.txt
@@ -2061,19 +2060,52 @@ fi
 %endif
 
 %changelog
-* Wed Sep 16 2026 Rafael Jeffman <rjeffman@redhat.com> - 4.13.4-1
-- RHEL-218866 CVE-2026-18147 ipa: FreeIPA/IdM: Cross-Site Scripting vulnerability allows arbitrary code execution via crafted URL [rhel-9.8.z]
-- RHEL-245474 CVE-2026-76578 ipa: FreeIPA: unauthenticated LDAP client can obtain administrator credentials via the self-managed-token ACI [rhel-9.8.z]
-- RHEL-248206 CVE-2026-79678 ipa: freeipa: idp-add eval() reachable before authorization check allows environment disclosure and denial of service [rhel-9.8.z]
-- RHEL-245627 CVE-2026-19550 ipa: FreeIPA: trust-fetch-domains uses trust-read ACI to gate a privileged AD trust refresh, allowing unauthorized LDAP writes [rhel-9.8.z]
-- RHEL-240898 CVE-2026-13097 ipa: Privilege escalation via krbCanonicalName manipulation due to realm-unaware uniqueness enforcement in FreeIPA LDAP datastore [rhel-9.8.z]
-- RHEL-240830 CVE-2026-11861 ipa: FreeIPA: Obtaining TGS with impersonating cname through trust relationships [rhel-9.8.z]
-- RHEL-240815 CVE-2026-73197 ipa: FreeIPA: Unauthenticated DoS in `/ipa/migration/migration.py` via Unbounded Request Body Read [rhel-9.8.z]
-- RHEL-240804 CVE-2026-73198 ipa: FreeIPA: Unauthenticated DoS in `/ipa/i18n_messages` via Unbounded Request Body Read [rhel-9.8.z]
-- RHEL-240767 ipa-migrate tool is renaming host records & host info in automount information [rhel-9.8.z]
-- RHEL-238677 ipa-migrate: require Replication Administrator privilege [rhel-9.8.z]
-- RHEL-238674 ipa-epn: drop_privileges method is mixing uid and gid [rhel-9.8.z]
-- RHEL-238527 ipa env: support only simple * wildcard [rhel-9.8.z]
+* Tue Sep 15 2026 Rafael Jeffmna <rjeffman@redhat.com> - 4.13.4-1
+- Resolves: RHEL-245477 CVE-2026-76578 ipa: FreeIPA: unauthenticated LDAP client can obtain administrator credentials via the self-managed-token ACI [rhel-9.9]
+- Resolves: RHEL 248200 CVE-2026-79678 ipa: freeipa: idp-add eval() reachable before authorization check allows environment disclosure and denial of service [rhel-9.9]
+
+* Fri Aug 21 2026 Rafael Jeffman <rjeffman@redhat.com> - 4.13.3-1
+- Resolves: RHEL-238684 Rebase ipa to latest 4.13.x version
+- Resolves: RHEL-238678 ipa-migrate: require Replication Administrator privilege
+- Resolves: RHEL-238675 ipa-epn: drop_privileges method is mixing uid and gid
+- Resolves: RHEL-238528 ipa env: support only simple * wildcard
+- Resolves: RHEL-238524 host-mod: handle the password attribute when set with --setattr userpassword=
+- Resolves: RHEL-238520 ipa-otptoken-import hardening
+- Resolves: RHEL-238515 Remove NetBIOS dependencies in Identity Manager
+- Resolves: RHEL-238512 WebUI Hardening
+- Resolves: RHEL-177835 Release Modern UI progress to RHEL 9.9
+- Resolves: RHEL-240814 Unable to create users with spaces in the Last Name field in the Modern UI.
+- Resolves: RHEL-240813 IdM modern-ui user profile drop-down manual not responsive
+- Resolves: RHEL-245633 CVE-2026-19550
+- Resolves: RHEL-240904 CVE-2026-13097
+- Resolves: RHEL-240843 CVE-2026-11861
+- Resolves: RHEL-240824 CVE-2026-73197
+- Resolves: RHEL-240805 CVE-2026-73198
+
+* Mon Aug 03 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.13.2-2
+- Resolves: RHEL-222583 ipa-server-trust-ad package installation failing for samba dependency
+
+* Mon Jul 20 2026 David Hanina <dhanina@redhat.com> - 4.13.2-1
+- Resolves: RHEL-166742 [Cursor Automated] Include latest fixes in python3-ipatests package [RHEL9.9]
+- Resolves: RHEL-151581 Pagure #9948: Extend SELinux policy to allow use of SSSD authentication helpers on non-enrolled hosts [rhel-9]
+- Resolves: RHEL-151560 ipa-migrate doesn't process users' sshpublickeys [rhel-9]
+- Resolves: RHEL-179216 ipa-migrate tool is renaming host records & host info in automount information [RHEL 9.9]
+- Resolves: RHEL-212442 freeipa-client %triggerin and %post can fail (rpm scriptlets should never fail, by policy) [rhel-9]
+- Resolves: RHEL-212443 ipa-migrate doesn't properly handle replication conflicts [rhel-9]
+- Resolves: RHEL-212444 ipa-migrate doesn't migrate IPA locations [rhel-9]
+- Resolves: RHEL-212445 Pagure #9948: Extend SELinux policy to allow use of SSSD authentication helpers on non-enrolled hosts [rhel-9]
+- Resolves: RHEL-212446 [RFE] X-Content-Type-Options header in IdM WebUI [rhel-9]
+- Resolves: RHEL-212447 [RFE] Implement Referrer-Policy on IdM WebUI [rhel-9]
+- Resolves: RHEL-212448 [RFE] CSP not implemented in IdM WebUI [rhel-9]
+- Resolves: RHEL-212449 IPA compatibility with tomcat 10 [rhel-9]
+- Resolves: RHEL-212450 Webui 3007 Requirement error "userCertificate" is required (not allowing certificate management for idview) [rhel-9]
+- Resolves: RHEL-212451 To add "SameSite" flag to ipa_session cookies [rhel-9]
+- Resolves: RHEL-212452 FreeIPA JSON-RPC CSRF Referer Validation Uses Naive Prefix Match - [rhel-9]
+- Resolves: RHEL-212471 Pagure #9820: ipalockout_postop is incorrectly warning about locked user [rhel-9]
+- Resolves: RHEL-178920 Rebase ipa to latest version for RHEL 9.9
+
+* Tue Jun 02 2026 Florence Blanc-Renaud <flo@redhat.com> - 4.13.1-4
+- Related: RHEL-175124 Rebuilt for samba 4.24.3
 
 * Thu Apr 16 2026 David Hanina <dhanina@redhat.com> - 4.13.1-3.2
 - Related: RHEL-166865 Include latest fixes in python3-ipatests package [rhel-9.8.z]
