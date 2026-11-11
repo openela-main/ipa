@@ -1,0 +1,55 @@
+From 7108c91602d85d0544a7706d93b0508e366144c1 Mon Sep 17 00:00:00 2001
+From: PRANAV THUBE <pthube@redhat.com>
+Date: Tue, 22 Sep 2026 18:03:05 +0530
+Subject: [PATCH] ipatests: skip test_external_ca_with_too_small_key in FIPS
+ mode
+
+In FIPS mode, OpenSSL enforces a minimum RSA key size of 2048 bits
+at the crypto layer. The test attempts to create a root CA certificate
+with a 1024-bit RSA key, which causes OpenSSL to raise
+"ValueError: Unable to sign/verify with this key" before IPA ever
+gets to validate the certificate.
+
+Since FIPS already guarantees rejection of sub-2048-bit RSA keys,
+the security property this test validates is inherently enforced
+by the environment. Skipping the test in FIPS mode.
+
+Fixes: https://codeberg.org/freeipa/freeipa/issues/9987
+Reviewed-By: Florence Blanc-Renaud <frenaud@redhat.com>
+Reviewed-By: Anuja More <amore@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+Reviewed-By: PRANAV THUBE <pthube@redhat.com>
+---
+ ipatests/test_integration/test_external_ca.py | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_external_ca.py b/ipatests/test_integration/test_external_ca.py
+index 2241e8fb850f853dc0a2444824080850bbd4d289..1127e3fccc4d3680e8ea905af6a27057fa4f19cc 100644
+--- a/ipatests/test_integration/test_external_ca.py
++++ b/ipatests/test_integration/test_external_ca.py
+@@ -26,7 +26,7 @@ from cryptography.hazmat.backends import default_backend
+ from cryptography.x509.oid import ObjectIdentifier, NameOID
+ from cryptography.hazmat.primitives import hashes, serialization
+ 
+-from ipatests.pytest_ipa.integration import tasks
++from ipatests.pytest_ipa.integration import tasks, skip_if_fips
+ from ipatests.test_integration.base import IntegrationTest
+ from ipalib import x509 as ipa_x509
+ from ipaplatform.paths import paths
+@@ -679,6 +679,13 @@ class TestExternalCAInvalidCert(IntegrationTest):
+         result = self.master.run_command(cmd, raiseonerr=False)
+         assert result.returncode == 1
+ 
++    @skip_if_fips(
++        reason='FIPS mode enforces minimum 2048-bit RSA keys at the '
++               'OpenSSL layer, preventing creation of 1024-bit test '
++               'certificates. The security property this test validates '
++               '(rejection of too-small CA keys) is already guaranteed '
++               'by FIPS itself.'
++    )
+     def test_external_ca_with_too_small_key(self):
+         # reuse the existing deployment and renewal CSR
+         root_ca_fname, ipa_ca_fname = tasks.sign_ca_and_transport(
+-- 
+2.55.0
+

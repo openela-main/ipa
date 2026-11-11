@@ -1,0 +1,30 @@
+From ade4a6bb8b85c5fddc11a1c5e3226a5f2de068ae Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Thu, 17 Sep 2026 16:03:16 +0200
+Subject: [PATCH] ipatests: remove trailing space in test_commands.py
+
+In order to fix lint checks
+
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Anuja More <amore@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+---
+ ipatests/test_integration/test_commands.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_commands.py b/ipatests/test_integration/test_commands.py
+index 0ac7b2b18a8a9c17af4073f027c1d623ff210570..094eb4883128431369835d2ff6ecd9beaf0b2d57 100644
+--- a/ipatests/test_integration/test_commands.py
++++ b/ipatests/test_integration/test_commands.py
+@@ -1548,7 +1548,7 @@ class TestIPACommand(IntegrationTest):
+             test=lambda stdout: self.testuser in stdout,
+             timeout=120,
+          )
+- 
++
+         # Use master clock: controller time can be ahead of the host and
+         # make journalctl --since miss sshd logs (codeberg #8432).
+         since = self.master.run_command(
+-- 
+2.55.0
+

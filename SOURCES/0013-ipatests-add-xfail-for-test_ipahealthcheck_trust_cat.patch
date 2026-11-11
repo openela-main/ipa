@@ -1,0 +1,48 @@
+From e5da6501c58ce2438063734c34e18c0f2f52704d Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Tue, 22 Sep 2026 21:03:13 +0200
+Subject: [PATCH] ipatests: add xfail for
+ test_ipahealthcheck_trust_catalogcheck
+
+The test is calling
+ipa-healthcheck --source ipahealthcheck.ipa.trust --check IPATrustCatalogCheck
+and the command returns a WARNING when looking for sid-500 in the
+child and tree domains.
+
+Mark xfail for now
+
+Related: https://codeberg.org/freeipa/freeipa/issues/10069
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Anuja More <amore@redhat.com>
+---
+ ipatests/test_integration/test_ipahealthcheck.py | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index c43d1b294363b5cce6f334c9e768fc3116be56e2..37c35696ee21d605cf0c6506416fc8759328f3ed 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -23,6 +23,7 @@ from ipapython.dn import DN
+ from ipapython.ipaldap import realm_to_serverid
+ from ipapython.certdb import NSS_SQL_FILES
+ from ipatests.pytest_ipa.integration import tasks
++from ipatests.util import xfail_context
+ from ipaplatform.paths import paths
+ from ipaplatform.osinfo import osinfo
+ from ipaserver.install.installutils import resolve_ip_addresses_nss
+@@ -1878,7 +1879,11 @@ class TestIpaHealthCheckWithADtrust(IntegrationTest):
+         returncode, data = run_healthcheck(
+             self.master, "ipahealthcheck.ipa.trust", "IPATrustCatalogCheck"
+         )
+-        assert returncode == 0
++        with xfail_context(
++            True,
++            reason="https://codeberg.org/freeipa/freeipa/issues/10069"
++        ):
++            assert returncode == 0
+         trust_domains = ', '.join(
+             (self.ad_domain, self.ad_subdomain, self.ad_treedomain))
+         for check in data:
+-- 
+2.55.0
+
