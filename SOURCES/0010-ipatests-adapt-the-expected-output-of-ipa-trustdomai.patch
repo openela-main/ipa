@@ -1,0 +1,93 @@
+From 14a10ab60d434f33aa083701d24834fac86ec589 Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Tue, 22 Sep 2026 12:57:09 +0200
+Subject: [PATCH] ipatests: adapt the expected output of ipa trustdomain-find
+
+PRCI now configures a DNS conditional forwarder between the AD root domain controller and AD tree domain controller.
+The direct consequence is that the command ipa trustdomain-find returns 3 domains:
+
+- AD root domain ad.test
+- AD child domain child.ad.test
+- AD tree domain (NEW) adtree.test
+
+Adapt the test expected output.
+
+Fixes: https://codeberg.org/freeipa/freeipa/issues/10069
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: Anuja More <amore@redhat.com>
+---
+ ipatests/test_integration/test_ipahealthcheck.py | 12 ++++++++----
+ ipatests/test_integration/test_trust.py          |  9 ++++++---
+ 2 files changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/ipatests/test_integration/test_ipahealthcheck.py b/ipatests/test_integration/test_ipahealthcheck.py
+index a9e791074..c43d1b294 100644
+--- a/ipatests/test_integration/test_ipahealthcheck.py
++++ b/ipatests/test_integration/test_ipahealthcheck.py
+@@ -1854,13 +1854,16 @@ class TestIpaHealthCheckWithADtrust(IntegrationTest):
+             self.master, "ipahealthcheck.ipa.trust", "IPATrustDomainsCheck"
+         )
+         assert returncode == 0
+-        trust_domains = ', '.join((self.ad_domain, self.ad_subdomain,))
++        trust_domains = sorted(
++            (self.ad_domain, self.ad_subdomain, self.ad_treedomain))
+         for check in data:
+             if check["kw"]["key"] == "domain-list":
+                 assert check["result"] == "SUCCESS"
++                sssd_domains = check["kw"]["sssd_domains"].split(", ")
++                domains = check["kw"]["trust_domains"].split(", ")
+                 assert (
+-                    check["kw"]["sssd_domains"] == trust_domains
+-                    and check["kw"]["trust_domains"] == trust_domains
++                    sorted(sssd_domains) == trust_domains
++                    and sorted(domains) == trust_domains
+                 )
+             elif check["kw"]["key"] == "domain-status":
+                 assert check["result"] == "SUCCESS"
+@@ -1876,7 +1879,8 @@ class TestIpaHealthCheckWithADtrust(IntegrationTest):
+             self.master, "ipahealthcheck.ipa.trust", "IPATrustCatalogCheck"
+         )
+         assert returncode == 0
+-        trust_domains = ', '.join((self.ad_domain, self.ad_subdomain,))
++        trust_domains = ', '.join(
++            (self.ad_domain, self.ad_subdomain, self.ad_treedomain))
+         for check in data:
+             if check["kw"]["key"] == "AD Global Catalog":
+                 assert check["result"] == "SUCCESS"
+diff --git a/ipatests/test_integration/test_trust.py b/ipatests/test_integration/test_trust.py
+index 9e0f720c6..f84211c1c 100644
+--- a/ipatests/test_integration/test_trust.py
++++ b/ipatests/test_integration/test_trust.py
+@@ -375,7 +375,8 @@ class TestTrust(BaseTestTrust):
+ 
+     def test_trustdomains_found_in_nonposix_trust(self):
+         self.check_trustdomains(
+-            self.ad_domain, [self.ad_domain, self.ad_subdomain])
++            self.ad_domain,
++            [self.ad_domain, self.ad_subdomain, self.ad_treedomain])
+ 
+     def test_range_properties_in_nonposix_trust(self):
+         self.check_range_properties(self.ad_domain, 'ipa-ad-trust', 200000)
+@@ -763,7 +764,8 @@ class TestTrust(BaseTestTrust):
+     def test_trustdomains_found_in_posix_trust(self):
+         """Tests that all trustdomains can be found."""
+         self.check_trustdomains(
+-            self.ad_domain, [self.ad_domain, self.ad_subdomain])
++            self.ad_domain,
++            [self.ad_domain, self.ad_subdomain, self.ad_treedomain])
+ 
+     def test_range_properties_in_posix_trust(self):
+         """Check the properties of the created range"""
+@@ -1096,7 +1098,8 @@ class TestTrust(BaseTestTrust):
+             raiseonerr=False)
+         assert result.returncode == 1
+         self.check_trustdomains(
+-            self.ad_domain, [self.ad_domain, self.ad_subdomain])
++            self.ad_domain,
++            [self.ad_domain, self.ad_subdomain, self.ad_treedomain])
+ 
+     @skip_in_fips_mode_due_to_issue_8715
+     def test_user_gid_uid_resolution_in_forest_trust_with_shared_secret(self):
+-- 
+2.56.0
+

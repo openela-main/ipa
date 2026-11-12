@@ -1,0 +1,36 @@
+From af06633f9b11992a74f68b62453d9908b2c742c8 Mon Sep 17 00:00:00 2001
+From: PRANAV THUBE <pthube@redhat.com>
+Date: Wed, 30 Sep 2026 16:48:14 +0530
+Subject: [PATCH] ipatests: refresh SSSD cache on SSH target in
+ test_hbacsvc_master_035
+
+clients[1] SSSD cache was not refreshed after disabling allow_all
+and adding a new HBAC rule, causing stale rules to deny SSH access.
+
+Fixes: https://codeberg.org/freeipa/freeipa/issues/10077
+Reviewed-By: Anuja More <amore@redhat.com>
+---
+ ipatests/test_integration/test_hbac_functional.py | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/ipatests/test_integration/test_hbac_functional.py b/ipatests/test_integration/test_hbac_functional.py
+index 715a334d5..5c198755f 100644
+--- a/ipatests/test_integration/test_hbac_functional.py
++++ b/ipatests/test_integration/test_hbac_functional.py
+@@ -3228,9 +3228,10 @@ class TestHBACFunctional(IntegrationTest):
+         # Test SSH access from client0 to client1 and master
+         # --------------------------------------------------
+         tasks.clear_sssd_cache(self.master)
+-        self.refresh_user_cache(
+-            self.clients[0], [self.USER_1, self.USER_2], kdestroy=False
+-        )
++        for client in self.clients:
++            self.refresh_user_cache(
++                client, [self.USER_1, self.USER_2], kdestroy=False
++            )
+         assert self.ssh_auth_success(
+             self.USER_1, self.USER_PASSWORD, self.clients[1], self.clients[0]
+         )
+-- 
+2.56.0
+

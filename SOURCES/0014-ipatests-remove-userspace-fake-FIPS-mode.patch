@@ -1,0 +1,390 @@
+From 22edf28d5e5512469f40334ed687eaa611ba96fe Mon Sep 17 00:00:00 2001
+From: Florence Blanc-Renaud <flo@redhat.com>
+Date: Mon, 28 Sep 2026 11:30:25 +0200
+Subject: [PATCH] ipatests: remove userspace fake FIPS mode
+
+The steps required for creating a userspace fake FIPS mode
+do not work with fedora 45+. Simply remove them as FIPS mode
+is tested downstream with a real FIPS configuration.
+
+Fixes: https://codeberg.org/freeipa/freeipa/issues/10055
+Signed-off-by: Florence Blanc-Renaud <flo@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+Reviewed-By: David Hanina <dhanina@redhat.com>
+---
+ ipatests/pytest_ipa/integration/config.py     |   2 -
+ ipatests/pytest_ipa/integration/env_config.py |   2 -
+ ipatests/pytest_ipa/integration/fips.py       |  44 ------
+ ipatests/pytest_ipa/integration/host.py       |  40 +-----
+ ipatests/test_integration/base.py             |  20 ---
+ ipatests/test_integration/test_fips.py        | 130 ------------------
+ ipatests/test_integration/test_testconfig.py  |   2 -
+ 7 files changed, 1 insertion(+), 239 deletions(-)
+ delete mode 100644 ipatests/test_integration/test_fips.py
+
+diff --git a/ipatests/pytest_ipa/integration/config.py b/ipatests/pytest_ipa/integration/config.py
+index 33ac8a47f..3cd3ddd10 100644
+--- a/ipatests/pytest_ipa/integration/config.py
++++ b/ipatests/pytest_ipa/integration/config.py
+@@ -43,7 +43,6 @@ class Config(pytest_multihost.config.Config):
+         'dns_forwarder',
+         'domain_level',
+         'log_journal_since',
+-        'fips_mode',
+         'token_name',
+         'token_password',
+         'token_library',
+@@ -76,7 +75,6 @@ class Config(pytest_multihost.config.Config):
+         self.log_journal_since = kwargs.get('log_journal_since') or '-1h'
+         if self.domain_level is None:
+             self.domain_level = MAX_DOMAIN_LEVEL
+-        self.fips_mode = kwargs.get('fips_mode', False)
+         self.token_name = kwargs.get('token_name', None)
+         self.token_password = kwargs.get('token_password', None)
+         self.token_library = kwargs.get('token_library', None)
+diff --git a/ipatests/pytest_ipa/integration/env_config.py b/ipatests/pytest_ipa/integration/env_config.py
+index efbfbf054..19f0a2af9 100644
+--- a/ipatests/pytest_ipa/integration/env_config.py
++++ b/ipatests/pytest_ipa/integration/env_config.py
+@@ -63,8 +63,6 @@ _setting_infos = (
+     _SettingInfo('domain_level', 'DOMAINLVL', MAX_DOMAIN_LEVEL),
+ 
+     _SettingInfo('log_journal_since', 'LOG_JOURNAL_SINCE', '-1h'),
+-    # userspace FIPS mode
+-    _SettingInfo('fips_mode', 'IPA_FIPS_MODE', False),
+ )
+ 
+ 
+diff --git a/ipatests/pytest_ipa/integration/fips.py b/ipatests/pytest_ipa/integration/fips.py
+index 2ea9f4c79..a1464b9e6 100644
+--- a/ipatests/pytest_ipa/integration/fips.py
++++ b/ipatests/pytest_ipa/integration/fips.py
+@@ -9,13 +9,8 @@ Userspace FIPS mode fakes a Kernel in FIPS enforcing mode. User space
+ programs behave like the Kernel was booted in FIPS enforcing mode. Kernel
+ space code still runs in standard mode.
+ """
+-import os
+ from ipaplatform.paths import paths
+ 
+-FIPS_OVERLAY_DIR = "/var/tmp/userspace-fips"
+-FIPS_OVERLAY = os.path.join(FIPS_OVERLAY_DIR, "fips_enabled")
+-SYSTEM_FIPS = "/etc/system-fips"
+-
+ 
+ def is_fips_enabled(host):
+     """Check if host has """
+@@ -31,45 +26,6 @@ def is_fips_enabled(host):
+         raise RuntimeError(result.stderr_text)
+ 
+ 
+-def enable_userspace_fips(host):
+-    # create /etc/system-fips
+-    host.put_file_contents(SYSTEM_FIPS, "# userspace fips\n")
+-    # fake Kernel FIPS mode with bind mount
+-    host.run_command(["mkdir", "-p", FIPS_OVERLAY_DIR])
+-    host.put_file_contents(FIPS_OVERLAY, "1\n")
+-    host.run_command(
+-        ["chcon", "-t", "sysctl_crypto_t", "-u", "system_u", FIPS_OVERLAY]
+-    )
+-    host.run_command(
+-        ["mount", "--bind", FIPS_OVERLAY, paths.PROC_FIPS_ENABLED]
+-    )
+-    # set crypto policy to FIPS mode
+-    host.run_command(["update-crypto-policies", "--show"])
+-    host.run_command(["update-crypto-policies", "--set", "FIPS"])
+-    # sanity check
+-    assert is_fips_enabled(host)
+-    result = host.run_command(
+-        ["openssl", "md5", "/dev/null"], raiseonerr=False
+-    )
+-    assert result.returncode == 1
+-    assert "Error setting digest" in result.stderr_text
+-
+-
+-def disable_userspace_fips(host):
+-    host.run_command(["rm", "-f", SYSTEM_FIPS])
+-    host.run_command(["update-crypto-policies", "--set", "DEFAULT"])
+-    result = host.run_command(
+-        ["umount", paths.PROC_FIPS_ENABLED], raiseonerr=False
+-    )
+-    host.run_command(["rm", "-rf", FIPS_OVERLAY_DIR])
+-    if result.returncode != 0:
+-        raise RuntimeError(result.stderr_text)
+-
+-    # sanity check
+-    assert not is_fips_enabled(host)
+-    host.run_command(["openssl", "md5", "/dev/null"])
+-
+-
+ def enable_crypto_subpolicy(host, subpolicy):
+     result = host.run_command(["update-crypto-policies", "--show"])
+     policy = result.stdout_text.strip() + ":" + subpolicy
+diff --git a/ipatests/pytest_ipa/integration/host.py b/ipatests/pytest_ipa/integration/host.py
+index a9758e7dc..f38c0006b 100644
+--- a/ipatests/pytest_ipa/integration/host.py
++++ b/ipatests/pytest_ipa/integration/host.py
+@@ -28,9 +28,7 @@ import pytest_multihost.host
+ from ipaplatform.paths import paths
+ from ipapython import ipaldap
+ 
+-from .fips import (
+-    is_fips_enabled, enable_userspace_fips, disable_userspace_fips
+-)
++from .fips import is_fips_enabled
+ from .transport import IPAOpenSSHTransport
+ from .resolver import resolver
+ 
+@@ -89,42 +87,6 @@ class Host(pytest_multihost.host.Host):
+             self._fips_mode = is_fips_enabled(self)
+         return self._fips_mode
+ 
+-    @property
+-    def is_userspace_fips(self):
+-        """Check if host uses fake userspace FIPS
+-        """
+-        return self._userspace_fips
+-
+-    def enable_userspace_fips(self):
+-        """Enable fake userspace FIPS mode
+-
+-        The call has no effect if the system is already in FIPS mode.
+-
+-        :return: True if system was modified, else None
+-        """
+-        if not self.is_fips_mode:
+-            enable_userspace_fips(self)
+-            self._fips_mode = True
+-            self._userspace_fips = True
+-            return True
+-        else:
+-            return False
+-
+-    def disable_userspace_fips(self):
+-        """Disable fake userspace FIPS mode
+-
+-        The call has no effect if userspace FIPS mode is not enabled.
+-
+-        :return: True if system was modified, else None
+-        """
+-        if self.is_userspace_fips:
+-            disable_userspace_fips(self)
+-            self._userspace_fips = False
+-            self._fips_mode = False
+-            return True
+-        else:
+-            return False
+-
+     @staticmethod
+     def _make_host(domain, hostname, role, ip, external_hostname):
+         # We need to determine the type of the host, this depends on the domain
+diff --git a/ipatests/test_integration/base.py b/ipatests/test_integration/base.py
+index cb34067d4..9681cce09 100644
+--- a/ipatests/test_integration/base.py
++++ b/ipatests/test_integration/base.py
+@@ -39,7 +39,6 @@ class IntegrationTest:
+     required_extra_roles = []
+     topology = None
+     domain_level = None
+-    fips_mode = None
+     random_serial = False
+     token_password = None
+ 
+@@ -61,18 +60,6 @@ class IntegrationTest:
+     def get_domains(cls):
+         return [cls.domain] + cls.ad_domains
+ 
+-    @classmethod
+-    def enable_fips_mode(cls):
+-        for host in cls.get_all_hosts():
+-            if not host.is_fips_mode:
+-                host.enable_userspace_fips()
+-
+-    @classmethod
+-    def disable_fips_mode(cls):
+-        for host in cls.get_all_hosts():
+-            if host.is_userspace_fips:
+-                host.disable_userspace_fips()
+-
+     @classmethod
+     def install(cls, mh):
+         extra_args = []
+@@ -81,11 +68,6 @@ class IntegrationTest:
+         else:
+             domain_level = cls.master.config.domain_level
+ 
+-        if cls.master.config.fips_mode:
+-            cls.fips_mode = True
+-        if cls.fips_mode:
+-            cls.enable_fips_mode()
+-
+         if cls.topology is None:
+             return
+         else:
+@@ -112,8 +94,6 @@ class IntegrationTest:
+         tasks.uninstall_master(cls.master)
+         for client in cls.clients:
+             tasks.uninstall_client(client)
+-        if cls.fips_mode:
+-            cls.disable_fips_mode()
+ 
+ 
+ @ordered
+diff --git a/ipatests/test_integration/test_fips.py b/ipatests/test_integration/test_fips.py
+deleted file mode 100644
+index 4c8e5465a..000000000
+--- a/ipatests/test_integration/test_fips.py
++++ /dev/null
+@@ -1,130 +0,0 @@
+-#
+-# Copyright (C) 2019  FreeIPA Contributors see COPYING for license
+-#
+-"""Smoke tests for FreeIPA installation in (fake) userspace FIPS mode
+-"""
+-import pytest
+-
+-from ipapython.dn import DN
+-from ipapython.ipautil import ipa_generate_password, realm_to_suffix
+-
+-from ipatests.pytest_ipa.integration import tasks
+-from ipatests.pytest_ipa.integration import fips
+-from ipatests.test_integration.base import IntegrationTest
+-
+-from .test_dnssec import (
+-    test_zone,
+-    dnssec_install_master,
+-    dnszone_add_dnssec,
+-    wait_until_record_is_signed,
+-)
+-
+-
+-def check_version(host):
+-    if tasks.get_pki_version(host) < tasks.parse_version('11.6.0'):
+-        raise pytest.skip("PKI replica FIPS support is not available, "
+-                          "https://github.com/dogtagpki/pki/issues/4847")
+-
+-
+-class TestInstallFIPS(IntegrationTest):
+-    num_replicas = 1
+-    num_clients = 1
+-    fips_mode = True
+-
+-    @classmethod
+-    def install(cls, mh):
+-        check_version(cls.replicas[0])
+-        super(TestInstallFIPS, cls).install(mh)
+-        # sanity check
+-        for host in cls.get_all_hosts():
+-            assert host.is_fips_mode
+-            assert fips.is_fips_enabled(host)
+-        # master with CA, KRA, DNS+DNSSEC
+-        tasks.install_master(cls.master, setup_dns=True, setup_kra=True)
+-        # replica with CA, KRA, DNS
+-        tasks.install_replica(
+-            cls.master,
+-            cls.replicas[0],
+-            setup_dns=True,
+-            setup_ca=True,
+-            setup_kra=True,
+-        )
+-        tasks.install_clients([cls.master] + cls.replicas, cls.clients)
+-
+-    @classmethod
+-    def uninstall(cls, mh):
+-        check_version(cls.replicas[0])
+-        super(TestInstallFIPS, cls).uninstall(mh)
+-
+-    def test_basic(self):
+-        client = self.clients[0]
+-        tasks.kinit_admin(client)
+-        client.run_command(["ipa", "ping"])
+-
+-    @pytest.mark.xfail(reason='freeipa ticket 9785', strict=True)
+-    def test_dnssec(self):
+-        dnssec_install_master(self.master)
+-        # DNSSEC zone
+-        dnszone_add_dnssec(self.master, test_zone)
+-        assert wait_until_record_is_signed(
+-            self.master.ip, test_zone, timeout=100
+-        ), ("Zone %s is not signed (master)" % test_zone)
+-
+-        # test replica
+-        assert wait_until_record_is_signed(
+-            self.replicas[0].ip, test_zone, timeout=200
+-        ), ("DNS zone %s is not signed (replica)" % test_zone)
+-
+-    def test_vault_basic(self):
+-        vault_name = "testvault"
+-        vault_password = ipa_generate_password()
+-        vault_data = "SSBsb3ZlIENJIHRlc3RzCg=="
+-        # create vault
+-        self.master.run_command(
+-            [
+-                "ipa",
+-                "vault-add",
+-                vault_name,
+-                "--password",
+-                vault_password,
+-                "--type",
+-                "symmetric",
+-            ]
+-        )
+-
+-        # archive secret
+-        self.master.run_command(
+-            [
+-                "ipa",
+-                "vault-archive",
+-                vault_name,
+-                "--password",
+-                vault_password,
+-                "--data",
+-                vault_data,
+-            ]
+-        )
+-        self.master.run_command(
+-            [
+-                "ipa",
+-                "vault-retrieve",
+-                vault_name,
+-                "--password",
+-                vault_password,
+-            ]
+-        )
+-
+-    def test_krb_enctypes(self):
+-        realm = self.master.domain.realm
+-        suffix = realm_to_suffix(realm)
+-        dn = DN(("cn", realm), ("cn", "kerberos")) + suffix
+-        args = ["krbSupportedEncSaltTypes", "krbDefaultEncSaltTypes"]
+-        for host in [self.master] + self.replicas:
+-            result = tasks.ldapsearch_dm(host, str(dn), args, scope="base")
+-            assert "camellia" not in result.stdout_text
+-            assert "aes256-cts" in result.stdout_text
+-            assert "aes128-cts" in result.stdout_text
+-        # test that update does not add camellia
+-        self.master.run_command(["ipa-server-upgrade"])
+-        result = tasks.ldapsearch_dm(self.master, str(dn), args, scope="base")
+-        assert "camellia" not in result.stdout_text
+diff --git a/ipatests/test_integration/test_testconfig.py b/ipatests/test_integration/test_testconfig.py
+index defbf00ec..fae8b694b 100644
+--- a/ipatests/test_integration/test_testconfig.py
++++ b/ipatests/test_integration/test_testconfig.py
+@@ -46,7 +46,6 @@ DEFAULT_OUTPUT_DICT = {
+     "admin_password": "Secret123",
+     "domain_level": MAX_DOMAIN_LEVEL,
+     "log_journal_since": "-1h",
+-    "fips_mode": False,
+     "token_name": None,
+     "token_password": None,
+     "token_library": None,
+@@ -74,7 +73,6 @@ DEFAULT_OUTPUT_ENV = {
+     "IPADEBUG": "",
+     "DOMAINLVL": str(MAX_DOMAIN_LEVEL),
+     "LOG_JOURNAL_SINCE": "-1h",
+-    "IPA_FIPS_MODE": "",
+ }
+ 
+ DEFAULT_INPUT_ENV = {
+-- 
+2.56.0
+

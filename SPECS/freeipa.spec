@@ -229,7 +229,7 @@
 
 Name:           %{package_name}
 Version:        %{IPA_VERSION}
-Release:        1%{?rc_version:.%rc_version}%{?dist}
+Release:        1%{?rc_version:.%rc_version}%{?dist}.1
 Summary:        The Identity, Policy and Audit system
 
 License:        GPL-3.0-or-later
@@ -252,6 +252,18 @@ Source1:        https://releases.pagure.org/freeipa/freeipa-%{version}%{?rc_vers
 Patch0001: 0001-ipatests-Remove-xfail-for-sssd-issues-7169.patch
 Patch0002: 0002-kdb-rework-cross-realm-PAC-validation-and-ID-override-checks.patch
 Patch0003: 0003-Allow-fine-tuned-privilege-check.patch
+Patch0004:      0004-ipatests-allow-resolver-restore-after-NetworkManager.patch
+Patch0005:      0005-ipatests-fix-SSH-password-login-tests-in-test_comman.patch
+Patch0006:      0006-CVE-2026-86593.patch
+Patch0007:      0007-ipatests-skip-test_drop_privileges-if-run-as-unprivi.patch
+Patch0008:      0008-ipatests-remove-trailing-space-in-test_commands.py.patch
+Patch0009:      0009-ipatests-add-missing-tests-for-i18n_messages-endpoin.patch
+Patch0010:      0010-ipatests-adapt-the-expected-output-of-ipa-trustdomai.patch
+Patch0011:      0011-ipatests-add-xfail-for-test_ipahealthcheck_trust_cat.patch
+Patch0012:      0012-webui-remove-redirect-from-password-reset-page.patch
+Patch0013:      0013-ipatests-skip-test_external_ca_with_too_small_key-in.patch
+Patch0014:      0014-ipatests-remove-userspace-fake-FIPS-mode.patch
+Patch0015:      0015-ipatests-refresh-SSSD-cache-on-SSH-target-in-test_hb.patch
 Patch1001:      1001-Change-branding-to-IPA-and-Identity-Management.patch
 Patch1002:      1002-Revert-Replace-netifaces-with-ifaddr.patch
 Patch1003:      1003-Revert-custodia-do-not-use-deprecated-jwcrypto-wrapp.patch
@@ -2060,6 +2072,11 @@ fi
 %endif
 
 %changelog
+* Mon Oct 12 2026 David Hanina <dhanina@redhat.com> - 4.13.4-1.1
+- Resolves: RHEL-277804 [Cursor Automated] Include latest fixes in python3-ipatests package
+- Resolves: RHEL-261484 ipa: IdM/FreeIPA Web UI - Client-side open redirect in reset_password.html
+- Resolves: RHEL-255990 CVE-2026-86593
+
 * Tue Sep 15 2026 Rafael Jeffmna <rjeffman@redhat.com> - 4.13.4-1
 - Resolves: RHEL-245477 CVE-2026-76578 ipa: FreeIPA: unauthenticated LDAP client can obtain administrator credentials via the self-managed-token ACI [rhel-9.9]
 - Resolves: RHEL 248200 CVE-2026-79678 ipa: freeipa: idp-add eval() reachable before authorization check allows environment disclosure and denial of service [rhel-9.9]
